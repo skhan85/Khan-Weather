@@ -37,6 +37,21 @@ public struct CurrentConditions: Equatable, Codable, Sendable {
     public var precipitation: Double?   // mm
     public var condition: WeatherCondition
     public var isDay: Bool
+
+    public init(time: Date, temperature: Double, feelsLike: Double, feelsLikeKind: FeelsLikeKind,
+                humidity: Double? = nil, windSpeed: Double? = nil, windDirection: Double? = nil,
+                precipitation: Double? = nil, condition: WeatherCondition, isDay: Bool) {
+        self.time = time
+        self.temperature = temperature
+        self.feelsLike = feelsLike
+        self.feelsLikeKind = feelsLikeKind
+        self.humidity = humidity
+        self.windSpeed = windSpeed
+        self.windDirection = windDirection
+        self.precipitation = precipitation
+        self.condition = condition
+        self.isDay = isDay
+    }
 }
 
 public struct HourlyForecast: Equatable, Codable, Sendable, Identifiable {
@@ -46,6 +61,15 @@ public struct HourlyForecast: Equatable, Codable, Sendable, Identifiable {
     public var precipitationProbability: Double?
     public var condition: WeatherCondition
     public var id: Date { time }
+
+    public init(time: Date, temperature: Double, feelsLike: Double? = nil,
+                precipitationProbability: Double? = nil, condition: WeatherCondition) {
+        self.time = time
+        self.temperature = temperature
+        self.feelsLike = feelsLike
+        self.precipitationProbability = precipitationProbability
+        self.condition = condition
+    }
 }
 
 public struct DailyForecast: Equatable, Codable, Sendable, Identifiable {
@@ -57,6 +81,17 @@ public struct DailyForecast: Equatable, Codable, Sendable, Identifiable {
     public var precipitationProbability: Double?
     public var condition: WeatherCondition
     public var id: Date { date }
+
+    public init(date: Date, high: Double, low: Double, feelsLikeHigh: Double? = nil, feelsLikeLow: Double? = nil,
+                precipitationProbability: Double? = nil, condition: WeatherCondition) {
+        self.date = date
+        self.high = high
+        self.low = low
+        self.feelsLikeHigh = feelsLikeHigh
+        self.feelsLikeLow = feelsLikeLow
+        self.precipitationProbability = precipitationProbability
+        self.condition = condition
+    }
 }
 
 public struct Forecast: Equatable, Codable, Sendable {
@@ -67,6 +102,17 @@ public struct Forecast: Equatable, Codable, Sendable {
     public var daily: [DailyForecast]
     public var source: String
     public var fetchedAt: Date
+
+    public init(location: Coordinate, timeZoneIdentifier: String, current: CurrentConditions,
+                hourly: [HourlyForecast], daily: [DailyForecast], source: String, fetchedAt: Date) {
+        self.location = location
+        self.timeZoneIdentifier = timeZoneIdentifier
+        self.current = current
+        self.hourly = hourly
+        self.daily = daily
+        self.source = source
+        self.fetchedAt = fetchedAt
+    }
 
     public var timeZone: TimeZone { TimeZone(identifier: timeZoneIdentifier) ?? .current }
 
