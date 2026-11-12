@@ -65,7 +65,7 @@ private struct ForecastList: View {
                     HStack(spacing: 18) {
                         ForEach(forecast.upcomingHours()) { hour in
                             VStack(spacing: 6) {
-                                Text(hour.time, format: .dateTime.hour().timeZone(forecast.timeZone))
+                                Text(hour.time, format: Date.FormatStyle(timeZone: forecast.timeZone).hour())
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                 Image(systemName: hour.condition.symbolName())
@@ -88,7 +88,7 @@ private struct ForecastList: View {
             Section("\(forecast.daily.count)-day forecast") {
                 ForEach(forecast.daily) { day in
                     HStack {
-                        Text(day.date, format: .dateTime.weekday(.abbreviated).timeZone(forecast.timeZone))
+                        Text(day.date, format: Date.FormatStyle(timeZone: forecast.timeZone).weekday(.abbreviated))
                             .frame(width: 48, alignment: .leading)
                         Image(systemName: day.condition.symbolName())
                             .symbolRenderingMode(.multicolor)
