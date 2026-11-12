@@ -155,8 +155,13 @@ struct CurrentConditionsView: View {
             }
             .font(.subheadline)
             .foregroundStyle(.secondary)
-            if let observation {
+            if let observation, observation.isLocal {
                 Text("Observed at \(observation.stationName), \(observation.observedAt.formatted(Date.FormatStyle(time: .shortened, timeZone: timeZone)))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            } else if let observation {
+                Text("Sky from \(observation.stationName) (\(Int((observation.distanceKm ?? 0).rounded())) km away). Temperature is the forecast for your spot.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
