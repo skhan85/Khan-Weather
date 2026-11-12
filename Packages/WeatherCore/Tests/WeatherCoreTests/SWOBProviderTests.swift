@@ -8,12 +8,12 @@ final class SWOBProviderTests: XCTestCase {
     {
       "type": "FeatureCollection",
       "features": [
-        {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-79.955, 43.49, 200]},
+        {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-79.9573, 43.5037, 200]},
          "properties": {"stn_nam-value": "CR-27 Campbellville", "msc_id-value": "ON_MTO_CR-27",
            "data_pvdr-value": "ON-MTO", "obs_date_tm": "2026-11-12T14:23:00Z",
            "air_temp": 2.9, "rel_hum": 90, "dwpt_temp": 1.4, "avg_wnd_spd_10m_pst10mts": 15.0,
            "avg_wnd_spd_10m_pst10mts-uom": "km/h", "avg_wnd_dir_10m_pst10mts": 40}},
-        {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-79.955, 43.49, 200]},
+        {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-79.9573, 43.5037, 200]},
          "properties": {"stn_nam-value": "CR-27 Campbellville", "msc_id-value": "ON_MTO_CR-27",
            "data_pvdr-value": "ON-MTO", "obs_date_tm": "2026-11-12T14:33:00Z",
            "air_temp": 2.7, "rel_hum": 91, "avg_wnd_spd_10m_pst10mts": 18.0, "avg_wnd_dir_10m_pst10mts": 45}},
@@ -40,7 +40,7 @@ final class SWOBProviderTests: XCTestCase {
         XCTAssertEqual(o.dataProvider, "ON-MTO")
         XCTAssertEqual(o.feelsLikeKind, .windChill)
         XCTAssertNil(o.condition)
-        XCTAssertEqual(try XCTUnwrap(o.distanceKm), 6.3, accuracy: 0.5)
+        XCTAssertEqual(try XCTUnwrap(o.distanceKm), 6.2, accuracy: 0.5)
     }
 
     func testFallbackWindFieldAndDistanceLimit() throws {
