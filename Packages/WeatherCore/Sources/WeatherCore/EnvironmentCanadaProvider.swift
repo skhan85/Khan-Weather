@@ -122,11 +122,11 @@ public struct EnvironmentCanadaProvider: ObservationProvider {
             throw ForecastError.missingData("features")
         }
 
-        var best: (distance: Double, observation: Observation)?
+        var candidates: [Observation] = []
         for feature in features {
             guard let properties = feature["properties"] as? [String: Any],
                   let current = properties["currentConditions"] as? [String: Any],
-                  let observation = observation(from: current) else { continue }
+                  var observation = observation(from: current) else { continue }
             guard now.timeIntervalSince(observation.observedAt) <= maxAge else { continue }
 
             // Prefer the station's own position; fall back to the city point.
@@ -136,13 +136,28 @@ public struct EnvironmentCanadaProvider: ObservationProvider {
             guard let stationCoordinate else { continue }
             let distance = distanceKm(coordinate, stationCoordinate)
             guard distance <= maxDistanceKm else { continue }
-            if best == nil || distance < best!.distance {
-                var o = observation
-                o.distanceKm = distance
-                best = (distance, o)
+            observation.distanceKm = distance
+            // Several city pages share one station (Milton and Mississauga both use Pearson).
+            if !candidates.contains(where: { $0.stationName == observation.stationName }) {
+                candidates.append(observation)
             }
         }
-        return best?.observation
+        return choose(from: candidates)
+    }
+
+    /// Automatic stations such as Burlington Lift Bridge report temperature and wind but no sky.
+    /// Take the sky from the nearest station that does report one.
+    static func choose(from candidates: [Observation]) -> Observation? {
+        let sorted = candidates.sorted { ($0.distanceKm ?? 0) < ($1.distanceKm ?? 0) }
+        guard let nearest = sorted.first else { return nil }
+        if nearest.conditionText != nil { return nearest }
+        guard let withSky = sorted.first(where: { $0.conditionText != nil }) else { return nearest }
+        // A distant station only supplies the sky anyway, so use the one that has it.
+        guard nearest.isLocal else { return withSky }
+        var merged = nearest
+        merged.condition = withSky.condition
+        merged.conditionText = withSky.conditionText
+        return merged
     }
 
     static func observation(from current: [String: Any]) -> Observation? {

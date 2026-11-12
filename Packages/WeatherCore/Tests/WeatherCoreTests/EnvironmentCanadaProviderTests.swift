@@ -143,4 +143,25 @@ final class EnvironmentCanadaProviderTests: XCTestCase {
         XCTAssertEqual(merged.current.windSpeed, forecast.current.windSpeed)
         XCTAssertEqual(merged.observation?.stationName, "Burlington Lift Bridge")
     }
+
+    func testSkyComesFromNearestReportingStation() {
+        let bridge = Observation(stationName: "Burlington Lift Bridge", observedAt: now, temperature: 5.6,
+                                 windSpeed: 39, distanceKm: 20)
+        let pearson = Observation(stationName: "Toronto Pearson Int'l Airport", observedAt: now, temperature: 4.3,
+                                  condition: .partlyCloudy, conditionText: "Mostly Cloudy", distanceKm: 21)
+        let chosen = EnvironmentCanadaProvider.choose(from: [bridge, pearson])
+        XCTAssertEqual(chosen?.stationName, "Toronto Pearson Int'l Airport")
+        XCTAssertEqual(chosen?.conditionText, "Mostly Cloudy")
+
+        // A local station without sky keeps its own readings and borrows the sky.
+        var near = bridge
+        near.distanceKm = 5
+        let merged = EnvironmentCanadaProvider.choose(from: [pearson, near])
+        XCTAssertEqual(merged?.stationName, "Burlington Lift Bridge")
+        XCTAssertEqual(merged?.temperature, 5.6)
+        XCTAssertEqual(merged?.conditionText, "Mostly Cloudy")
+
+        // Nobody reports sky: still return the nearest.
+        XCTAssertEqual(EnvironmentCanadaProvider.choose(from: [bridge])?.stationName, "Burlington Lift Bridge")
+    }
 }
