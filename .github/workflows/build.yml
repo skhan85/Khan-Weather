@@ -10,6 +10,9 @@ concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write # lets builds on main publish the .ipa as a GitHub Release
+
 jobs:
   build:
     runs-on: macos-15
@@ -60,6 +63,19 @@ jobs:
           name: KhanWeather-unsigned-ipa
           path: KhanWeather-unsigned.ipa
           retention-days: 30
+
+      - name: Publish .ipa as a GitHub Release (main only)
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="build-${{ github.run_number }}"
+          cp KhanWeather-unsigned.ipa "KhanWeather-${TAG}.ipa"
+          gh release create "$TAG" "KhanWeather-${TAG}.ipa" \
+            --target "${{ github.sha }}" \
+            --title "Khan Weather ${TAG}" \
+            --notes "Unsigned build of ${{ github.sha }}. Sideload with Sideloadly or Impactor using your Apple ID." \
+            --latest
 
       - name: Upload build log on failure
         if: failure()

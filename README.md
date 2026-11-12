@@ -20,9 +20,10 @@ A personal weather app for iPhone, iPad and Apple Watch, built only on free data
 
 Every push to `main` and every pull request is built by GitHub Actions on a macOS runner.
 
-1. Open the repo's **Actions** tab and pick the latest green **Build unsigned IPA** run.
-2. Download the **KhanWeather-unsigned-ipa** artifact and unzip it to get `KhanWeather-unsigned.ipa`.
-3. Install it with a sideloading tool that signs with your Apple ID, such as Sideloadly or Impactor.
+1. Open the repo's [**Releases**](https://github.com/skhan85/Khan-Weather/releases/latest) page; every build of `main` publishes one, with the `.ipa` attached as a direct download.
+2. Install it with a sideloading tool that signs with your Apple ID, such as Sideloadly or Impactor.
+
+Pull request builds attach the `.ipa` as a zipped artifact on the Actions run instead.
 
 With a free Apple ID the install expires after 7 days and must be refreshed.
 
