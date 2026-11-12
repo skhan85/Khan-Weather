@@ -121,7 +121,7 @@ public struct EnvironmentCanadaProvider: ObservationProvider {
 
             // Prefer the station's own position; fall back to the city point.
             let station = current["station"] as? [String: Any]
-            let stationCoordinate = coordinate(lat: en(station?["lat"]), lon: en(station?["lon"]))
+            let stationCoordinate = Self.coordinate(lat: en(station?["lat"]), lon: en(station?["lon"]))
                 ?? pointCoordinate(feature["geometry"])
             guard let stationCoordinate else { continue }
             let distance = distanceKm(coordinate, stationCoordinate)
