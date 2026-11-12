@@ -311,7 +311,14 @@ public extension Forecast {
             return copy
         }
         c.temperature = o.temperature
-        if let feels = o.feelsLike, let kind = o.feelsLikeKind {
+        // Wind chill from the stronger of the station's wind and the forecast wind for this spot.
+        // A single sheltered sensor can read near-calm while the town is breezy; in winter it's
+        // safer to err cold.
+        let chillWind = max(o.windSpeed ?? 0, current.windSpeed ?? 0)
+        if let chill = EnvironmentCanadaProvider.windChill(temperature: o.temperature, windKmh: chillWind) {
+            c.feelsLike = chill
+            c.feelsLikeKind = .windChill
+        } else if let feels = o.feelsLike, let kind = o.feelsLikeKind, kind != .windChill {
             c.feelsLike = feels
             c.feelsLikeKind = kind
         } else {
