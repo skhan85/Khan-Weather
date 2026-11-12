@@ -19,6 +19,10 @@ public struct Observation: Equatable, Codable, Sendable {
     public var conditionText: String?
     /// How far the station is from the user, when known.
     public var distanceKm: Double?
+    /// Who runs the station when it isn't ECCC itself, e.g. "ON-MTO" or "NAV CANADA".
+    public var dataProvider: String?
+    /// When the sky (condition) came from a different station than the readings.
+    public var skyStationName: String?
 
     public init(stationName: String, observedAt: Date, temperature: Double, feelsLike: Double? = nil,
                 feelsLikeKind: FeelsLikeKind? = nil, humidity: Double? = nil, windSpeed: Double? = nil,

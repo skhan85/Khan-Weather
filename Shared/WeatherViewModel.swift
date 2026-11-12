@@ -21,7 +21,7 @@ final class WeatherViewModel: ObservableObject {
     private let location: LocationManager
 
     init(provider: ForecastProvider = OpenMeteoProvider(),
-         observations: ObservationProvider = EnvironmentCanadaProvider(),
+         observations: ObservationProvider = CanadaObservationProvider(),
          location: LocationManager? = nil) {
         self.provider = provider
         self.observations = observations

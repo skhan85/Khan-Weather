@@ -21,7 +21,7 @@ struct WeatherEntry: TimelineEntry {
 
 struct WeatherTimelineProvider: TimelineProvider {
     private let provider = OpenMeteoProvider()
-    private let observations = EnvironmentCanadaProvider()
+    private let observations = CanadaObservationProvider()
 
     func placeholder(in context: Context) -> WeatherEntry { .placeholder }
 

@@ -116,6 +116,11 @@ private struct ForecastList: View {
                          destination: URL(string: "https://weather.gc.ca/")!)
                         .font(.footnote)
                 }
+                if forecast.observation?.dataProvider == "ON-MTO" {
+                    Text("Road weather station: Ontario Ministry of Transportation")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
                 Text("Updated \(forecast.fetchedAt.formatted(date: .omitted, time: .shortened))")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -156,7 +161,7 @@ struct CurrentConditionsView: View {
             .font(.subheadline)
             .foregroundStyle(.secondary)
             if let observation, observation.isLocal {
-                Text("Observed at \(observation.stationName), \(observation.observedAt.formatted(Date.FormatStyle(time: .shortened, timeZone: timeZone)))")
+                Text(Self.localCaption(observation, timeZone: timeZone))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -173,5 +178,14 @@ struct CurrentConditionsView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
+    }
+
+    static func localCaption(_ o: Observation, timeZone: TimeZone) -> String {
+        let time = o.observedAt.formatted(Date.FormatStyle(time: .shortened, timeZone: timeZone))
+        var text = "Observed at \(o.stationName)"
+        if let km = o.distanceKm { text += " (\(Int(km.rounded())) km away)" }
+        text += ", \(time)"
+        if let sky = o.skyStationName { text += ". Sky from \(sky)." }
+        return text
     }
 }
