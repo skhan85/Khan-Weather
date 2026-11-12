@@ -59,7 +59,8 @@ private struct ForecastList: View {
             }
 
             Section {
-                CurrentConditionsView(current: forecast.current, placeName: placeName)
+                CurrentConditionsView(current: forecast.current, placeName: placeName,
+                                      observation: forecast.observation, timeZone: forecast.timeZone)
             }
 
             Section("Next 24 hours") {
@@ -110,6 +111,11 @@ private struct ForecastList: View {
             Section {
                 Link(attribution, destination: URL(string: "https://open-meteo.com/")!)
                     .font(.footnote)
+                if forecast.observation != nil {
+                    Link("Observations: Environment and Climate Change Canada",
+                         destination: URL(string: "https://weather.gc.ca/")!)
+                        .font(.footnote)
+                }
                 Text("Updated \(forecast.fetchedAt.formatted(date: .omitted, time: .shortened))")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -121,6 +127,8 @@ private struct ForecastList: View {
 struct CurrentConditionsView: View {
     let current: CurrentConditions
     var placeName: String?
+    var observation: Observation?
+    var timeZone: TimeZone = .current
 
     var body: some View {
         VStack(spacing: 8) {
@@ -133,7 +141,7 @@ struct CurrentConditionsView: View {
                 .font(.system(size: 56))
             Text(WeatherFormat.temperature(current.temperature))
                 .font(.system(size: 64, weight: .thin))
-            Text(current.condition.description)
+            Text(observation?.conditionText ?? current.condition.description)
                 .font(.title3)
             Text("\(WeatherFormat.feelsLikeLabel(current.feelsLikeKind)) \(WeatherFormat.temperature(current.feelsLike))")
                 .foregroundStyle(.secondary)
@@ -147,6 +155,16 @@ struct CurrentConditionsView: View {
             }
             .font(.subheadline)
             .foregroundStyle(.secondary)
+            if let observation {
+                Text("Observed at \(observation.stationName), \(observation.observedAt.formatted(Date.FormatStyle(time: .shortened, timeZone: timeZone)))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            } else {
+                Text("Model estimate (no nearby station)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)

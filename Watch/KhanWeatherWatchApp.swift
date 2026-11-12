@@ -36,7 +36,7 @@ struct WatchContentView: View {
                             .font(.title)
                         Text(WeatherFormat.temperature(forecast.current.temperature))
                             .font(.system(size: 44, weight: .light))
-                        Text(forecast.current.condition.description)
+                        Text(forecast.observation?.conditionText ?? forecast.current.condition.description)
                             .font(.footnote)
                         Text("Feels \(WeatherFormat.temperature(forecast.current.feelsLike))")
                             .font(.footnote)

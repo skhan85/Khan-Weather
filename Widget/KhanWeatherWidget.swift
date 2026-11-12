@@ -21,6 +21,7 @@ struct WeatherEntry: TimelineEntry {
 
 struct WeatherTimelineProvider: TimelineProvider {
     private let provider = OpenMeteoProvider()
+    private let observations = EnvironmentCanadaProvider()
 
     func placeholder(in context: Context) -> WeatherEntry { .placeholder }
 
@@ -45,8 +46,9 @@ struct WeatherTimelineProvider: TimelineProvider {
             Coordinate(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude)
         } ?? .fallback
         async let place = PlaceNameResolver.name(for: coordinate)
+        async let observed = try? observations.observation(near: coordinate)
         do {
-            let forecast = try await provider.forecast(for: coordinate)
+            let forecast = try await provider.forecast(for: coordinate).applying(await observed ?? nil)
             let today = forecast.daily.first
             return WeatherEntry(date: Date(), current: forecast.current, high: today?.high, low: today?.low,
                                 placeName: await place, error: nil)

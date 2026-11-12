@@ -17,10 +17,14 @@ final class WeatherViewModel: ObservableObject {
     @Published private(set) var placeName: String?
 
     let provider: ForecastProvider
+    let observations: ObservationProvider
     private let location: LocationManager
 
-    init(provider: ForecastProvider = OpenMeteoProvider(), location: LocationManager? = nil) {
+    init(provider: ForecastProvider = OpenMeteoProvider(),
+         observations: ObservationProvider = EnvironmentCanadaProvider(),
+         location: LocationManager? = nil) {
         self.provider = provider
+        self.observations = observations
         self.location = location ?? LocationManager()
     }
 
@@ -29,8 +33,10 @@ final class WeatherViewModel: ObservableObject {
         usingFallbackLocation = coordinate == nil
         let target = coordinate ?? .fallback
         async let name = PlaceNameResolver.name(for: target)
+        // Station observations are a bonus: if they fail, the model's "now" is still shown.
+        async let observed = try? observations.observation(near: target)
         do {
-            let forecast = try await provider.forecast(for: target)
+            let forecast = try await provider.forecast(for: target).applying(await observed ?? nil)
             placeName = await name ?? (usingFallbackLocation ? "Toronto" : nil)
             state = .loaded(forecast)
         } catch {
