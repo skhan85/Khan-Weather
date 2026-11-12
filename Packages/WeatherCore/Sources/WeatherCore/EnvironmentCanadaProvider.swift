@@ -17,10 +17,13 @@ public struct Observation: Equatable, Codable, Sendable {
     /// Nil when the station reported no sky condition, or one we don't recognise.
     public var condition: WeatherCondition?
     public var conditionText: String?
+    /// How far the station is from the user, when known.
+    public var distanceKm: Double?
 
     public init(stationName: String, observedAt: Date, temperature: Double, feelsLike: Double? = nil,
                 feelsLikeKind: FeelsLikeKind? = nil, humidity: Double? = nil, windSpeed: Double? = nil,
-                windDirection: Double? = nil, condition: WeatherCondition? = nil, conditionText: String? = nil) {
+                windDirection: Double? = nil, condition: WeatherCondition? = nil, conditionText: String? = nil,
+                distanceKm: Double? = nil) {
         self.stationName = stationName
         self.observedAt = observedAt
         self.temperature = temperature
@@ -31,7 +34,14 @@ public struct Observation: Equatable, Codable, Sendable {
         self.windDirection = windDirection
         self.condition = condition
         self.conditionText = conditionText
+        self.distanceKm = distanceKm
     }
+
+    /// Stations closer than this stand in for the user's own spot: temperature, wind and feels-like.
+    /// Farther ones only tell us what the sky is doing (rain, snow, fog).
+    public static let localRadiusKm: Double = 15
+
+    public var isLocal: Bool { (distanceKm ?? 0) <= Self.localRadiusKm }
 }
 
 public protocol ObservationProvider: Sendable {
@@ -127,7 +137,9 @@ public struct EnvironmentCanadaProvider: ObservationProvider {
             let distance = distanceKm(coordinate, stationCoordinate)
             guard distance <= maxDistanceKm else { continue }
             if best == nil || distance < best!.distance {
-                best = (distance, observation)
+                var o = observation
+                o.distanceKm = distance
+                best = (distance, o)
             }
         }
         return best?.observation
@@ -141,15 +153,19 @@ public struct EnvironmentCanadaProvider: ObservationProvider {
         let station = current["station"] as? [String: Any]
         let stationName = (en(station?["value"]) as? String) ?? (en(station) as? String) ?? "Nearby station"
 
+        let wind = current["wind"] as? [String: Any]
+        let windSpeed = number(wind?["speed"])
+
+        // Work feels-like out from the measurements ourselves. The city page's own windChill value
+        // has been seen well below what its temperature and wind give (−6 for 6° and 39 km/h).
         var feelsLike: Double?
         var kind: FeelsLikeKind?
-        if let chill = number(current["windChill"]) {
+        if let chill = windChill(temperature: temperature, windKmh: windSpeed) {
             feelsLike = chill; kind = .windChill
-        } else if let humidex = number(current["humidex"]) {
-            feelsLike = humidex; kind = .humidex
+        } else if let hx = humidex(temperature: temperature, dewpoint: number(current["dewpoint"])) {
+            feelsLike = hx; kind = .humidex
         }
 
-        let wind = current["wind"] as? [String: Any]
         let text = (en(current["condition"]) as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         return Observation(
@@ -159,11 +175,27 @@ public struct EnvironmentCanadaProvider: ObservationProvider {
             feelsLike: feelsLike,
             feelsLikeKind: kind,
             humidity: number(current["relativeHumidity"]),
-            windSpeed: number(wind?["speed"]),
+            windSpeed: windSpeed,
             windDirection: number(wind?["bearing"]),
             condition: text.flatMap(condition(fromText:)),
             conditionText: (text?.isEmpty ?? true) ? nil : text
         )
+    }
+
+    /// Environment Canada's wind chill index. Defined only at or below 10 °C with wind of at least 5 km/h.
+    static func windChill(temperature t: Double, windKmh v: Double?) -> Double? {
+        guard let v, t <= 10, v >= 5 else { return nil }
+        let p = pow(v, 0.16)
+        let chill = 13.12 + 0.6215 * t - 11.37 * p + 0.3965 * t * p
+        return min(chill, t)
+    }
+
+    /// Environment Canada's humidex from dew point. Reported only when it's warm and muggy enough to matter.
+    static func humidex(temperature t: Double, dewpoint td: Double?) -> Double? {
+        guard let td, t >= 20 else { return nil }
+        let e = 6.11 * exp(5417.7530 * (1 / 273.16 - 1 / (273.15 + td)))
+        let h = t + 0.5555 * (e - 10)
+        return h - t >= 1 ? h : nil
     }
 
     /// Maps Environment Canada's English condition text ("Light Rain", "Mostly Cloudy") to our enum.
@@ -251,6 +283,14 @@ public extension Forecast {
         guard let o = observation else { return self }
         var copy = self
         var c = current
+        copy.observation = o
+        guard o.isLocal else {
+            // A distant station (a lakeshore pier, an airport across town) can't speak for the
+            // user's temperature or wind, but it does tell us whether it's raining.
+            c.condition = o.condition ?? c.condition
+            copy.current = c
+            return copy
+        }
         c.temperature = o.temperature
         if let feels = o.feelsLike, let kind = o.feelsLikeKind {
             c.feelsLike = feels
@@ -265,7 +305,6 @@ public extension Forecast {
         c.condition = o.condition ?? c.condition
         c.time = o.observedAt
         copy.current = c
-        copy.observation = o
         return copy
     }
 }

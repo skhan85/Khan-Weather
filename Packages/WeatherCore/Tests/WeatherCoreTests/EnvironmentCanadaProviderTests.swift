@@ -58,8 +58,10 @@ final class EnvironmentCanadaProviderTests: XCTestCase {
                                                               maxDistanceKm: 60, maxAge: 3 * 3600))
         XCTAssertEqual(o.stationName, "Toronto Pearson Int'l Airport")
         XCTAssertEqual(o.temperature, 4.0)
-        XCTAssertEqual(o.feelsLike, -3)
+        // Computed from 4 °C and 23 km/h, not the page's own −3.
+        XCTAssertEqual(try XCTUnwrap(o.feelsLike), -0.55, accuracy: 0.05)
         XCTAssertEqual(o.feelsLikeKind, .windChill)
+        XCTAssertEqual(try XCTUnwrap(o.distanceKm), 10, accuracy: 1)
         XCTAssertEqual(o.humidity, 85)
         XCTAssertEqual(o.windSpeed, 23)
         XCTAssertEqual(o.windDirection, 56)
@@ -117,5 +119,28 @@ final class EnvironmentCanadaProviderTests: XCTestCase {
         XCTAssertEqual(merged.observation?.stationName, "Toronto Pearson Int'l Airport")
         XCTAssertEqual(merged.hourly, forecast.hourly)
         XCTAssertEqual(merged.daily, forecast.daily)
+    }
+
+    func testWindChillAndHumidex() {
+        // Saad's case: 6 °C, 39 km/h at Burlington Lift Bridge. ECCC showed −6; the formula gives about +1.
+        XCTAssertEqual(try XCTUnwrap(EnvironmentCanadaProvider.windChill(temperature: 6, windKmh: 39)), 0.7, accuracy: 0.1)
+        XCTAssertEqual(try XCTUnwrap(EnvironmentCanadaProvider.windChill(temperature: -10, windKmh: 30)), -19.5, accuracy: 0.2)
+        XCTAssertNil(EnvironmentCanadaProvider.windChill(temperature: 12, windKmh: 30))
+        XCTAssertNil(EnvironmentCanadaProvider.windChill(temperature: 0, windKmh: 3))
+        XCTAssertEqual(try XCTUnwrap(EnvironmentCanadaProvider.humidex(temperature: 30, dewpoint: 20)), 37.6, accuracy: 0.2)
+        XCTAssertNil(EnvironmentCanadaProvider.humidex(temperature: 15, dewpoint: 12))
+    }
+
+    func testDistantStationOnlySetsCondition() throws {
+        let forecast = try OpenMeteoProvider.parse(OpenMeteoProviderTests.sample, fetchedAt: now)
+        let far = Observation(stationName: "Burlington Lift Bridge", observedAt: now, temperature: 6,
+                              feelsLike: 0.7, feelsLikeKind: .windChill, humidity: 79, windSpeed: 39,
+                              condition: .drizzle, conditionText: "Drizzle", distanceKm: 20)
+        let merged = forecast.applying(far)
+        XCTAssertEqual(merged.current.condition, .drizzle)
+        XCTAssertEqual(merged.current.temperature, forecast.current.temperature)
+        XCTAssertEqual(merged.current.feelsLike, forecast.current.feelsLike)
+        XCTAssertEqual(merged.current.windSpeed, forecast.current.windSpeed)
+        XCTAssertEqual(merged.observation?.stationName, "Burlington Lift Bridge")
     }
 }
