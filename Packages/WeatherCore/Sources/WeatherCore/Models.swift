@@ -102,9 +102,12 @@ public struct Forecast: Equatable, Codable, Sendable {
     public var daily: [DailyForecast]
     public var source: String
     public var fetchedAt: Date
+    /// Set when `current` comes from a real station observation rather than the forecast model.
+    public var observation: Observation?
 
     public init(location: Coordinate, timeZoneIdentifier: String, current: CurrentConditions,
-                hourly: [HourlyForecast], daily: [DailyForecast], source: String, fetchedAt: Date) {
+                hourly: [HourlyForecast], daily: [DailyForecast], source: String, fetchedAt: Date,
+                observation: Observation? = nil) {
         self.location = location
         self.timeZoneIdentifier = timeZoneIdentifier
         self.current = current
@@ -112,6 +115,7 @@ public struct Forecast: Equatable, Codable, Sendable {
         self.daily = daily
         self.source = source
         self.fetchedAt = fetchedAt
+        self.observation = observation
     }
 
     public var timeZone: TimeZone { TimeZone(identifier: timeZoneIdentifier) ?? .current }
