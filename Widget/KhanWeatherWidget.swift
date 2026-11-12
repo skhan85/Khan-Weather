@@ -8,6 +8,7 @@ struct WeatherEntry: TimelineEntry {
     let current: CurrentConditions?
     let high: Double?
     let low: Double?
+    let placeName: String?
     let error: String?
 
     static let placeholder = WeatherEntry(
@@ -15,7 +16,7 @@ struct WeatherEntry: TimelineEntry {
         current: CurrentConditions(time: Date(), temperature: 21, feelsLike: 23, feelsLikeKind: .apparent,
                                    humidity: 50, windSpeed: 10, windDirection: 270, precipitation: 0,
                                    condition: .partlyCloudy, isDay: true),
-        high: 24, low: 14, error: nil)
+        high: 24, low: 14, placeName: "Toronto", error: nil)
 }
 
 struct WeatherTimelineProvider: TimelineProvider {
@@ -43,12 +44,15 @@ struct WeatherTimelineProvider: TimelineProvider {
         let coordinate = CLLocationManager().location.map {
             Coordinate(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude)
         } ?? .fallback
+        async let place = PlaceNameResolver.name(for: coordinate)
         do {
             let forecast = try await provider.forecast(for: coordinate)
             let today = forecast.daily.first
-            return WeatherEntry(date: Date(), current: forecast.current, high: today?.high, low: today?.low, error: nil)
+            return WeatherEntry(date: Date(), current: forecast.current, high: today?.high, low: today?.low,
+                                placeName: await place, error: nil)
         } catch {
-            return WeatherEntry(date: Date(), current: nil, high: nil, low: nil, error: error.localizedDescription)
+            return WeatherEntry(date: Date(), current: nil, high: nil, low: nil, placeName: await place,
+                                error: error.localizedDescription)
         }
     }
 }
@@ -78,9 +82,16 @@ struct KhanWeatherWidgetView: View {
                 }
             default:
                 VStack(alignment: .leading, spacing: 4) {
-                    Image(systemName: current.condition.symbolName(isDay: current.isDay))
-                        .symbolRenderingMode(.multicolor)
-                        .font(.title2)
+                    HStack(spacing: 4) {
+                        ConditionIcon(condition: current.condition, isDay: current.isDay)
+                            .font(.title3)
+                        if let place = entry.placeName {
+                            Text(place)
+                                .font(.caption.weight(.semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                        }
+                    }
                     Text(WeatherFormat.temperature(current.temperature))
                         .font(.system(size: 40, weight: .light))
                     Text(current.condition.description)

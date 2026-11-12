@@ -13,6 +13,8 @@ final class WeatherViewModel: ObservableObject {
     @Published private(set) var state: State = .loading
     /// True when location was unavailable and the fallback city is shown.
     @Published private(set) var usingFallbackLocation = false
+    /// Town or city name for the forecast location, e.g. "Mississauga".
+    @Published private(set) var placeName: String?
 
     let provider: ForecastProvider
     private let location: LocationManager
@@ -25,8 +27,11 @@ final class WeatherViewModel: ObservableObject {
     func refresh() async {
         let coordinate = await location.currentCoordinate()
         usingFallbackLocation = coordinate == nil
+        let target = coordinate ?? .fallback
+        async let name = PlaceNameResolver.name(for: target)
         do {
-            let forecast = try await provider.forecast(for: coordinate ?? .fallback)
+            let forecast = try await provider.forecast(for: target)
+            placeName = await name ?? (usingFallbackLocation ? "Toronto" : nil)
             state = .loaded(forecast)
         } catch {
             // Keep showing the last good forecast if we have one.
