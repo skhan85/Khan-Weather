@@ -164,4 +164,20 @@ final class EnvironmentCanadaProviderTests: XCTestCase {
         // Nobody reports sky: still return the nearest.
         XCTAssertEqual(EnvironmentCanadaProvider.choose(from: [bridge])?.stationName, "Burlington Lift Bridge")
     }
+
+    func testFeelsLikeUsesStrongerOfStationAndForecastWind() throws {
+        var forecast = try OpenMeteoProvider.parse(OpenMeteoProviderTests.sample, fetchedAt: now)
+        forecast.current.windSpeed = 16
+        // Campbellville at 6:06 PM: 4 °C, nearly calm.
+        let calm = Observation(stationName: "CR-27 Campbellville", observedAt: now, temperature: 4,
+                               windSpeed: 4.5, distanceKm: 8)
+        let merged = forecast.applying(calm)
+        XCTAssertEqual(merged.current.feelsLikeKind, .windChill)
+        XCTAssertEqual(merged.current.feelsLike, 0.5, accuracy: 0.3)
+        XCTAssertEqual(merged.current.windSpeed, 4.5)   // shown wind is still what the station measured
+
+        // Above 10 °C there's no wind chill: feels like the temperature.
+        let mild = Observation(stationName: "X", observedAt: now, temperature: 12, windSpeed: 30, distanceKm: 5)
+        XCTAssertEqual(forecast.applying(mild).current.feelsLike, 12)
+    }
 }
