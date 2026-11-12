@@ -1,0 +1,100 @@
+# XcodeGen spec. CI runs `xcodegen generate` to create KhanWeather.xcodeproj,
+# so the .xcodeproj and Info.plist files are not committed.
+name: KhanWeather
+options:
+  bundleIdPrefix: com.skhan85
+  deploymentTarget:
+    iOS: "17.0"
+    watchOS: "10.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+
+packages:
+  WeatherCore:
+    path: Packages/WeatherCore
+
+targets:
+  KhanWeather:
+    type: application
+    platform: iOS
+    sources: [App, Shared]
+    dependencies:
+      - package: WeatherCore
+      - target: KhanWeatherWidget
+      - target: KhanWeatherWatch
+        embed: true
+        copy:
+          destination: productsDirectory
+          subpath: $(CONTENTS_FOLDER_PATH)/Watch
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Khan Weather
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSLocationWhenInUseUsageDescription: Khan Weather uses your location to show the forecast and alerts where you are.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.skhan85.KhanWeather
+        TARGETED_DEVICE_FAMILY: "1,2"
+    scheme:
+      testTargets: []
+
+  KhanWeatherWidget:
+    type: app-extension
+    platform: iOS
+    sources: [Widget]
+    dependencies:
+      - package: WeatherCore
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+    info:
+      path: Widget/Info.plist
+      properties:
+        CFBundleDisplayName: Khan Weather
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        NSWidgetWantsLocation: true
+        NSLocationWhenInUseUsageDescription: The widget shows weather for your current location.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.skhan85.KhanWeather.Widget
+        TARGETED_DEVICE_FAMILY: "1,2"
+
+  KhanWeatherWatch:
+    type: application
+    platform: watchOS
+    sources: [Watch, Shared]
+    dependencies:
+      - package: WeatherCore
+    info:
+      path: Watch/Info.plist
+      properties:
+        CFBundleDisplayName: Khan Weather
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: com.skhan85.KhanWeather
+        NSLocationWhenInUseUsageDescription: Khan Weather uses your location to show the forecast where you are.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.skhan85.KhanWeather.watchkitapp
+        SKIP_INSTALL: YES
