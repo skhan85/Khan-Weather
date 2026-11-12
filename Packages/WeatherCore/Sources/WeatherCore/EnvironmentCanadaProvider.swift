@@ -176,9 +176,9 @@ public struct EnvironmentCanadaProvider: ObservationProvider {
         if text.contains("freezing rain") { return .freezingRain }
         if text.contains("drizzle") { return .drizzle }
         if text.contains("snow grains") || text.contains("ice crystals") { return .snowGrains }
-        if text.contains("flurr") || text.contains("snow shower") { return .snowShowers }
+        if text.contains("flurr") || text.contains("snow shower") || text.contains("snowshower") { return .snowShowers }
         if text.contains("snow") { return .snow }
-        if text.contains("rain shower") || text.contains("showers") { return .rainShowers }
+        if text.contains("rain shower") || text.contains("rainshower") || text.contains("shower") { return .rainShowers }
         if text.contains("rain") || text.contains("precipitation") { return .rain }
         if text.contains("fog") || text.contains("mist") || text.contains("haze") || text.contains("smoke") { return .fog }
         if text.contains("mainly sunny") || text.contains("mainly clear") { return .mainlyClear }
