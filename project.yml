@@ -53,13 +53,14 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.skhan85.KhanWeather
         TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     scheme:
       testTargets: []
 
   KhanWeatherWidget:
     type: app-extension
     platform: iOS
-    sources: [Widget]
+    sources: [Widget, Shared]
     dependencies:
       - package: WeatherCore
       - sdk: WidgetKit.framework
@@ -97,4 +98,5 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.skhan85.KhanWeather.watchkitapp
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SKIP_INSTALL: YES

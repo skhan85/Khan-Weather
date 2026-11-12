@@ -22,6 +22,7 @@ struct ContentView: View {
                     }
                 case .loaded(let forecast):
                     ForecastList(forecast: forecast,
+                                 placeName: model.placeName,
                                  attribution: model.provider.attribution,
                                  usingFallbackLocation: model.usingFallbackLocation)
                         .refreshable { await reload() }
@@ -43,6 +44,7 @@ struct ContentView: View {
 
 private struct ForecastList: View {
     let forecast: Forecast
+    let placeName: String?
     let attribution: String
     let usingFallbackLocation: Bool
 
@@ -57,7 +59,7 @@ private struct ForecastList: View {
             }
 
             Section {
-                CurrentConditionsView(current: forecast.current)
+                CurrentConditionsView(current: forecast.current, placeName: placeName)
             }
 
             Section("Next 24 hours") {
@@ -68,8 +70,7 @@ private struct ForecastList: View {
                                 Text(hour.time, format: Date.FormatStyle(timeZone: forecast.timeZone).hour())
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
-                                Image(systemName: hour.condition.symbolName())
-                                    .symbolRenderingMode(.multicolor)
+                                ConditionIcon(condition: hour.condition)
                                     .frame(height: 22)
                                 Text(WeatherFormat.temperature(hour.temperature))
                                     .font(.headline)
@@ -90,8 +91,7 @@ private struct ForecastList: View {
                     HStack {
                         Text(day.date, format: Date.FormatStyle(timeZone: forecast.timeZone).weekday(.abbreviated))
                             .frame(width: 48, alignment: .leading)
-                        Image(systemName: day.condition.symbolName())
-                            .symbolRenderingMode(.multicolor)
+                        ConditionIcon(condition: day.condition)
                             .frame(width: 32)
                         if let pop = day.precipitationProbability, pop >= 10 {
                             Text(WeatherFormat.percent(pop))
@@ -120,11 +120,16 @@ private struct ForecastList: View {
 
 struct CurrentConditionsView: View {
     let current: CurrentConditions
+    var placeName: String?
 
     var body: some View {
         VStack(spacing: 8) {
-            Image(systemName: current.condition.symbolName(isDay: current.isDay))
-                .symbolRenderingMode(.multicolor)
+            if let placeName {
+                Label(placeName, systemImage: "location.fill")
+                    .font(.headline)
+                    .labelStyle(.titleAndIcon)
+            }
+            ConditionIcon(condition: current.condition, isDay: current.isDay)
                 .font(.system(size: 56))
             Text(WeatherFormat.temperature(current.temperature))
                 .font(.system(size: 64, weight: .thin))

@@ -27,8 +27,12 @@ struct WatchContentView: View {
             case .loaded(let forecast):
                 ScrollView {
                     VStack(spacing: 4) {
-                        Image(systemName: forecast.current.condition.symbolName(isDay: forecast.current.isDay))
-                            .symbolRenderingMode(.multicolor)
+                        if let place = model.placeName {
+                            Text(place)
+                                .font(.footnote.weight(.semibold))
+                                .lineLimit(1)
+                        }
+                        ConditionIcon(condition: forecast.current.condition, isDay: forecast.current.isDay)
                             .font(.title)
                         Text(WeatherFormat.temperature(forecast.current.temperature))
                             .font(.system(size: 44, weight: .light))
