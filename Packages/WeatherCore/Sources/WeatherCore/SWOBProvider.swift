@@ -86,6 +86,7 @@ public struct SWOBProvider: ObservationProvider {
               let stamp = p["obs_date_tm"] as? String,
               let observedAt = EnvironmentCanadaProvider.parseDate(stamp) else { return nil }
         let name = (p["stn_nam-value"] as? String)?.trimmingCharacters(in: .whitespaces) ?? "Nearby station"
+        if name.uppercased().contains("TEST") { return nil }
 
         // Wind field names depend on the station type; take the first averaged speed it has.
         let wind = firstValue(p, prefixes: ["avg_wnd_spd_10m_pst10mts", "avg_wnd_spd_10m_pst2mts",
@@ -135,17 +136,28 @@ public struct SWOBProvider: ObservationProvider {
 public struct CanadaObservationProvider: ObservationProvider {
     public let attribution = "Observations: Environment and Climate Change Canada and partners"
     private let local: ObservationProvider
+    private let partners: ObservationProvider
     private let sky: ObservationProvider
 
-    public init(local: ObservationProvider = SWOBProvider(), sky: ObservationProvider = EnvironmentCanadaProvider()) {
+    public init(local: ObservationProvider = SWOBProvider(),
+                partners: ObservationProvider = PartnerStationProvider(),
+                sky: ObservationProvider = EnvironmentCanadaProvider()) {
         self.local = local
+        self.partners = partners
         self.sky = sky
     }
 
     public func observation(near coordinate: Coordinate) async throws -> Observation? {
         async let nearby = try? local.observation(near: coordinate)
+        async let partner = try? partners.observation(near: coordinate)
         async let city = try? sky.observation(near: coordinate)
-        return Self.combine(local: await nearby ?? nil, sky: await city ?? nil)
+        return Self.combine(local: Self.nearest(await nearby ?? nil, await partner ?? nil), sky: await city ?? nil)
+    }
+
+    static func nearest(_ a: Observation?, _ b: Observation?) -> Observation? {
+        guard let a else { return b }
+        guard let b else { return a }
+        return (a.distanceKm ?? .infinity) <= (b.distanceKm ?? .infinity) ? a : b
     }
 
     static func combine(local: Observation?, sky: Observation?) -> Observation? {
