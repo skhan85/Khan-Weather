@@ -58,8 +58,10 @@ final class WeatherViewModel: ObservableObject {
         // Station observations are a bonus: if they fail, the model's "now" is still shown.
         async let observed = try? observations.observation(near: target)
         async let activeAlerts = try? alertProvider.alerts(near: target)
+        async let radarNow = try? ECCCRadarProvider().now(at: target)
         do {
             let forecast = try await provider.forecast(for: target).applying(await observed ?? nil)
+                .applyingRadar(await radarNow)
             placeName = await name ?? (usingFallbackLocation ? "Toronto" : nil)
             // If the alert service didn't answer, keep the last list for this place rather than hide a warning.
             if let fresh = await activeAlerts { alerts = fresh }

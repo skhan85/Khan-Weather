@@ -180,6 +180,11 @@ private struct ForecastList: View {
                          destination: URL(string: "https://weather.gc.ca/")!)
                         .font(.footnote)
                 }
+                if let radar = forecast.radar {
+                    Text("Precipitation now from Environment Canada radar, \(radar.time.formatted(date: .omitted, time: .shortened))")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
                 if forecast.observation?.dataProvider == "ON-MTO" {
                     Text("Road weather station: Ontario Ministry of Transportation")
                         .font(.footnote)

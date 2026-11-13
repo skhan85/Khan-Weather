@@ -75,8 +75,10 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
         async let place = PlaceNameResolver.name(for: coordinate)
         async let observed = try? observations.observation(near: coordinate)
         async let active = try? alerts.alerts(near: coordinate)
+        async let radarNow = try? ECCCRadarProvider().now(at: coordinate)
         do {
             let forecast = try await provider.forecast(for: coordinate).applying(await observed ?? nil)
+                .applyingRadar(await radarNow)
             let today = forecast.daily.first
             return WeatherEntry(date: Date(), current: forecast.current, high: today?.high, low: today?.low,
                                 placeName: await place, error: nil, nowcast: forecast.nowcast()?.shortText,

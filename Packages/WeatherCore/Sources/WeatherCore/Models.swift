@@ -143,6 +143,8 @@ public struct Forecast: Equatable, Codable, Sendable {
     public var observation: Observation?
     /// The next couple of hours in 15-minute steps. Empty if the provider has none.
     public var minutely: [PrecipitationSlot]
+    /// Set when the radar changed "now" (rain or snow falling here).
+    public var radar: RadarNow?
 
     public init(location: Coordinate, timeZoneIdentifier: String, current: CurrentConditions,
                 hourly: [HourlyForecast], daily: [DailyForecast], source: String, fetchedAt: Date,
