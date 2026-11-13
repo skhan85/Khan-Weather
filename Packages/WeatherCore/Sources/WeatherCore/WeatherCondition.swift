@@ -72,10 +72,21 @@ public enum WeatherCondition: String, Codable, Sendable, CaseIterable {
 
 public enum WeatherFormat {
     /// "21°" style, rounded to whole degrees.
+    /// Takes °C and shows it in the user's unit.
     public static func temperature(_ value: Double?) -> String {
+        temperature(value, unit: UnitSettings.current.temperature)
+    }
+
+    public static func temperature(_ value: Double?, unit: TemperatureUnit) -> String {
         guard let value else { return "--" }
-        let whole = Int(value.rounded())
+        let whole = Int(unit.convert(value).rounded())
         return "\(whole == 0 ? 0 : whole)°" // avoid "-0°"
+    }
+
+    /// Takes km/h: "12 km/h", "7 mph".
+    public static func wind(_ kmh: Double?, unit: WindUnit = UnitSettings.current.wind) -> String {
+        guard let kmh else { return "--" }
+        return "\(Int(unit.convert(kmh).rounded())) \(unit.label)"
     }
 
     public static func percent(_ value: Double?) -> String {

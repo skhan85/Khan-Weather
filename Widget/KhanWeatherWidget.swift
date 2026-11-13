@@ -1,3 +1,4 @@
+import AppIntents
 import CoreLocation
 import SwiftUI
 import WidgetKit
@@ -14,6 +15,8 @@ struct WeatherEntry: TimelineEntry {
     var nowcast: String? = nil
     /// Title of the most serious active alert, e.g. "Wind warning".
     var alert: String? = nil
+    /// Chosen in Edit Widget; the widget can't read the app's settings without an App Group.
+    var unit: TemperatureUnit = .celsius
 
     static let placeholder = WeatherEntry(
         date: Date(),
@@ -23,25 +26,44 @@ struct WeatherEntry: TimelineEntry {
         high: 24, low: 14, placeName: "Toronto", error: nil)
 }
 
-struct WeatherTimelineProvider: TimelineProvider {
+enum WidgetTemperatureUnit: String, AppEnum {
+    case celsius, fahrenheit
+
+    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Temperature unit"
+    static var caseDisplayRepresentations: [WidgetTemperatureUnit: DisplayRepresentation] = [
+        .celsius: "°C",
+        .fahrenheit: "°F",
+    ]
+
+    var unit: TemperatureUnit { self == .celsius ? .celsius : .fahrenheit }
+}
+
+struct WeatherWidgetIntent: WidgetConfigurationIntent {
+    static var title: LocalizedStringResource = "Weather"
+    static var description = IntentDescription("Choose the temperature unit.")
+
+    @Parameter(title: "Temperature unit", default: .celsius)
+    var temperatureUnit: WidgetTemperatureUnit
+}
+
+struct WeatherTimelineProvider: AppIntentTimelineProvider {
     private let provider = OpenMeteoProvider()
     private let observations = CanadaObservationProvider()
     private let alerts = ECCCAlertProvider()
 
     func placeholder(in context: Context) -> WeatherEntry { .placeholder }
 
-    func getSnapshot(in context: Context, completion: @escaping (WeatherEntry) -> Void) {
-        if context.isPreview { completion(.placeholder); return }
-        Task { completion(await loadEntry()) }
+    func snapshot(for configuration: WeatherWidgetIntent, in context: Context) async -> WeatherEntry {
+        var entry: WeatherEntry = context.isPreview ? .placeholder : await loadEntry()
+        entry.unit = configuration.temperatureUnit.unit
+        return entry
     }
 
-    func getTimeline(in context: Context, completion: @escaping (Timeline<WeatherEntry>) -> Void) {
-        Task {
-            let entry = await loadEntry()
-            // Ask iOS to refresh in about 30 minutes; it may wait longer to save battery.
-            let next = Date().addingTimeInterval(30 * 60)
-            completion(Timeline(entries: [entry], policy: .after(next)))
-        }
+    func timeline(for configuration: WeatherWidgetIntent, in context: Context) async -> Timeline<WeatherEntry> {
+        var entry = await loadEntry()
+        entry.unit = configuration.temperatureUnit.unit
+        // Ask iOS to refresh in about 30 minutes; it may wait longer to save battery.
+        return Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(30 * 60)))
     }
 
     private func loadEntry() async -> WeatherEntry {
@@ -74,24 +96,24 @@ struct KhanWeatherWidgetView: View {
         if let current = entry.current {
             switch family {
             case .accessoryInline:
-                Label("\(WeatherFormat.temperature(current.temperature)) \(current.condition.description)",
+                Label("\(WeatherFormat.temperature(current.temperature, unit: entry.unit)) \(current.condition.description)",
                       systemImage: current.condition.symbolName(isDay: current.isDay))
             case .accessoryCircular:
                 VStack(spacing: 0) {
                     Image(systemName: current.condition.symbolName(isDay: current.isDay))
-                    Text(WeatherFormat.temperature(current.temperature)).font(.headline)
+                    Text(WeatherFormat.temperature(current.temperature, unit: entry.unit)).font(.headline)
                 }
             case .accessoryRectangular:
                 VStack(alignment: .leading) {
-                    Label(WeatherFormat.temperature(current.temperature),
+                    Label(WeatherFormat.temperature(current.temperature, unit: entry.unit),
                           systemImage: current.condition.symbolName(isDay: current.isDay))
                         .font(.headline)
                     if let alert = entry.alert {
                         Label(alert, systemImage: "exclamationmark.triangle.fill")
                             .lineLimit(1)
                     }
-                    Text("Feels \(WeatherFormat.temperature(current.feelsLike))")
-                    Text(entry.nowcast ?? "H \(WeatherFormat.temperature(entry.high))  L \(WeatherFormat.temperature(entry.low))")
+                    Text("Feels \(WeatherFormat.temperature(current.feelsLike, unit: entry.unit))")
+                    Text(entry.nowcast ?? "H \(WeatherFormat.temperature(entry.high, unit: entry.unit))  L \(WeatherFormat.temperature(entry.low, unit: entry.unit))")
                 }
             default:
                 VStack(alignment: .leading, spacing: 4) {
@@ -105,13 +127,13 @@ struct KhanWeatherWidgetView: View {
                                 .minimumScaleFactor(0.7)
                         }
                     }
-                    Text(WeatherFormat.temperature(current.temperature))
+                    Text(WeatherFormat.temperature(current.temperature, unit: entry.unit))
                         .font(.system(size: 40, weight: .light))
                     Text(entry.nowcast ?? current.condition.description)
                         .font(.caption)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
-                    Text("Feels \(WeatherFormat.temperature(current.feelsLike))")
+                    Text("Feels \(WeatherFormat.temperature(current.feelsLike, unit: entry.unit))")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                     if let alert = entry.alert {
@@ -121,7 +143,7 @@ struct KhanWeatherWidgetView: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
                     } else {
-                        Text("H \(WeatherFormat.temperature(entry.high))  L \(WeatherFormat.temperature(entry.low))")
+                        Text("H \(WeatherFormat.temperature(entry.high, unit: entry.unit))  L \(WeatherFormat.temperature(entry.low, unit: entry.unit))")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -138,7 +160,8 @@ struct KhanWeatherWidgetView: View {
 @main
 struct KhanWeatherWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "KhanWeatherCurrent", provider: WeatherTimelineProvider()) { entry in
+        AppIntentConfiguration(kind: "KhanWeatherCurrent", intent: WeatherWidgetIntent.self,
+                               provider: WeatherTimelineProvider()) { entry in
             KhanWeatherWidgetView(entry: entry)
                 .containerBackground(.fill.tertiary, for: .widget)
         }

@@ -6,6 +6,11 @@ struct ContentView: View {
     @StateObject private var model = WeatherViewModel()
     @StateObject private var places = SavedPlacesStore()
     @State private var showingPlaces = false
+    @State private var showingSettings = false
+    // Watched so the forecast redraws when units change in Settings.
+    @AppStorage(UnitSettings.temperatureKey) private var temperatureUnit = TemperatureUnit.celsius.rawValue
+    @AppStorage(UnitSettings.windKey) private var windUnit = WindUnit.kmh.rawValue
+    @AppStorage(UnitSettings.precipitationKey) private var precipitationUnit = PrecipitationUnit.metric.rawValue
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -29,11 +34,17 @@ struct ContentView: View {
                                  isSavedPlace: places.selected != nil,
                                  attribution: model.provider.attribution,
                                  usingFallbackLocation: model.usingFallbackLocation)
+                        .id("\(temperatureUnit)-\(windUnit)-\(precipitationUnit)")
                         .refreshable { await reload() }
                 }
             }
             .navigationTitle("Khan Weather")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { showingSettings = true } label: {
+                        Label("Settings", systemImage: "gearshape")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Picker("Place", selection: $places.selectedID) {
@@ -53,6 +64,9 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showingPlaces) {
                 PlacesView(store: places)
+            }
+            .sheet(isPresented: $showingSettings) {
+                SettingsView()
             }
         }
         .task { await reload() }
@@ -211,7 +225,7 @@ struct CurrentConditionsView: View {
                     Label(WeatherFormat.percent(humidity), systemImage: "humidity")
                 }
                 if let wind = current.windSpeed {
-                    Label("\(Int(wind.rounded())) km/h", systemImage: "wind")
+                    Label(WeatherFormat.wind(wind), systemImage: "wind")
                 }
             }
             .font(.subheadline)

@@ -94,10 +94,23 @@ public extension Forecast {
 
 public extension WeatherFormat {
     /// "3 mm", "2 cm", or "2 cm, 3 mm" for a day's totals; nil when there's less than 0.5 of either.
-    static func precipitationTotals(rainMm: Double?, snowCm: Double?) -> String? {
+    static func precipitationTotals(rainMm: Double?, snowCm: Double?,
+                                    unit: PrecipitationUnit = UnitSettings.current.precipitation) -> String? {
+        if unit == .inches {
+            // 0.1 in is about 2.5 mm of rain or 0.25 cm of snow; smaller totals round away.
+            var parts: [String] = []
+            if let snowCm, snowCm >= 0.5 { parts.append(inches(snowCm / 2.54) + " snow") }
+            if let rainMm, rainMm >= 0.5 { parts.append(inches(rainMm / 25.4)) }
+            return parts.isEmpty ? nil : parts.joined(separator: ", ")
+        }
         var parts: [String] = []
         if let snowCm, snowCm >= 0.5 { parts.append("\(max(1, Int(snowCm.rounded()))) cm") }
         if let rainMm, rainMm >= 0.5 { parts.append("\(max(1, Int(rainMm.rounded()))) mm") }
         return parts.isEmpty ? nil : parts.joined(separator: ", ")
+    }
+
+    /// "0.1 in", "1.4 in"; at least 0.1.
+    private static func inches(_ value: Double) -> String {
+        String(format: "%.1f in", max(0.1, (value * 10).rounded() / 10))
     }
 }
