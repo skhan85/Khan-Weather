@@ -215,12 +215,12 @@ struct CurrentConditionsView: View {
             .font(.subheadline)
             .foregroundStyle(.secondary)
             if let observation, observation.isLocal {
-                Text(Self.localCaption(observation, timeZone: timeZone))
+                Text(Self.localCaption(observation, from: placeName, timeZone: timeZone))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             } else if let observation {
-                Text("Sky from \(observation.stationName) (\(Int((observation.distanceKm ?? 0).rounded())) km away). Temperature is the forecast for your spot.")
+                Text("Sky from \(observation.stationName)\(Self.distance(observation, from: placeName)). Temperature is the forecast for your spot.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -234,12 +234,17 @@ struct CurrentConditionsView: View {
         .padding(.vertical, 8)
     }
 
-    static func localCaption(_ o: Observation, timeZone: TimeZone) -> String {
+    /// ", 13 km from Oakville": the distance is to the forecast spot, not to the town in the station's name.
+    static func distance(_ o: Observation, from place: String?) -> String {
+        guard let km = o.distanceKm else { return "" }
+        return ", \(Int(km.rounded())) km from \(place ?? "you")"
+    }
+
+    static func localCaption(_ o: Observation, from place: String? = nil, timeZone: TimeZone) -> String {
         let time = o.observedAt.formatted(Date.FormatStyle(time: .shortened, timeZone: timeZone))
-        var text = "Observed at \(o.stationName)"
-        if let km = o.distanceKm { text += " (\(Int(km.rounded())) km away)" }
-        text += ", \(time)"
-        if let sky = o.skyStationName { text += ". Sky from \(sky)." }
+        var text = "Observed \(time) at \(o.stationName)\(distance(o, from: place))"
+        text += "."
+        if let sky = o.skyStationName { text += " Sky from \(sky)." }
         return text
     }
 }

@@ -63,12 +63,12 @@ struct PlacesView: View {
                 } header: {
                     Text("Your places")
                 } footer: {
-                    Text("Swipe right to rename (e.g. \"Work\"), left to delete. Place search by Open-Meteo / GeoNames.")
+                    Text("Swipe right to rename (e.g. \"Work\"), left to delete. Search by Open-Meteo / GeoNames and Apple Maps.")
                 }
             }
             .navigationTitle("Places")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Add a city or town")
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "City, postal code or zip code")
             .autocorrectionDisabled()
             .task(id: query) { await runSearch() }
             .toolbar {
@@ -94,12 +94,22 @@ struct PlacesView: View {
         guard !Task.isCancelled else { return }
         searching = true
         defer { searching = false }
-        do {
-            let found = try await search.search(q)
-            if !Task.isCancelled { results = found }
-        } catch {
-            if !Task.isCancelled { searchError = "Search failed. Check your connection." }
+        // Postal and zip codes go to Apple's geocoder; town names to Open-Meteo, with Apple as a fallback.
+        var found: [SavedPlace] = []
+        var failed = false
+        let isCode = AddressSearch.looksLikeCode(q)
+        if isCode {
+            found = await AddressSearch.search(q)
         }
+        if found.isEmpty {
+            do { found = try await search.search(q) } catch { failed = true }
+        }
+        if found.isEmpty && !isCode {
+            found = await AddressSearch.search(q)
+        }
+        guard !Task.isCancelled else { return }
+        results = found
+        if found.isEmpty && failed { searchError = "Search failed. Check your connection." }
     }
 }
 
