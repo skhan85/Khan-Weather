@@ -1,7 +1,7 @@
 import CoreLocation
 import WeatherCore
 
-/// One-shot location lookups for the iPhone/iPad app and the Watch app.
+/// One-shot location lookups for the iPhone/iPad app.
 @MainActor
 final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published private(set) var authorization: CLAuthorizationStatus

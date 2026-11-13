@@ -1,6 +1,8 @@
 # Khan Weather
 
-A personal weather app for iPhone, iPad and Apple Watch, built only on free data sources.
+A personal weather app for iPhone and iPad, built only on free data sources.
+
+There is no Apple Watch app: free-Apple-ID sideloading tools (Impactor, Sideloadly) can't install watchOS apps, so it was removed in favour of a simpler install. It is in the git history if a paid developer account is ever used.
 
 - **Forecasts:** [Open-Meteo](https://open-meteo.com) (global, hyperlocal where local models exist, no API key).
 - **Alerts (coming in Phase 3):** Environment Canada, US National Weather Service, MeteoAlarm (Europe).
@@ -12,8 +14,7 @@ A personal weather app for iPhone, iPad and Apple Watch, built only on free data
 | `Packages/WeatherCore` | Swift package with the shared models and the Open-Meteo provider, plus unit tests |
 | `App` | iPhone and iPad app (SwiftUI): current conditions, feels-like, next 24 hours, 10-day forecast |
 | `Widget` | Home screen and lock screen widget |
-| `Watch` | Apple Watch app |
-| `Shared` | Location and view-model code used by the app and Watch app |
+| `Shared` | Location and view-model code used by the app and widget |
 | `project.yml` | [XcodeGen](https://github.com/yonaskolb/XcodeGen) spec; the `.xcodeproj` is generated, not committed |
 
 ## Getting the .ipa (no Mac needed)

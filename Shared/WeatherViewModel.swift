@@ -1,7 +1,7 @@
 import Foundation
 import WeatherCore
 
-/// Loads the forecast for the user's location. Shared by the iPhone/iPad app and the Watch app.
+/// Loads the forecast for the user's location. Used by the iPhone/iPad app.
 @MainActor
 final class WeatherViewModel: ObservableObject {
     enum State {

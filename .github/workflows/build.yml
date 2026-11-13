@@ -32,7 +32,7 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
-      - name: Build app, widget and Watch app (unsigned)
+      - name: Build app and widget (unsigned)
         run: |
           set -o pipefail
           xcodebuild build \
@@ -51,7 +51,6 @@ jobs:
         run: |
           APP=build/Build/Products/Release-iphoneos/KhanWeather.app
           test -d "$APP/PlugIns/KhanWeatherWidget.appex" || { echo "Widget missing from app bundle"; exit 1; }
-          test -d "$APP/Watch/KhanWeatherWatch.app" || { echo "Watch app missing from app bundle"; exit 1; }
           mkdir Payload
           cp -R "$APP" Payload/
           zip -qry KhanWeather-unsigned.ipa Payload
