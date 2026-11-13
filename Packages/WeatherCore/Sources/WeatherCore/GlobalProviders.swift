@@ -8,7 +8,7 @@ import FoundationNetworking
 
 public typealias HTTPLoader = @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
-let defaultLoader: HTTPLoader = { try await URLSession.shared.data(for: $0) }
+public let defaultLoader: HTTPLoader = { try await URLSession.shared.data(for: $0) }
 
 /// NWS asks every client to identify itself.
 let userAgent = "KhanWeather/0.1 (github.com/skhan85/Khan-Weather)"
