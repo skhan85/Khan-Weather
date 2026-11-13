@@ -48,8 +48,8 @@ struct WeatherWidgetIntent: WidgetConfigurationIntent {
 
 struct WeatherTimelineProvider: AppIntentTimelineProvider {
     private let provider = OpenMeteoProvider()
-    private let observations = CanadaObservationProvider()
-    private let alerts = ECCCAlertProvider()
+    private let observations = WorldObservationProvider()
+    private let alerts = WorldAlertProvider()
 
     func placeholder(in context: Context) -> WeatherEntry { .placeholder }
 

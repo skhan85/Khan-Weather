@@ -165,16 +165,15 @@ struct DayDetailView: View {
 /// Full credits, one tap away from the main screen.
 struct SourcesView: View {
     let forecast: Forecast
-    let hasAlerts: Bool
+    let alerts: [WeatherAlert]
     let isSavedPlace: Bool
 
     var body: some View {
         List {
             Section {
                 Link("Forecast: Open-Meteo.com (CC BY 4.0)", destination: URL(string: "https://open-meteo.com/")!)
-                if forecast.observation != nil || hasAlerts || forecast.radar != nil {
-                    Link("Observations, radar and alerts: Environment and Climate Change Canada",
-                         destination: URL(string: "https://weather.gc.ca/")!)
+                ForEach(Credits.full(forecast: forecast, alerts: alerts), id: \.text) { credit in
+                    Link(credit.text, destination: credit.url)
                 }
                 if forecast.observation?.dataProvider == "ON-MTO" {
                     Text("Road weather station: Ontario Ministry of Transportation")
@@ -200,5 +199,55 @@ struct SourcesView: View {
         }
         .navigationTitle("Sources")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// Who supplied what, for the one-line credit and the full Sources page.
+enum Credits {
+    struct Credit { let text: String; let url: URL }
+
+    private static func observation(_ o: Observation) -> (String, Credit) {
+        switch o.dataProvider {
+        case "NWS": return ("US National Weather Service",
+                            Credit(text: "Observations: US National Weather Service", url: URL(string: "https://www.weather.gov/")!))
+        case "DWD": return ("Deutscher Wetterdienst",
+                            Credit(text: "Observations: Deutscher Wetterdienst via Bright Sky", url: URL(string: "https://brightsky.dev/")!))
+        case "METAR": return ("NOAA Aviation Weather",
+                              Credit(text: "Airport observations: NOAA Aviation Weather Center", url: URL(string: "https://aviationweather.gov/")!))
+        default: return ("Environment Canada",
+                         Credit(text: "Observations: Environment and Climate Change Canada", url: URL(string: "https://weather.gc.ca/")!))
+        }
+    }
+
+    private static func alertCredit(_ source: String) -> (String, Credit) {
+        switch source {
+        case "US National Weather Service":
+            return (source, Credit(text: "Alerts: US National Weather Service", url: URL(string: "https://alerts.weather.gov/")!))
+        case "Deutscher Wetterdienst":
+            return (source, Credit(text: "Alerts: Deutscher Wetterdienst via Bright Sky", url: URL(string: "https://www.dwd.de/")!))
+        default:
+            return ("Environment Canada", Credit(text: "Alerts: Environment and Climate Change Canada", url: URL(string: "https://weather.gc.ca/")!))
+        }
+    }
+
+    private static func all(forecast: Forecast, alerts: [WeatherAlert]) -> [(String, Credit)] {
+        var list: [(String, Credit)] = []
+        if let o = forecast.observation { list.append(observation(o)) }
+        if forecast.radar != nil {
+            list.append(("Environment Canada", Credit(text: "Radar: Environment and Climate Change Canada", url: URL(string: "https://weather.gc.ca/")!)))
+        }
+        for source in Set(alerts.map(\.source)).sorted() { list.append(alertCredit(source)) }
+        return list
+    }
+
+    static func shortNames(forecast: Forecast, alerts: [WeatherAlert]) -> [String] {
+        var names = ["Open-Meteo"]
+        for (name, _) in all(forecast: forecast, alerts: alerts) where !names.contains(name) { names.append(name) }
+        if forecast.observation?.dataProvider == "ON-MTO" { names.append("Ontario MTO") }
+        return names
+    }
+
+    static func full(forecast: Forecast, alerts: [WeatherAlert]) -> [Credit] {
+        all(forecast: forecast, alerts: alerts).map(\.1)
     }
 }

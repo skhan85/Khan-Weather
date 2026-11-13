@@ -94,10 +94,7 @@ private struct ForecastList: View {
 
     /// Short credit line; the full credits are one tap away.
     private var sourceNames: String {
-        var names = ["Open-Meteo"]
-        if forecast.observation != nil || !alerts.isEmpty || forecast.radar != nil { names.append("Environment Canada") }
-        if forecast.observation?.dataProvider == "ON-MTO" { names.append("Ontario MTO") }
-        return "Sources: " + names.joined(separator: ", ")
+        "Sources: " + Credits.shortNames(forecast: forecast, alerts: alerts).joined(separator: ", ")
     }
 
     var body: some View {
@@ -184,7 +181,7 @@ private struct ForecastList: View {
 
             Section {
                 NavigationLink {
-                    SourcesView(forecast: forecast, hasAlerts: !alerts.isEmpty, isSavedPlace: isSavedPlace)
+                    SourcesView(forecast: forecast, alerts: alerts, isSavedPlace: isSavedPlace)
                 } label: {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(sourceNames)
