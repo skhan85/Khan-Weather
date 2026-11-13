@@ -43,6 +43,8 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         NSLocationWhenInUseUsageDescription: Khan Weather uses your location to show the forecast and alerts where you are.
+        UIBackgroundModes: [fetch]
+        BGTaskSchedulerPermittedIdentifiers: [com.skhan85.KhanWeather.alerts]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.skhan85.KhanWeather

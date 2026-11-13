@@ -306,7 +306,10 @@ public extension Forecast {
         var copy = self
         var c = current
         copy.observation = o
-        guard o.isLocal else {
+        // A home station far from both its neighbours' official reading and the model is more
+        // likely sitting in the sun than right; keep only its sky.
+        let implausible = o.dataProvider == "NETATMO" && abs(o.temperature - current.temperature) > 5
+        guard o.isLocal, !implausible else {
             // A distant station (a lakeshore pier, an airport across town) can't speak for the
             // user's temperature or wind, but it does tell us whether it's raining.
             c.condition = o.condition ?? c.condition

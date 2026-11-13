@@ -47,6 +47,9 @@ public struct NetatmoRelayProvider: ObservationProvider {
         return try Self.parse(data, near: coordinate, now: Date(), radiusKm: radiusKm, maxAge: maxAge)
     }
 
+    /// Degrees from the neighbourhood median beyond which a station is ignored.
+    static let outlierLimit: Double = 2.5
+
     /// Median of the (up to) three nearest fresh stations, so one sensor sitting in the sun
     /// or by a dryer vent can't skew "now".
     static func parse(_ data: Data, near c: Coordinate, now: Date, radiusKm: Double, maxAge: TimeInterval) throws -> Observation? {
@@ -58,14 +61,19 @@ public struct NetatmoRelayProvider: ObservationProvider {
             guard d <= radiusKm, now.timeIntervalSince(time) < maxAge else { return nil }
             return (s, d, time)
         }.sorted { $0.1 < $1.1 }
-        let nearest = Array(fresh.prefix(3))
-        guard let first = nearest.first else { return nil }
-
         func median(_ values: [Double]) -> Double? {
             guard !values.isEmpty else { return nil }
             let v = values.sorted()
             return v.count % 2 == 1 ? v[v.count / 2] : (v[v.count / 2 - 1] + v[v.count / 2]) / 2
         }
+        // Home stations in the sun or by a wall read warm. With enough neighbours, drop any that
+        // disagree with the local median by more than a few degrees.
+        var agreeing = fresh
+        if fresh.count >= 3, let mid = median(fresh.compactMap { $0.0.temperature }) {
+            agreeing = fresh.filter { abs(($0.0.temperature ?? mid) - mid) <= Self.outlierLimit }
+        }
+        let nearest = Array(agreeing.prefix(3))
+        guard let first = nearest.first else { return nil }
         let temperature = median(nearest.compactMap { $0.0.temperature })!
         let wind = fresh.first { $0.0.wind_strength != nil }?.0
         let name = nearest.count == 1 ? "Netatmo station" : "\(nearest.count) Netatmo stations"
@@ -101,7 +109,14 @@ public struct HyperlocalObservationProvider: ObservationProvider {
         return Self.merge(official: base, netatmo: local)
     }
 
+    /// Further than this from a nearby official station, the Netatmo reading is set aside.
+    static let officialLimit: Double = 3
+
     static func merge(official base: Observation?, netatmo local: Observation) -> Observation {
+        if let base, base.isLocal, abs(base.temperature - local.temperature) > officialLimit,
+           base.observedAt.timeIntervalSince(local.observedAt) > -3600 {
+            return base
+        }
         var merged = local
         merged.condition = base?.condition
         merged.conditionText = base?.conditionText

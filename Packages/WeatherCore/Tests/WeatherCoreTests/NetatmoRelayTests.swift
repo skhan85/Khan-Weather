@@ -17,11 +17,11 @@ final class NetatmoRelayTests: XCTestCase {
 
     func testMedianOfNearestThree() throws {
         let o = try XCTUnwrap(NetatmoRelayProvider.parse(Data(sample.utf8), near: milton, now: now, radiusKm: 5, maxAge: 3600))
-        // 1.8, 9.9 (sunny sensor), 2.4 -> median 2.4; the stale and far ones are ignored.
-        XCTAssertEqual(o.temperature, 2.4)
-        XCTAssertEqual(o.humidity, 79)
+        // The 9.9 (sunny sensor) is dropped as an outlier; 1.8 and 2.4 remain -> 2.1.
+        XCTAssertEqual(o.temperature, 2.1)
+        XCTAssertEqual(o.humidity ?? 0, 87, accuracy: 0.01)
         XCTAssertEqual(o.windSpeed, 10)
-        XCTAssertEqual(o.stationName, "3 Netatmo stations in Milton")
+        XCTAssertEqual(o.stationName, "2 Netatmo stations in Milton")
         XCTAssertEqual(o.dataProvider, "NETATMO")
         XCTAssertEqual(o.distanceKm ?? 0, 0.27, accuracy: 0.1)
     }
@@ -42,5 +42,13 @@ final class NetatmoRelayTests: XCTestCase {
         XCTAssertEqual(merged.skyStationName, "Toronto Pearson")
         XCTAssertEqual(merged.skyDataProvider, "ON-MTO")
         XCTAssertNil(merged.windSpeed)   // Pearson is too far to speak for local wind
+    }
+
+    func testOfficialLocalStationWinsWhenFarApart() {
+        let official = Observation(stationName: "CR-27 Campbellville", observedAt: now, temperature: 3, distanceKm: 8)
+        let warm = Observation(stationName: "2 Netatmo stations in Milton", observedAt: now, temperature: 6.5, distanceKm: 1)
+        XCTAssertEqual(HyperlocalObservationProvider.merge(official: official, netatmo: warm).stationName, "CR-27 Campbellville")
+        let close = Observation(stationName: "2 Netatmo stations in Milton", observedAt: now, temperature: 4, distanceKm: 1)
+        XCTAssertEqual(HyperlocalObservationProvider.merge(official: official, netatmo: close).temperature, 4)
     }
 }

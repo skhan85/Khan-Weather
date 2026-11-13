@@ -34,6 +34,9 @@ final class WeatherViewModel: ObservableObject {
         self.location = location ?? LocationManager()
     }
 
+    /// Called with each real current-location fix (the app uses it for background alert checks).
+    var onCurrentLocation: ((Coordinate) -> Void)?
+
     /// The place the last forecast was for: nil for the current location.
     private var lastPlaceID: UUID?? = .none
 
@@ -52,6 +55,7 @@ final class WeatherViewModel: ObservableObject {
         } else {
             let coordinate = await location.currentCoordinate()
             usingFallbackLocation = coordinate == nil
+            if let coordinate { onCurrentLocation?(coordinate) }
             target = coordinate ?? .fallback
         }
         async let name = Self.name(for: place, at: target)
