@@ -64,7 +64,29 @@ public struct HourlyForecast: Equatable, Codable, Sendable, Identifiable {
     public var condition: WeatherCondition
     /// False between sunset and sunrise, so clear hours show a moon instead of a sun.
     public var isDay: Bool
+    // Detail fields, shown when the hour is tapped. All optional.
+    public var humidity: Double?
+    public var dewPoint: Double?
+    /// km/h
+    public var windSpeed: Double?
+    /// km/h
+    public var windGusts: Double?
+    /// Degrees the wind comes from.
+    public var windDirection: Double?
+    public var uvIndex: Double?
+    /// mm
+    public var rain: Double?
+    /// cm
+    public var snowfall: Double?
+    /// metres
+    public var visibility: Double?
     public var id: Date { time }
+
+    /// What a precipitation chance for this hour would be.
+    public var precipitationKind: PrecipitationKind {
+        PrecipitationKind.guess(rain: rain, snow: snowfall, condition: condition,
+                                low: temperature, high: temperature)
+    }
 
     public init(time: Date, temperature: Double, feelsLike: Double? = nil,
                 precipitationProbability: Double? = nil, precipitation: Double? = nil,
@@ -91,7 +113,22 @@ public struct DailyForecast: Equatable, Codable, Sendable, Identifiable {
     public var rainSum: Double?
     /// Total snowfall for the day, in cm.
     public var snowfallSum: Double?
+    // Detail fields, shown when the day is tapped. All optional.
+    public var sunrise: Date?
+    public var sunset: Date?
+    public var uvIndexMax: Double?
+    /// km/h
+    public var windSpeedMax: Double?
+    /// km/h
+    public var windGustsMax: Double?
+    public var windDirectionDominant: Double?
+    public var precipitationHours: Double?
     public var id: Date { date }
+
+    /// What the day's precipitation chance is a chance of.
+    public var precipitationKind: PrecipitationKind {
+        PrecipitationKind.guess(rain: rainSum, snow: snowfallSum, condition: condition, low: low, high: high)
+    }
 
     public init(date: Date, high: Double, low: Double, feelsLikeHigh: Double? = nil, feelsLikeLow: Double? = nil,
                 precipitationProbability: Double? = nil, condition: WeatherCondition,
@@ -185,4 +222,54 @@ public protocol ForecastProvider: Sendable {
     var name: String { get }
     var attribution: String { get }
     func forecast(for coordinate: Coordinate) async throws -> Forecast
+}
+
+/// Rain, snow, or either, so a "40%" can say what it's a chance of.
+public enum PrecipitationKind: String, Codable, Sendable {
+    case rain, snow, mixed
+
+    /// SF Symbol shown next to the percentage.
+    public var symbolName: String {
+        switch self {
+        case .rain: return "drop.fill"
+        case .snow: return "snowflake"
+        case .mixed: return "cloud.sleet.fill"
+        }
+    }
+
+    /// "rain", "snow", "rain or snow".
+    public var noun: String {
+        switch self {
+        case .rain: return "rain"
+        case .snow: return "snow"
+        case .mixed: return "rain or snow"
+        }
+    }
+
+    /// Uses forecast amounts when there are any, then the condition, then temperature.
+    static func guess(rain: Double?, snow: Double?, condition: WeatherCondition,
+                      low: Double, high: Double) -> PrecipitationKind {
+        let r = rain ?? 0, s = snow ?? 0
+        if r > 0 && s > 0 { return .mixed }
+        if s > 0 { return .snow }
+        if r > 0 { return .rain }
+        switch condition {
+        case .snow, .snowGrains, .snowShowers: return .snow
+        case .freezingRain, .freezingDrizzle: return .mixed
+        case .rain, .rainShowers, .drizzle, .thunderstorm, .thunderstormHail: return .rain
+        default: break
+        }
+        if high <= 1 { return .snow }
+        if low >= 3 { return .rain }
+        return .mixed
+    }
+}
+
+public extension Forecast {
+    /// The hours that fall on `day`'s date in the forecast's time zone.
+    func hours(on day: DailyForecast) -> [HourlyForecast] {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        return hourly.filter { calendar.isDate($0.time, inSameDayAs: day.date) }
+    }
 }

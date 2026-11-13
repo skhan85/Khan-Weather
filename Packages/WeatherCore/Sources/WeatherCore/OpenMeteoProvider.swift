@@ -40,12 +40,14 @@ public struct OpenMeteoProvider: ForecastProvider {
     ]
     static let hourlyFields = [
         "temperature_2m", "apparent_temperature", "precipitation_probability", "precipitation",
-        "weather_code", "is_day",
+        "weather_code", "is_day", "relative_humidity_2m", "dew_point_2m", "wind_speed_10m",
+        "wind_gusts_10m", "wind_direction_10m", "uv_index", "rain", "showers", "snowfall", "visibility",
     ]
     static let dailyFields = [
         "weather_code", "temperature_2m_max", "temperature_2m_min",
         "apparent_temperature_max", "apparent_temperature_min", "precipitation_probability_max",
-        "rain_sum", "showers_sum", "snowfall_sum",
+        "rain_sum", "showers_sum", "snowfall_sum", "sunrise", "sunset", "uv_index_max",
+        "wind_speed_10m_max", "wind_gusts_10m_max", "wind_direction_10m_dominant", "precipitation_hours",
     ]
     static let minutelyFields = ["precipitation", "rain", "snowfall"]
 
@@ -89,7 +91,7 @@ public struct OpenMeteoProvider: ForecastProvider {
         if let h = r.hourly {
             for (i, time) in h.time.enumerated() {
                 guard let temp = h.temperature.value(at: i) else { continue }
-                hourly.append(HourlyForecast(
+                var hour = HourlyForecast(
                     time: Date(timeIntervalSince1970: TimeInterval(time)),
                     temperature: temp,
                     feelsLike: h.apparentTemperature.value(at: i),
@@ -99,7 +101,17 @@ public struct OpenMeteoProvider: ForecastProvider {
                         .ignoringTrace(probability: h.precipitationProbability.value(at: i),
                                        amountMm: h.precipitation.value(at: i)),
                     isDay: (h.isDay.value(at: i) ?? 1) == 1
-                ))
+                )
+                hour.humidity = h.relativeHumidity.value(at: i)
+                hour.dewPoint = h.dewPoint.value(at: i)
+                hour.windSpeed = h.windSpeed.value(at: i)
+                hour.windGusts = h.windGusts.value(at: i)
+                hour.windDirection = h.windDirection.value(at: i)
+                hour.uvIndex = h.uvIndex.value(at: i)
+                hour.rain = Self.sum(h.rain.value(at: i), h.showers.value(at: i))
+                hour.snowfall = h.snowfall.value(at: i)
+                hour.visibility = h.visibility.value(at: i)
+                hourly.append(hour)
             }
         }
 
@@ -111,7 +123,7 @@ public struct OpenMeteoProvider: ForecastProvider {
                 let snow = d.snowfallSum.value(at: i)
                 // Snow cm and rain mm are added only to judge "is this a trace".
                 let total = rain == nil && snow == nil ? nil : (rain ?? 0) + (snow ?? 0)
-                daily.append(DailyForecast(
+                var day = DailyForecast(
                     date: Date(timeIntervalSince1970: TimeInterval(time)),
                     high: high,
                     low: low,
@@ -122,7 +134,15 @@ public struct OpenMeteoProvider: ForecastProvider {
                         .ignoringTrace(probability: d.precipitationProbabilityMax.value(at: i), amountMm: total),
                     rainSum: rain,
                     snowfallSum: snow
-                ))
+                )
+                day.sunrise = d.sunrise.value(at: i).map { Date(timeIntervalSince1970: TimeInterval($0)) }
+                day.sunset = d.sunset.value(at: i).map { Date(timeIntervalSince1970: TimeInterval($0)) }
+                day.uvIndexMax = d.uvIndexMax.value(at: i)
+                day.windSpeedMax = d.windSpeedMax.value(at: i)
+                day.windGustsMax = d.windGustsMax.value(at: i)
+                day.windDirectionDominant = d.windDirectionDominant.value(at: i)
+                day.precipitationHours = d.precipitationHours.value(at: i)
+                daily.append(day)
             }
         }
 
@@ -212,9 +232,25 @@ public struct OpenMeteoProvider: ForecastProvider {
         let precipitation: [Double?]?
         let weatherCode: [Int?]?
         let isDay: [Int?]?
+        let relativeHumidity: [Double?]?
+        let dewPoint: [Double?]?
+        let windSpeed: [Double?]?
+        let windGusts: [Double?]?
+        let windDirection: [Double?]?
+        let uvIndex: [Double?]?
+        let rain: [Double?]?
+        let showers: [Double?]?
+        let snowfall: [Double?]?
+        let visibility: [Double?]?
 
         enum CodingKeys: String, CodingKey {
-            case time, precipitation
+            case time, precipitation, rain, showers, snowfall, visibility
+            case relativeHumidity = "relative_humidity_2m"
+            case dewPoint = "dew_point_2m"
+            case windSpeed = "wind_speed_10m"
+            case windGusts = "wind_gusts_10m"
+            case windDirection = "wind_direction_10m"
+            case uvIndex = "uv_index"
             case temperature = "temperature_2m"
             case apparentTemperature = "apparent_temperature"
             case precipitationProbability = "precipitation_probability"
@@ -234,8 +270,21 @@ public struct OpenMeteoProvider: ForecastProvider {
         let rainSum: [Double?]?
         let showersSum: [Double?]?
         let snowfallSum: [Double?]?
+        let sunrise: [Int?]?
+        let sunset: [Int?]?
+        let uvIndexMax: [Double?]?
+        let windSpeedMax: [Double?]?
+        let windGustsMax: [Double?]?
+        let windDirectionDominant: [Double?]?
+        let precipitationHours: [Double?]?
 
         enum CodingKeys: String, CodingKey {
+            case sunrise, sunset
+            case uvIndexMax = "uv_index_max"
+            case windSpeedMax = "wind_speed_10m_max"
+            case windGustsMax = "wind_gusts_10m_max"
+            case windDirectionDominant = "wind_direction_10m_dominant"
+            case precipitationHours = "precipitation_hours"
             case time
             case weatherCode = "weather_code"
             case temperatureMax = "temperature_2m_max"

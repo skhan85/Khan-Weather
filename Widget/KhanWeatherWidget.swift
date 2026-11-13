@@ -98,7 +98,8 @@ struct KhanWeatherWidgetView: View {
         if let current = entry.current {
             switch family {
             case .accessoryInline:
-                Label("\(WeatherFormat.temperature(current.temperature, unit: entry.unit)) \(current.condition.description)",
+                Label([entry.placeName, WeatherFormat.temperature(current.temperature, unit: entry.unit),
+                       current.condition.description].compactMap { $0 }.joined(separator: " "),
                       systemImage: current.condition.symbolName(isDay: current.isDay))
             case .accessoryCircular:
                 VStack(spacing: 0) {
@@ -107,9 +108,17 @@ struct KhanWeatherWidgetView: View {
                 }
             case .accessoryRectangular:
                 VStack(alignment: .leading) {
-                    Label(WeatherFormat.temperature(current.temperature, unit: entry.unit),
-                          systemImage: current.condition.symbolName(isDay: current.isDay))
-                        .font(.headline)
+                    HStack(spacing: 4) {
+                        Label(WeatherFormat.temperature(current.temperature, unit: entry.unit),
+                              systemImage: current.condition.symbolName(isDay: current.isDay))
+                            .font(.headline)
+                        if let place = entry.placeName {
+                            Text(place)
+                                .font(.headline)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                        }
+                    }
                     if let alert = entry.alert {
                         Label(alert, systemImage: "exclamationmark.triangle.fill")
                             .lineLimit(1)
