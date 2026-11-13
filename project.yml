@@ -5,7 +5,6 @@ options:
   bundleIdPrefix: com.skhan85
   deploymentTarget:
     iOS: "17.0"
-    watchOS: "10.0"
   createIntermediateGroups: true
 
 settings:
@@ -27,11 +26,6 @@ targets:
     dependencies:
       - package: WeatherCore
       - target: KhanWeatherWidget
-      - target: KhanWeatherWatch
-        embed: true
-        copy:
-          destination: productsDirectory
-          subpath: $(CONTENTS_FOLDER_PATH)/Watch
     info:
       path: App/Info.plist
       properties:
@@ -79,24 +73,3 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.skhan85.KhanWeather.Widget
         TARGETED_DEVICE_FAMILY: "1,2"
-
-  KhanWeatherWatch:
-    type: application
-    platform: watchOS
-    sources: [Watch, Shared]
-    dependencies:
-      - package: WeatherCore
-    info:
-      path: Watch/Info.plist
-      properties:
-        CFBundleDisplayName: Khan Weather
-        CFBundleShortVersionString: $(MARKETING_VERSION)
-        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        WKApplication: true
-        WKCompanionAppBundleIdentifier: com.skhan85.KhanWeather
-        NSLocationWhenInUseUsageDescription: Khan Weather uses your location to show the forecast where you are.
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.skhan85.KhanWeather.watchkitapp
-        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        SKIP_INSTALL: YES
