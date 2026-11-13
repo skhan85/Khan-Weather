@@ -71,7 +71,7 @@ private struct ForecastList: View {
                                 Text(hour.time, format: Date.FormatStyle(timeZone: forecast.timeZone).hour())
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
-                                ConditionIcon(condition: hour.condition)
+                                ConditionIcon(condition: hour.condition, isDay: hour.isDay)
                                     .frame(height: 22)
                                 Text(WeatherFormat.temperature(hour.temperature))
                                     .font(.headline)
