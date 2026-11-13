@@ -12,6 +12,8 @@ struct WeatherEntry: TimelineEntry {
     let error: String?
     /// "Rain in 25 min" when precipitation starts or stops within 2 hours.
     var nowcast: String? = nil
+    /// Title of the most serious active alert, e.g. "Wind warning".
+    var alert: String? = nil
 
     static let placeholder = WeatherEntry(
         date: Date(),
@@ -24,6 +26,7 @@ struct WeatherEntry: TimelineEntry {
 struct WeatherTimelineProvider: TimelineProvider {
     private let provider = OpenMeteoProvider()
     private let observations = CanadaObservationProvider()
+    private let alerts = ECCCAlertProvider()
 
     func placeholder(in context: Context) -> WeatherEntry { .placeholder }
 
@@ -49,11 +52,13 @@ struct WeatherTimelineProvider: TimelineProvider {
         } ?? .fallback
         async let place = PlaceNameResolver.name(for: coordinate)
         async let observed = try? observations.observation(near: coordinate)
+        async let active = try? alerts.alerts(near: coordinate)
         do {
             let forecast = try await provider.forecast(for: coordinate).applying(await observed ?? nil)
             let today = forecast.daily.first
             return WeatherEntry(date: Date(), current: forecast.current, high: today?.high, low: today?.low,
-                                placeName: await place, error: nil, nowcast: forecast.nowcast()?.shortText)
+                                placeName: await place, error: nil, nowcast: forecast.nowcast()?.shortText,
+                                alert: await active?.first?.title)
         } catch {
             return WeatherEntry(date: Date(), current: nil, high: nil, low: nil, placeName: await place,
                                 error: error.localizedDescription)
@@ -81,6 +86,10 @@ struct KhanWeatherWidgetView: View {
                     Label(WeatherFormat.temperature(current.temperature),
                           systemImage: current.condition.symbolName(isDay: current.isDay))
                         .font(.headline)
+                    if let alert = entry.alert {
+                        Label(alert, systemImage: "exclamationmark.triangle.fill")
+                            .lineLimit(1)
+                    }
                     Text("Feels \(WeatherFormat.temperature(current.feelsLike))")
                     Text(entry.nowcast ?? "H \(WeatherFormat.temperature(entry.high))  L \(WeatherFormat.temperature(entry.low))")
                 }
@@ -105,9 +114,17 @@ struct KhanWeatherWidgetView: View {
                     Text("Feels \(WeatherFormat.temperature(current.feelsLike))")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                    Text("H \(WeatherFormat.temperature(entry.high))  L \(WeatherFormat.temperature(entry.low))")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    if let alert = entry.alert {
+                        Label(alert, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.orange)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    } else {
+                        Text("H \(WeatherFormat.temperature(entry.high))  L \(WeatherFormat.temperature(entry.low))")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -126,7 +143,7 @@ struct KhanWeatherWidget: Widget {
                 .containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("Current weather")
-        .description("Temperature, feels-like and today's high and low where you are.")
+        .description("Temperature, feels-like, today's high and low, and weather alerts where you are.")
         .supportedFamilies([.systemSmall, .accessoryInline, .accessoryCircular, .accessoryRectangular])
     }
 }

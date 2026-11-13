@@ -16,15 +16,21 @@ final class WeatherViewModel: ObservableObject {
     /// Town or city name for the forecast location, e.g. "Mississauga".
     @Published private(set) var placeName: String?
 
+    /// Active alerts covering the forecast spot, most serious first.
+    @Published private(set) var alerts: [WeatherAlert] = []
+
     let provider: ForecastProvider
     let observations: ObservationProvider
+    let alertProvider: AlertProvider
     private let location: LocationManager
 
     init(provider: ForecastProvider = OpenMeteoProvider(),
          observations: ObservationProvider = CanadaObservationProvider(),
+         alertProvider: AlertProvider = ECCCAlertProvider(),
          location: LocationManager? = nil) {
         self.provider = provider
         self.observations = observations
+        self.alertProvider = alertProvider
         self.location = location ?? LocationManager()
     }
 
@@ -36,6 +42,7 @@ final class WeatherViewModel: ObservableObject {
         // Switching places: don't leave the old place's forecast on screen while loading.
         if lastPlaceID != .some(place?.id) {
             state = .loading
+            alerts = []
             lastPlaceID = .some(place?.id)
         }
         let target: Coordinate
@@ -50,9 +57,12 @@ final class WeatherViewModel: ObservableObject {
         async let name = Self.name(for: place, at: target)
         // Station observations are a bonus: if they fail, the model's "now" is still shown.
         async let observed = try? observations.observation(near: target)
+        async let activeAlerts = try? alertProvider.alerts(near: target)
         do {
             let forecast = try await provider.forecast(for: target).applying(await observed ?? nil)
             placeName = await name ?? (usingFallbackLocation ? "Toronto" : nil)
+            // If the alert service didn't answer, keep the last list for this place rather than hide a warning.
+            if let fresh = await activeAlerts { alerts = fresh }
             state = .loaded(forecast)
         } catch {
             // Keep showing the last good forecast if we have one.
