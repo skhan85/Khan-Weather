@@ -126,6 +126,8 @@ private struct ForecastList: View {
                     }
                     .padding(.vertical, 4)
                 }
+                // A new forecast starts the row back at "now" instead of keeping an old scroll position.
+                .id(forecast.fetchedAt)
             }
 
             Section("\(forecast.daily.count)-day forecast") {
