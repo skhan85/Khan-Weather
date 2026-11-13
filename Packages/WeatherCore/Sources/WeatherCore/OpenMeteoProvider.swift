@@ -39,7 +39,8 @@ public struct OpenMeteoProvider: ForecastProvider {
         "precipitation", "weather_code", "wind_speed_10m", "wind_direction_10m",
     ]
     static let hourlyFields = [
-        "temperature_2m", "apparent_temperature", "precipitation_probability", "weather_code", "is_day",
+        "temperature_2m", "apparent_temperature", "precipitation_probability", "precipitation",
+        "weather_code", "is_day",
     ]
     static let dailyFields = [
         "weather_code", "temperature_2m_max", "temperature_2m_min",
@@ -93,7 +94,10 @@ public struct OpenMeteoProvider: ForecastProvider {
                     temperature: temp,
                     feelsLike: h.apparentTemperature.value(at: i),
                     precipitationProbability: h.precipitationProbability.value(at: i),
-                    condition: WeatherCondition(wmoCode: h.weatherCode.value(at: i)),
+                    precipitation: h.precipitation.value(at: i),
+                    condition: WeatherCondition(wmoCode: h.weatherCode.value(at: i))
+                        .ignoringTrace(probability: h.precipitationProbability.value(at: i),
+                                       amountMm: h.precipitation.value(at: i)),
                     isDay: (h.isDay.value(at: i) ?? 1) == 1
                 ))
             }
@@ -103,6 +107,10 @@ public struct OpenMeteoProvider: ForecastProvider {
         if let d = r.daily {
             for (i, time) in d.time.enumerated() {
                 guard let high = d.temperatureMax.value(at: i), let low = d.temperatureMin.value(at: i) else { continue }
+                let rain = Self.sum(d.rainSum.value(at: i), d.showersSum.value(at: i))
+                let snow = d.snowfallSum.value(at: i)
+                // Snow cm and rain mm are added only to judge "is this a trace".
+                let total = rain == nil && snow == nil ? nil : (rain ?? 0) + (snow ?? 0)
                 daily.append(DailyForecast(
                     date: Date(timeIntervalSince1970: TimeInterval(time)),
                     high: high,
@@ -110,9 +118,10 @@ public struct OpenMeteoProvider: ForecastProvider {
                     feelsLikeHigh: d.apparentTemperatureMax.value(at: i),
                     feelsLikeLow: d.apparentTemperatureMin.value(at: i),
                     precipitationProbability: d.precipitationProbabilityMax.value(at: i),
-                    condition: WeatherCondition(wmoCode: d.weatherCode.value(at: i)),
-                    rainSum: Self.sum(d.rainSum.value(at: i), d.showersSum.value(at: i)),
-                    snowfallSum: d.snowfallSum.value(at: i)
+                    condition: WeatherCondition(wmoCode: d.weatherCode.value(at: i))
+                        .ignoringTrace(probability: d.precipitationProbabilityMax.value(at: i), amountMm: total),
+                    rainSum: rain,
+                    snowfallSum: snow
                 ))
             }
         }
@@ -200,11 +209,12 @@ public struct OpenMeteoProvider: ForecastProvider {
         let temperature: [Double?]?
         let apparentTemperature: [Double?]?
         let precipitationProbability: [Double?]?
+        let precipitation: [Double?]?
         let weatherCode: [Int?]?
         let isDay: [Int?]?
 
         enum CodingKeys: String, CodingKey {
-            case time
+            case time, precipitation
             case temperature = "temperature_2m"
             case apparentTemperature = "apparent_temperature"
             case precipitationProbability = "precipitation_probability"

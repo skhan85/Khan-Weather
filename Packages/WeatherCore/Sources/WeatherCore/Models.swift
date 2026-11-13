@@ -59,13 +59,17 @@ public struct HourlyForecast: Equatable, Codable, Sendable, Identifiable {
     public var temperature: Double
     public var feelsLike: Double?
     public var precipitationProbability: Double?
+    /// Precipitation in the hour, mm.
+    public var precipitation: Double?
     public var condition: WeatherCondition
     /// False between sunset and sunrise, so clear hours show a moon instead of a sun.
     public var isDay: Bool
     public var id: Date { time }
 
     public init(time: Date, temperature: Double, feelsLike: Double? = nil,
-                precipitationProbability: Double? = nil, condition: WeatherCondition, isDay: Bool = true) {
+                precipitationProbability: Double? = nil, precipitation: Double? = nil,
+                condition: WeatherCondition, isDay: Bool = true) {
+        self.precipitation = precipitation
         self.time = time
         self.temperature = temperature
         self.feelsLike = feelsLike
