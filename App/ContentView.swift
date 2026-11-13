@@ -105,6 +105,11 @@ private struct ForecastList: View {
     @AppStorage(DisplaySettings.hourlyCountKey) private var hourlyCount = 24
     @AppStorage(DisplaySettings.showDetailsKey) private var showDetails = true
 
+    /// Environment Canada's mosaic covers Canada and the northern US.
+    static func radarCovers(_ c: Coordinate) -> Bool {
+        (35...75).contains(c.latitude) && (-145 ... -50).contains(c.longitude)
+    }
+
     /// Short credit line; the full credits are one tap away.
     private var sourceNames: String {
         "Sources: " + Credits.shortNames(forecast: forecast, alerts: alerts).joined(separator: ", ")
@@ -136,6 +141,16 @@ private struct ForecastList: View {
                     Label(nowcast.text, systemImage: nowcast.kind == .rain ? "umbrella.fill" : "snowflake")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(nowcast.kind == .rain ? Color.blue : Color.cyan)
+                }
+            }
+
+            if Self.radarCovers(forecast.location) {
+                Section {
+                    NavigationLink {
+                        RadarMapView(center: forecast.location)
+                    } label: {
+                        Label("Radar map", systemImage: "dot.radiowaves.left.and.right")
+                    }
                 }
             }
 
