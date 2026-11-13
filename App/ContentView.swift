@@ -168,7 +168,8 @@ private struct ForecastList: View {
             Section("\(forecast.daily.count)-day forecast") {
                 ForEach(forecast.daily) { day in
                     NavigationLink {
-                        DayDetailView(day: day, hours: forecast.hours(on: day), timeZone: forecast.timeZone)
+                        DayDetailView(day: day, hours: forecast.hours(on: day), timeZone: forecast.timeZone,
+                                      location: forecast.location)
                     } label: {
                     HStack {
                         Text(day.date, format: Date.FormatStyle(timeZone: forecast.timeZone).weekday(.abbreviated))

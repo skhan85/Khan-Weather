@@ -100,6 +100,7 @@ struct DayDetailView: View {
     let day: DailyForecast
     let hours: [HourlyForecast]
     let timeZone: TimeZone
+    var location: Coordinate?
 
     var body: some View {
         List {
@@ -134,6 +135,15 @@ struct DayDetailView: View {
                           systemImage: "sunrise")
                 DetailRow(title: "Sunset", value: day.sunset.map { TimeText.time($0, timeZone) },
                           systemImage: "sunset")
+            }
+            if let location {
+                Section {
+                    NavigationLink {
+                        ModelComparisonView(day: day, location: location, timeZone: timeZone)
+                    } label: {
+                        Label("Compare models", systemImage: "chart.bar.xaxis")
+                    }
+                }
             }
             if !hours.isEmpty {
                 Section("Hour by hour") {
