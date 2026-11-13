@@ -24,6 +24,7 @@ struct ContentView: View {
                     }
                 case .loaded(let forecast):
                     ForecastList(forecast: forecast,
+                                 alerts: model.alerts,
                                  placeName: model.placeName,
                                  isSavedPlace: places.selected != nil,
                                  attribution: model.provider.attribution,
@@ -71,6 +72,7 @@ struct ContentView: View {
 
 private struct ForecastList: View {
     let forecast: Forecast
+    let alerts: [WeatherAlert]
     let placeName: String?
     let isSavedPlace: Bool
     let attribution: String
@@ -83,6 +85,12 @@ private struct ForecastList: View {
                     Label("Location is off, so this shows Toronto. Turn on location in Settings for weather where you are.",
                           systemImage: "location.slash")
                         .font(.footnote)
+                }
+            }
+
+            if !alerts.isEmpty {
+                Section {
+                    ForEach(alerts) { AlertBanner(alert: $0, timeZone: forecast.timeZone) }
                 }
             }
 
@@ -151,8 +159,8 @@ private struct ForecastList: View {
             Section {
                 Link(attribution, destination: URL(string: "https://open-meteo.com/")!)
                     .font(.footnote)
-                if forecast.observation != nil {
-                    Link("Observations: Environment and Climate Change Canada",
+                if forecast.observation != nil || !alerts.isEmpty {
+                    Link("Observations and alerts: Environment and Climate Change Canada",
                          destination: URL(string: "https://weather.gc.ca/")!)
                         .font(.footnote)
                 }
