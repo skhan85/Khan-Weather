@@ -4,6 +4,8 @@ import WeatherCore
 
 struct ContentView: View {
     @StateObject private var model = WeatherViewModel()
+    @StateObject private var places = SavedPlacesStore()
+    @State private var showingPlaces = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -23,21 +25,46 @@ struct ContentView: View {
                 case .loaded(let forecast):
                     ForecastList(forecast: forecast,
                                  placeName: model.placeName,
+                                 isSavedPlace: places.selected != nil,
                                  attribution: model.provider.attribution,
                                  usingFallbackLocation: model.usingFallbackLocation)
                         .refreshable { await reload() }
                 }
             }
             .navigationTitle("Khan Weather")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Picker("Place", selection: $places.selectedID) {
+                            Label("Current location", systemImage: "location.fill").tag(UUID?.none)
+                            ForEach(places.places) { place in
+                                Text(place.name).tag(UUID?.some(place.id))
+                            }
+                        }
+                        Divider()
+                        Button { showingPlaces = true } label: {
+                            Label("Add or edit places", systemImage: "pencil")
+                        }
+                    } label: {
+                        Label("Places", systemImage: places.selected == nil ? "location.circle" : "mappin.circle")
+                    }
+                }
+            }
+            .sheet(isPresented: $showingPlaces) {
+                PlacesView(store: places)
+            }
         }
         .task { await reload() }
+        .onChange(of: places.selectedID) { _, _ in
+            Task { await reload() }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await reload() } }
         }
     }
 
     private func reload() async {
-        await model.refresh()
+        await model.refresh(place: places.selected)
         WidgetCenter.shared.reloadAllTimelines()
     }
 }
@@ -45,6 +72,7 @@ struct ContentView: View {
 private struct ForecastList: View {
     let forecast: Forecast
     let placeName: String?
+    let isSavedPlace: Bool
     let attribution: String
     let usingFallbackLocation: Bool
 
@@ -59,7 +87,7 @@ private struct ForecastList: View {
             }
 
             Section {
-                CurrentConditionsView(current: forecast.current, placeName: placeName,
+                CurrentConditionsView(current: forecast.current, placeName: placeName, isSavedPlace: isSavedPlace,
                                       observation: forecast.observation, timeZone: forecast.timeZone)
                 if let nowcast = forecast.nowcast() {
                     Label(nowcast.text, systemImage: nowcast.kind == .rain ? "umbrella.fill" : "snowflake")
@@ -133,6 +161,11 @@ private struct ForecastList: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
+                if isSavedPlace {
+                    Link("Place search: Open-Meteo / GeoNames (CC BY 4.0)",
+                         destination: URL(string: "https://www.geonames.org/")!)
+                        .font(.footnote)
+                }
                 Text("Updated \(forecast.fetchedAt.formatted(date: .omitted, time: .shortened))")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -144,13 +177,14 @@ private struct ForecastList: View {
 struct CurrentConditionsView: View {
     let current: CurrentConditions
     var placeName: String?
+    var isSavedPlace = false
     var observation: Observation?
     var timeZone: TimeZone = .current
 
     var body: some View {
         VStack(spacing: 8) {
             if let placeName {
-                Label(placeName, systemImage: "location.fill")
+                Label(placeName, systemImage: isSavedPlace ? "mappin" : "location.fill")
                     .font(.headline)
                     .labelStyle(.titleAndIcon)
             }

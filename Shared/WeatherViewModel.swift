@@ -28,11 +28,26 @@ final class WeatherViewModel: ObservableObject {
         self.location = location ?? LocationManager()
     }
 
-    func refresh() async {
-        let coordinate = await location.currentCoordinate()
-        usingFallbackLocation = coordinate == nil
-        let target = coordinate ?? .fallback
-        async let name = PlaceNameResolver.name(for: target)
+    /// The place the last forecast was for: nil for the current location.
+    private var lastPlaceID: UUID?? = .none
+
+    /// Loads the forecast for `place`, or for the current location when it is nil.
+    func refresh(place: SavedPlace? = nil) async {
+        // Switching places: don't leave the old place's forecast on screen while loading.
+        if lastPlaceID != .some(place?.id) {
+            state = .loading
+            lastPlaceID = .some(place?.id)
+        }
+        let target: Coordinate
+        if let place {
+            target = place.coordinate
+            usingFallbackLocation = false
+        } else {
+            let coordinate = await location.currentCoordinate()
+            usingFallbackLocation = coordinate == nil
+            target = coordinate ?? .fallback
+        }
+        async let name = Self.name(for: place, at: target)
         // Station observations are a bonus: if they fail, the model's "now" is still shown.
         async let observed = try? observations.observation(near: target)
         do {
@@ -44,5 +59,10 @@ final class WeatherViewModel: ObservableObject {
             if case .loaded = state { return }
             state = .failed(error.localizedDescription)
         }
+    }
+
+    private nonisolated static func name(for place: SavedPlace?, at target: Coordinate) async -> String? {
+        if let place { return place.name }
+        return await PlaceNameResolver.name(for: target)
     }
 }
