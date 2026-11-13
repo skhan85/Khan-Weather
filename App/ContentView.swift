@@ -88,7 +88,9 @@ struct ContentView: View {
     }
 
     private func reload() async {
+        model.onCurrentLocation = { AlertNotifier.rememberCurrentLocation($0) }
         await model.refresh(place: places.selected)
+        AlertNotifier.markSeen(model.alerts)
         WidgetCenter.shared.reloadAllTimelines()
     }
 }

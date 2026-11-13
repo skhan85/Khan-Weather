@@ -14,6 +14,9 @@ struct SettingsView: View {
     @AppStorage(DisplaySettings.mainTemperatureKey) private var mainTemperature = MainTemperature.actual.rawValue
     @AppStorage(DisplaySettings.hourlyCountKey) private var hourlyCount = 24
     @AppStorage(DisplaySettings.showDetailsKey) private var showDetails = true
+    @AppStorage(AlertNotifier.enabledKey) private var alertNotifications = false
+    @AppStorage(AlertNotifier.advisoriesKey) private var alertAdvisories = false
+    @State private var notificationsDenied = false
 
     var body: some View {
         NavigationStack {
@@ -40,6 +43,28 @@ struct SettingsView: View {
                     }
                     Picker("Distance and visibility", selection: $distance) {
                         ForEach(DistanceUnit.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
+                    }
+                }
+                Section {
+                    Toggle("Severe weather alerts", isOn: $alertNotifications)
+                        .onChange(of: alertNotifications) { _, on in
+                            guard on else { return }
+                            Task {
+                                let allowed = await AlertNotifier.requestPermission()
+                                notificationsDenied = !allowed
+                                if allowed { AlertNotifier.schedule() } else { alertNotifications = false }
+                            }
+                        }
+                    if alertNotifications {
+                        Toggle("Include advisories and statements", isOn: $alertAdvisories)
+                    }
+                } header: {
+                    Text("Notifications")
+                } footer: {
+                    if notificationsDenied {
+                        Text("Notifications are turned off for Khan Weather. Turn them on in the iPhone Settings app, under Notifications.")
+                    } else {
+                        Text("Warnings and watches from Environment Canada, the US National Weather Service and Germany's DWD, for your location and saved places. iOS decides when the app may check, usually every 15 to 60 minutes and less often in Low Power Mode, so treat these as a heads-up, not an emergency alarm.")
                     }
                 }
                 Section {
