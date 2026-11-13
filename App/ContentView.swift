@@ -61,6 +61,11 @@ private struct ForecastList: View {
             Section {
                 CurrentConditionsView(current: forecast.current, placeName: placeName,
                                       observation: forecast.observation, timeZone: forecast.timeZone)
+                if let nowcast = forecast.nowcast() {
+                    Label(nowcast.text, systemImage: nowcast.kind == .rain ? "umbrella.fill" : "snowflake")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(nowcast.kind == .rain ? Color.blue : Color.cyan)
+                }
             }
 
             Section("Next 24 hours") {
@@ -94,10 +99,17 @@ private struct ForecastList: View {
                             .frame(width: 48, alignment: .leading)
                         ConditionIcon(condition: day.condition)
                             .frame(width: 32)
-                        if let pop = day.precipitationProbability, pop >= 10 {
-                            Text(WeatherFormat.percent(pop))
-                                .font(.caption)
-                                .foregroundStyle(.blue)
+                        VStack(alignment: .leading, spacing: 0) {
+                            if let pop = day.precipitationProbability, pop >= 10 {
+                                Text(WeatherFormat.percent(pop))
+                                    .font(.caption)
+                                    .foregroundStyle(.blue)
+                            }
+                            if let totals = WeatherFormat.precipitationTotals(rainMm: day.rainSum, snowCm: day.snowfallSum) {
+                                Text(totals)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                         Spacer()
                         Text(WeatherFormat.temperature(day.low))

@@ -10,6 +10,8 @@ struct WeatherEntry: TimelineEntry {
     let low: Double?
     let placeName: String?
     let error: String?
+    /// "Rain in 25 min" when precipitation starts or stops within 2 hours.
+    var nowcast: String? = nil
 
     static let placeholder = WeatherEntry(
         date: Date(),
@@ -51,7 +53,7 @@ struct WeatherTimelineProvider: TimelineProvider {
             let forecast = try await provider.forecast(for: coordinate).applying(await observed ?? nil)
             let today = forecast.daily.first
             return WeatherEntry(date: Date(), current: forecast.current, high: today?.high, low: today?.low,
-                                placeName: await place, error: nil)
+                                placeName: await place, error: nil, nowcast: forecast.nowcast()?.shortText)
         } catch {
             return WeatherEntry(date: Date(), current: nil, high: nil, low: nil, placeName: await place,
                                 error: error.localizedDescription)
@@ -80,7 +82,7 @@ struct KhanWeatherWidgetView: View {
                           systemImage: current.condition.symbolName(isDay: current.isDay))
                         .font(.headline)
                     Text("Feels \(WeatherFormat.temperature(current.feelsLike))")
-                    Text("H \(WeatherFormat.temperature(entry.high))  L \(WeatherFormat.temperature(entry.low))")
+                    Text(entry.nowcast ?? "H \(WeatherFormat.temperature(entry.high))  L \(WeatherFormat.temperature(entry.low))")
                 }
             default:
                 VStack(alignment: .leading, spacing: 4) {
@@ -96,9 +98,10 @@ struct KhanWeatherWidgetView: View {
                     }
                     Text(WeatherFormat.temperature(current.temperature))
                         .font(.system(size: 40, weight: .light))
-                    Text(current.condition.description)
+                    Text(entry.nowcast ?? current.condition.description)
                         .font(.caption)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                     Text("Feels \(WeatherFormat.temperature(current.feelsLike))")
                         .font(.caption2)
                         .foregroundStyle(.secondary)

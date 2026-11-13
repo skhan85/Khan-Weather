@@ -27,7 +27,14 @@ final class OpenMeteoProviderTests: XCTestCase {
         "temperature_2m_min": [-4.1, -3.0],
         "apparent_temperature_max": [-3.0, 0.5],
         "apparent_temperature_min": [-10.2, -8.0],
-        "precipitation_probability_max": [80, 5]
+        "precipitation_probability_max": [80, 5],
+        "rain_sum": [1.2, 0], "showers_sum": [0.4, null], "snowfall_sum": [3.1, 0]
+      },
+      "minutely_15": {
+        "time": [1762956000, 1762956900, 1762957800],
+        "precipitation": [0.0, 0.3, null],
+        "rain": [0.0, 0.0, null],
+        "snowfall": [0.0, 0.21, null]
       }
     }
     """.data(using: .utf8)!
@@ -55,6 +62,18 @@ final class OpenMeteoProviderTests: XCTestCase {
         XCTAssertEqual(forecast.daily.first?.high, 1.2)
         XCTAssertEqual(forecast.daily.first?.feelsLikeLow, -10.2)
         XCTAssertEqual(forecast.daily.last?.condition, .clear)
+        XCTAssertEqual(try XCTUnwrap(forecast.daily.first?.rainSum), 1.6, accuracy: 0.001)
+        XCTAssertEqual(forecast.daily.first?.snowfallSum, 3.1)
+        XCTAssertEqual(forecast.daily.last?.rainSum, 0)
+    }
+
+    func testParsesMinutely15() throws {
+        let forecast = try OpenMeteoProvider.parse(Self.sample, fetchedAt: Date())
+        XCTAssertEqual(forecast.minutely.count, 2)
+        XCTAssertEqual(forecast.minutely.last?.snowfall, 0.21)
+        let url = OpenMeteoProvider().url(for: Coordinate(latitude: 43.5, longitude: -79.9))
+        XCTAssertTrue(url.absoluteString.contains("minutely_15=precipitation,rain,snowfall"))
+        XCTAssertTrue(url.absoluteString.contains("snowfall_sum"))
     }
 
     func testRequestUsesRoundedCoordinatesAndAllFields() throws {
