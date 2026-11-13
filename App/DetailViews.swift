@@ -110,7 +110,7 @@ struct DayDetailView: View {
                         .font(.system(size: 44))
                     Text("\(WeatherFormat.temperature(day.high)) / \(WeatherFormat.temperature(day.low))")
                         .font(.system(size: 40, weight: .thin))
-                    Text(day.condition.description)
+                    Text(day.summary ?? day.condition.description)
                         .font(.title3)
                     if let hi = day.feelsLikeHigh, let lo = day.feelsLikeLow {
                         Text("Feels like \(WeatherFormat.temperature(hi)) / \(WeatherFormat.temperature(lo))")
