@@ -212,6 +212,8 @@ enum Credits {
                             Credit(text: "Observations: US National Weather Service", url: URL(string: "https://www.weather.gov/")!))
         case "DWD": return ("Deutscher Wetterdienst",
                             Credit(text: "Observations: Deutscher Wetterdienst via Bright Sky", url: URL(string: "https://brightsky.dev/")!))
+        case "NETATMO": return ("Netatmo",
+                                Credit(text: "Temperature: nearby Netatmo personal weather stations", url: URL(string: "https://weathermap.netatmo.com/")!))
         case "METAR": return ("NOAA Aviation Weather",
                               Credit(text: "Airport observations: NOAA Aviation Weather Center", url: URL(string: "https://aviationweather.gov/")!))
         default: return ("Environment Canada",
