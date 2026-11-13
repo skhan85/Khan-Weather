@@ -37,6 +37,7 @@ public struct OpenMeteoProvider: ForecastProvider {
     static let currentFields = [
         "temperature_2m", "apparent_temperature", "relative_humidity_2m", "is_day",
         "precipitation", "weather_code", "wind_speed_10m", "wind_direction_10m",
+        "pressure_msl", "wind_gusts_10m",
     ]
     static let hourlyFields = [
         "temperature_2m", "apparent_temperature", "precipitation_probability", "precipitation",
@@ -84,7 +85,9 @@ public struct OpenMeteoProvider: ForecastProvider {
             windDirection: r.current.windDirection,
             precipitation: r.current.precipitation,
             condition: WeatherCondition(wmoCode: r.current.weatherCode),
-            isDay: (r.current.isDay ?? 1) == 1
+            isDay: (r.current.isDay ?? 1) == 1,
+            pressure: r.current.pressure,
+            windGusts: r.current.windGusts
         )
 
         var hourly: [HourlyForecast] = []
@@ -211,9 +214,13 @@ public struct OpenMeteoProvider: ForecastProvider {
         let weatherCode: Int?
         let windSpeed: Double?
         let windDirection: Double?
+        let pressure: Double?
+        let windGusts: Double?
 
         enum CodingKeys: String, CodingKey {
             case time, precipitation
+            case pressure = "pressure_msl"
+            case windGusts = "wind_gusts_10m"
             case temperature = "temperature_2m"
             case apparentTemperature = "apparent_temperature"
             case relativeHumidity = "relative_humidity_2m"

@@ -11,6 +11,13 @@ struct ContentView: View {
     @AppStorage(UnitSettings.temperatureKey) private var temperatureUnit = TemperatureUnit.celsius.rawValue
     @AppStorage(UnitSettings.windKey) private var windUnit = WindUnit.kmh.rawValue
     @AppStorage(UnitSettings.precipitationKey) private var precipitationUnit = PrecipitationUnit.metric.rawValue
+    @AppStorage(UnitSettings.pressureKey) private var pressureUnit = PressureUnit.kPa.rawValue
+    @AppStorage(UnitSettings.distanceKey) private var distanceUnit = DistanceUnit.km.rawValue
+    @AppStorage(DisplaySettings.appearanceKey) private var appearance = Appearance.system.rawValue
+    @AppStorage(DisplaySettings.clockKey) private var clock = ClockStyle.automatic.rawValue
+    @AppStorage(DisplaySettings.mainTemperatureKey) private var mainTemperature = MainTemperature.actual.rawValue
+    @AppStorage(DisplaySettings.hourlyCountKey) private var hourlyCount = 24
+    @AppStorage(DisplaySettings.showDetailsKey) private var showDetails = true
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -34,7 +41,8 @@ struct ContentView: View {
                                  isSavedPlace: places.selected != nil,
                                  attribution: model.provider.attribution,
                                  usingFallbackLocation: model.usingFallbackLocation)
-                        .id("\(temperatureUnit)-\(windUnit)-\(precipitationUnit)")
+                        .id([temperatureUnit, windUnit, precipitationUnit, pressureUnit, distanceUnit, clock,
+                             mainTemperature, String(hourlyCount), String(showDetails)].joined(separator: "-"))
                         .refreshable { await reload() }
                 }
             }
@@ -69,6 +77,7 @@ struct ContentView: View {
                 SettingsView()
             }
         }
+        .preferredColorScheme(Appearance(rawValue: appearance)?.colorScheme)
         .task { await reload() }
         .onChange(of: places.selectedID) { _, _ in
             Task { await reload() }
@@ -91,6 +100,8 @@ private struct ForecastList: View {
     let isSavedPlace: Bool
     let attribution: String
     let usingFallbackLocation: Bool
+    @AppStorage(DisplaySettings.hourlyCountKey) private var hourlyCount = 24
+    @AppStorage(DisplaySettings.showDetailsKey) private var showDetails = true
 
     /// Short credit line; the full credits are one tap away.
     private var sourceNames: String {
@@ -116,6 +127,9 @@ private struct ForecastList: View {
             Section {
                 CurrentConditionsView(current: forecast.current, placeName: placeName, isSavedPlace: isSavedPlace,
                                       observation: forecast.observation, timeZone: forecast.timeZone)
+                if showDetails {
+                    TodayDetailsView(forecast: forecast)
+                }
                 if let nowcast = forecast.nowcast() {
                     Label(nowcast.text, systemImage: nowcast.kind == .rain ? "umbrella.fill" : "snowflake")
                         .font(.subheadline.weight(.medium))
@@ -123,15 +137,15 @@ private struct ForecastList: View {
                 }
             }
 
-            Section("Next 24 hours") {
+            Section("Next \(hourlyCount) hours") {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 18) {
-                        ForEach(forecast.upcomingHours()) { hour in
+                        ForEach(forecast.upcomingHours(count: hourlyCount)) { hour in
                             NavigationLink {
                                 HourDetailView(hour: hour, timeZone: forecast.timeZone)
                             } label: {
                                 VStack(spacing: 6) {
-                                    Text(hour.time, format: Date.FormatStyle(timeZone: forecast.timeZone).hour())
+                                    Text(TimeText.hour(hour.time, forecast.timeZone))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                     ConditionIcon(condition: hour.condition, isDay: hour.isDay)
@@ -186,7 +200,7 @@ private struct ForecastList: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(sourceNames)
                             .font(.footnote)
-                        Text("Updated \(forecast.fetchedAt.formatted(date: .omitted, time: .shortened))")
+                        Text("Updated \(TimeText.time(forecast.fetchedAt, .current))")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -202,6 +216,9 @@ struct CurrentConditionsView: View {
     var isSavedPlace = false
     var observation: Observation?
     var timeZone: TimeZone = .current
+    @AppStorage(DisplaySettings.mainTemperatureKey) private var mainTemperature = MainTemperature.actual.rawValue
+
+    private var feelsFirst: Bool { mainTemperature == MainTemperature.feelsLike.rawValue }
 
     var body: some View {
         VStack(spacing: 8) {
@@ -212,12 +229,18 @@ struct CurrentConditionsView: View {
             }
             ConditionIcon(condition: current.condition, isDay: current.isDay)
                 .font(.system(size: 56))
-            Text(WeatherFormat.temperature(current.temperature))
+            Text(WeatherFormat.temperature(feelsFirst ? current.feelsLike : current.temperature))
                 .font(.system(size: 64, weight: .thin))
             Text(observation?.conditionText ?? current.condition.description)
                 .font(.title3)
-            Text("\(WeatherFormat.feelsLikeLabel(current.feelsLikeKind)) \(WeatherFormat.temperature(current.feelsLike))")
-                .foregroundStyle(.secondary)
+            Group {
+                if feelsFirst {
+                    Text("\(WeatherFormat.feelsLikeLabel(current.feelsLikeKind)). Actual \(WeatherFormat.temperature(current.temperature))")
+                } else {
+                    Text("\(WeatherFormat.feelsLikeLabel(current.feelsLikeKind)) \(WeatherFormat.temperature(current.feelsLike))")
+                }
+            }
+            .foregroundStyle(.secondary)
             HStack(spacing: 20) {
                 if let humidity = current.humidity {
                     Label(WeatherFormat.percent(humidity), systemImage: "humidity")
@@ -250,14 +273,69 @@ struct CurrentConditionsView: View {
 
     /// ", 13 km from Oakville": the distance is to the forecast spot, not to the town in the station's name.
     static func distance(_ o: Observation, from place: String?) -> String {
-        guard let km = o.distanceKm else { return "" }
-        return ", \(Int(km.rounded())) km from \(place ?? "you")"
+        guard let text = WeatherFormat.distance(o.distanceKm) else { return "" }
+        return ", \(text) from \(place ?? "you")"
     }
 
     static func localCaption(_ o: Observation, from place: String? = nil, timeZone: TimeZone) -> String {
-        let time = o.observedAt.formatted(Date.FormatStyle(time: .shortened, timeZone: timeZone))
+        let time = TimeText.time(o.observedAt, timeZone)
         var text = "Observed \(time) at \(o.stationName)\(distance(o, from: place))"
         text += "."
         return text
+    }
+}
+
+/// A compact grid of today's extra numbers under the current conditions.
+struct TodayDetailsView: View {
+    let forecast: Forecast
+
+    private struct Tile: Identifiable {
+        let title: String
+        let value: String
+        let systemImage: String
+        var id: String { title }
+    }
+
+    private var tiles: [Tile] {
+        let now = forecast.current
+        let hour = forecast.hour()
+        let day = forecast.day()
+        let tz = forecast.timeZone
+        var list: [Tile] = []
+        func add(_ title: String, _ value: String?, _ image: String) {
+            if let value { list.append(Tile(title: title, value: value, systemImage: image)) }
+        }
+        add("UV index", WeatherFormat.uvLevel(hour?.uvIndex), "sun.max")
+        add("Pressure", WeatherFormat.pressure(now.pressure), "gauge.with.dots.needle.33percent")
+        add("Visibility", hour?.visibility.flatMap { WeatherFormat.distance($0 / 1000) }, "eye")
+        add("Dew point", hour?.dewPoint.map { WeatherFormat.temperature($0) }, "thermometer.medium")
+        if let gusts = now.windGusts ?? hour?.windGusts {
+            var text = WeatherFormat.wind(gusts)
+            if let dir = WeatherFormat.compass(now.windDirection) { text = "\(dir), \(text)" }
+            add("Gusts", text, "wind")
+        }
+        add("Sunrise", day?.sunrise.map { TimeText.time($0, tz) }, "sunrise")
+        add("Sunset", day?.sunset.map { TimeText.time($0, tz) }, "sunset")
+        if let rain = day?.rainSum, let snow = day?.snowfallSum {
+            add("Today's total", WeatherFormat.precipitationTotals(rainMm: rain, snowCm: snow), "drop")
+        }
+        return list
+    }
+
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+            ForEach(tiles) { tile in
+                VStack(alignment: .leading, spacing: 2) {
+                    Label(tile.title, systemImage: tile.systemImage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(tile.value)
+                        .font(.subheadline.weight(.medium))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .padding(.vertical, 4)
     }
 }

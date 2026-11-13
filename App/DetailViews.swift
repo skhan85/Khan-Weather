@@ -52,9 +52,7 @@ private func windText(_ speed: Double?, gusts: Double?, direction: Double?) -> S
 }
 
 private func visibilityText(_ metres: Double?) -> String? {
-    guard let metres else { return nil }
-    let km = metres / 1000
-    return km >= 10 ? "\(Int(km.rounded())) km" : String(format: "%.1f km", km)
+    metres.flatMap { WeatherFormat.distance($0 / 1000) }
 }
 
 struct HourDetailView: View {
@@ -132,9 +130,9 @@ struct DayDetailView: View {
                 DetailRow(title: "Wind", value: windText(day.windSpeedMax, gusts: day.windGustsMax, direction: day.windDirectionDominant),
                           systemImage: "wind")
                 DetailRow(title: "UV index", value: WeatherFormat.uvLevel(day.uvIndexMax), systemImage: "sun.max")
-                DetailRow(title: "Sunrise", value: day.sunrise.map { $0.formatted(Date.FormatStyle(time: .shortened, timeZone: timeZone)) },
+                DetailRow(title: "Sunrise", value: day.sunrise.map { TimeText.time($0, timeZone) },
                           systemImage: "sunrise")
-                DetailRow(title: "Sunset", value: day.sunset.map { $0.formatted(Date.FormatStyle(time: .shortened, timeZone: timeZone)) },
+                DetailRow(title: "Sunset", value: day.sunset.map { TimeText.time($0, timeZone) },
                           systemImage: "sunset")
             }
             if !hours.isEmpty {
@@ -144,7 +142,7 @@ struct DayDetailView: View {
                             HourDetailView(hour: hour, timeZone: timeZone)
                         } label: {
                             HStack {
-                                Text(hour.time, format: Date.FormatStyle(timeZone: timeZone).hour())
+                                Text(TimeText.hour(hour.time, timeZone))
                                     .frame(width: 56, alignment: .leading)
                                 ConditionIcon(condition: hour.condition, isDay: hour.isDay)
                                     .frame(width: 28)
@@ -188,7 +186,7 @@ struct SourcesView: View {
             if let o = forecast.observation {
                 Section("Right now") {
                     LabeledContent("Station", value: o.stationName)
-                    if let km = o.distanceKm { LabeledContent("Distance", value: "\(Int(km.rounded())) km") }
+                    if let d = WeatherFormat.distance(o.distanceKm) { LabeledContent("Distance", value: d) }
                     LabeledContent("Observed", value: o.observedAt.formatted(Date.FormatStyle(time: .shortened, timeZone: forecast.timeZone)))
                     if let sky = o.skyStationName { LabeledContent("Sky from", value: sky) }
                     if let radar = forecast.radar {

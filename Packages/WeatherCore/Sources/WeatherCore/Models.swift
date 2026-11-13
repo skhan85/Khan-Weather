@@ -37,10 +37,16 @@ public struct CurrentConditions: Equatable, Codable, Sendable {
     public var precipitation: Double?   // mm
     public var condition: WeatherCondition
     public var isDay: Bool
+    /// Sea-level pressure, hPa.
+    public var pressure: Double?
+    public var windGusts: Double?       // km/h
 
     public init(time: Date, temperature: Double, feelsLike: Double, feelsLikeKind: FeelsLikeKind,
                 humidity: Double? = nil, windSpeed: Double? = nil, windDirection: Double? = nil,
-                precipitation: Double? = nil, condition: WeatherCondition, isDay: Bool) {
+                precipitation: Double? = nil, condition: WeatherCondition, isDay: Bool,
+                pressure: Double? = nil, windGusts: Double? = nil) {
+        self.pressure = pressure
+        self.windGusts = windGusts
         self.time = time
         self.temperature = temperature
         self.feelsLike = feelsLike
@@ -202,6 +208,19 @@ public struct Forecast: Equatable, Codable, Sendable {
     /// The next `count` hours, starting with the hour that contains `date`.
     public func upcomingHours(from date: Date = Date(), count: Int = 24) -> [HourlyForecast] {
         Array(hourly.filter { $0.time.addingTimeInterval(3600) > date }.prefix(count))
+    }
+
+    /// The forecast hour that contains `date`, for values the "now" request doesn't carry
+    /// (UV, visibility, dew point).
+    public func hour(at date: Date = Date()) -> HourlyForecast? {
+        upcomingHours(from: date, count: 1).first
+    }
+
+    /// Today's row of the daily forecast, in the place's time zone.
+    public func day(at date: Date = Date()) -> DailyForecast? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        return daily.first { calendar.isDate($0.date, inSameDayAs: date) } ?? daily.first
     }
 }
 
