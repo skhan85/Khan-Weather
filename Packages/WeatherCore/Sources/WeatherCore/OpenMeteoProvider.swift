@@ -171,7 +171,7 @@ public struct OpenMeteoProvider: ForecastProvider {
             source: "Open-Meteo",
             fetchedAt: fetchedAt,
             minutely: minutely
-        )
+        ).withDailyHeadlines()
     }
 
     /// Adds two optional amounts; nil only when both are missing.

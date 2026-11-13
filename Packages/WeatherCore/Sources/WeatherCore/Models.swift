@@ -119,6 +119,8 @@ public struct DailyForecast: Equatable, Codable, Sendable, Identifiable {
     public var rainSum: Double?
     /// Total snowfall for the day, in cm.
     public var snowfallSum: Double?
+    /// "Rain then snow" and the like, when one word doesn't cover the day.
+    public var summary: String?
     // Detail fields, shown when the day is tapped. All optional.
     public var sunrise: Date?
     public var sunset: Date?
@@ -292,3 +294,54 @@ public extension Forecast {
         return hourly.filter { calendar.isDate($0.time, inSameDayAs: day.date) }
     }
 }
+
+public extension Forecast {
+    /// Below this chance a day isn't headlined as rain or snow, even if the model has a few wet hours.
+    static let headlineChance: Double = 35
+
+    /// Open-Meteo's daily weather code is the worst hour of the day, so a brief overnight flurry
+    /// makes a 13° day say "Snow". Re-pick each day's headline from its hours.
+    func withDailyHeadlines() -> Forecast {
+        var copy = self
+        copy.daily = daily.map { day in
+            var d = day
+            let hours = self.hours(on: day)
+            guard d.condition.isPrecipitation || d.condition == .thunderstorm || d.condition == .thunderstormHail,
+                  !hours.isEmpty else { return d }
+            if (d.precipitationProbability ?? 100) < Self.headlineChance {
+                d.condition = Self.dryHeadline(hours)
+                return d
+            }
+            // Which kind falls when, from the wet hours.
+            let wet = hours.filter { ($0.precipitation ?? 0) >= 0.1 || ($0.snowfall ?? 0) > 0 || ($0.rain ?? 0) > 0 }
+            let kinds = wet.map { h -> PrecipitationKind in
+                if (h.snowfall ?? 0) > 0 && (h.rain ?? 0) <= 0 { return .snow }
+                if (h.rain ?? 0) > 0 && (h.snowfall ?? 0) <= 0 { return .rain }
+                return h.temperature <= 1 ? .snow : .rain
+            }
+            guard let first = kinds.first, let last = kinds.last else { return d }
+            let hasRain = kinds.contains(.rain), hasSnow = kinds.contains(.snow)
+            if hasRain && hasSnow {
+                d.summary = first == .rain && last == .snow ? "Rain then snow"
+                    : first == .snow && last == .rain ? "Snow then rain" : "Rain and snow"
+                let snowHours = kinds.filter { $0 == .snow }.count
+                d.condition = snowHours * 2 > kinds.count ? .snow : .rain
+            } else if hasRain, d.condition == .snow || d.condition == .snowShowers || d.condition == .snowGrains {
+                d.condition = .rain
+            } else if hasSnow, d.condition == .rain || d.condition == .rainShowers || d.condition == .drizzle {
+                d.condition = .snow
+            }
+            return d
+        }
+        return copy
+    }
+
+    /// The most common sky among the day's daylight hours, ignoring the odd wet one.
+    private static func dryHeadline(_ hours: [HourlyForecast]) -> WeatherCondition {
+        let pool = hours.filter(\.isDay).isEmpty ? hours : hours.filter(\.isDay)
+        var counts: [WeatherCondition: Int] = [:]
+        for h in pool where !h.condition.isPrecipitation { counts[h.condition, default: 0] += 1 }
+        return counts.max { $0.value < $1.value || ($0.value == $1.value && $0.key.rawValue > $1.key.rawValue) }?.key ?? .overcast
+    }
+}
+
