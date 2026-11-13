@@ -52,9 +52,7 @@ private func windText(_ speed: Double?, gusts: Double?, direction: Double?) -> S
 }
 
 private func visibilityText(_ metres: Double?) -> String? {
-    guard let metres else { return nil }
-    let km = metres / 1000
-    return km >= 10 ? "\(Int(km.rounded())) km" : String(format: "%.1f km", km)
+    metres.flatMap { WeatherFormat.distance($0 / 1000) }
 }
 
 struct HourDetailView: View {
@@ -102,6 +100,7 @@ struct DayDetailView: View {
     let day: DailyForecast
     let hours: [HourlyForecast]
     let timeZone: TimeZone
+    var location: Coordinate?
 
     var body: some View {
         List {
@@ -132,10 +131,19 @@ struct DayDetailView: View {
                 DetailRow(title: "Wind", value: windText(day.windSpeedMax, gusts: day.windGustsMax, direction: day.windDirectionDominant),
                           systemImage: "wind")
                 DetailRow(title: "UV index", value: WeatherFormat.uvLevel(day.uvIndexMax), systemImage: "sun.max")
-                DetailRow(title: "Sunrise", value: day.sunrise.map { $0.formatted(Date.FormatStyle(time: .shortened, timeZone: timeZone)) },
+                DetailRow(title: "Sunrise", value: day.sunrise.map { TimeText.time($0, timeZone) },
                           systemImage: "sunrise")
-                DetailRow(title: "Sunset", value: day.sunset.map { $0.formatted(Date.FormatStyle(time: .shortened, timeZone: timeZone)) },
+                DetailRow(title: "Sunset", value: day.sunset.map { TimeText.time($0, timeZone) },
                           systemImage: "sunset")
+            }
+            if let location {
+                Section {
+                    NavigationLink {
+                        ModelComparisonView(day: day, location: location, timeZone: timeZone)
+                    } label: {
+                        Label("Compare models", systemImage: "chart.bar.xaxis")
+                    }
+                }
             }
             if !hours.isEmpty {
                 Section("Hour by hour") {
@@ -144,7 +152,7 @@ struct DayDetailView: View {
                             HourDetailView(hour: hour, timeZone: timeZone)
                         } label: {
                             HStack {
-                                Text(hour.time, format: Date.FormatStyle(timeZone: timeZone).hour())
+                                Text(TimeText.hour(hour.time, timeZone))
                                     .frame(width: 56, alignment: .leading)
                                 ConditionIcon(condition: hour.condition, isDay: hour.isDay)
                                     .frame(width: 28)
@@ -175,7 +183,7 @@ struct SourcesView: View {
                 ForEach(Credits.full(forecast: forecast, alerts: alerts), id: \.text) { credit in
                     Link(credit.text, destination: credit.url)
                 }
-                if forecast.observation?.dataProvider == "ON-MTO" {
+                if forecast.observation?.dataProvider == "ON-MTO" || forecast.observation?.skyDataProvider == "ON-MTO" {
                     Text("Road weather station: Ontario Ministry of Transportation")
                 }
                 if isSavedPlace {
@@ -188,7 +196,7 @@ struct SourcesView: View {
             if let o = forecast.observation {
                 Section("Right now") {
                     LabeledContent("Station", value: o.stationName)
-                    if let km = o.distanceKm { LabeledContent("Distance", value: "\(Int(km.rounded())) km") }
+                    if let d = WeatherFormat.distance(o.distanceKm) { LabeledContent("Distance", value: d) }
                     LabeledContent("Observed", value: o.observedAt.formatted(Date.FormatStyle(time: .shortened, timeZone: forecast.timeZone)))
                     if let sky = o.skyStationName { LabeledContent("Sky from", value: sky) }
                     if let radar = forecast.radar {
@@ -207,7 +215,11 @@ enum Credits {
     struct Credit { let text: String; let url: URL }
 
     private static func observation(_ o: Observation) -> (String, Credit) {
-        switch o.dataProvider {
+        observation(provider: o.dataProvider)
+    }
+
+    private static func observation(provider: String?) -> (String, Credit) {
+        switch provider {
         case "NWS": return ("US National Weather Service",
                             Credit(text: "Observations: US National Weather Service", url: URL(string: "https://www.weather.gov/")!))
         case "DWD": return ("Deutscher Wetterdienst",
@@ -234,7 +246,16 @@ enum Credits {
 
     private static func all(forecast: Forecast, alerts: [WeatherAlert]) -> [(String, Credit)] {
         var list: [(String, Credit)] = []
-        if let o = forecast.observation { list.append(observation(o)) }
+        if let o = forecast.observation {
+            list.append(observation(o))
+            // Netatmo gives the temperature; rain, snow and cloud still come from an official station.
+            if o.dataProvider == "NETATMO", o.skyStationName != nil {
+                let (name, credit) = observation(provider: o.skyDataProvider)
+                list.append((name, Credit(text: credit.text.replacingOccurrences(of: "Observations", with: "Sky")
+                                                     .replacingOccurrences(of: "Airport observations", with: "Sky"),
+                                          url: credit.url)))
+            }
+        }
         if forecast.radar != nil {
             list.append(("Environment Canada", Credit(text: "Radar: Environment and Climate Change Canada", url: URL(string: "https://weather.gc.ca/")!)))
         }
@@ -245,7 +266,7 @@ enum Credits {
     static func shortNames(forecast: Forecast, alerts: [WeatherAlert]) -> [String] {
         var names = ["Open-Meteo"]
         for (name, _) in all(forecast: forecast, alerts: alerts) where !names.contains(name) { names.append(name) }
-        if forecast.observation?.dataProvider == "ON-MTO" { names.append("Ontario MTO") }
+        if forecast.observation?.dataProvider == "ON-MTO" || forecast.observation?.skyDataProvider == "ON-MTO" { names.append("Ontario MTO") }
         return names
     }
 

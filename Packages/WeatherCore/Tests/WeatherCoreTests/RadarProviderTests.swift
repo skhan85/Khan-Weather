@@ -40,4 +40,23 @@ final class RadarProviderTests: XCTestCase {
         XCTAssertEqual(dry, f, "a dry radar leaves the station's sky alone")
         XCTAssertEqual(RadarNow(rainMmPerHour: 3, snowCmPerHour: 0, time: now).description, "Moderate rain")
     }
+
+    /// North Plains, Oregon at 11°C: the mosaic's snow layer lit up, but it was raining.
+    func testWarmSnowEchoBecomesRain() {
+        let now = Date()
+        let current = CurrentConditions(time: now, temperature: 11, feelsLike: 11, feelsLikeKind: .apparent,
+                                        condition: .overcast, isDay: true)
+        let f = Forecast(location: Coordinate(latitude: 45.6, longitude: -123.0), timeZoneIdentifier: "America/Los_Angeles",
+                         current: current, hourly: [], daily: [], source: "t", fetchedAt: now,
+                         observation: Observation(stationName: "Portland-Hillsboro Airport", observedAt: now, temperature: 11))
+        let wet = f.applyingRadar(RadarNow(rainMmPerHour: 0, snowCmPerHour: 0.7, time: now))
+        XCTAssertEqual(wet.current.condition, .rain)
+        XCTAssertEqual(wet.observation?.conditionText, "Light rain")
+
+        let cold = RadarNow(rainMmPerHour: 1, snowCmPerHour: 0, time: now).typed(byTemperature: -2)
+        XCTAssertEqual(cold.condition, .snow)
+        let both = RadarNow(rainMmPerHour: 1, snowCmPerHour: 0.5, time: now)
+        XCTAssertEqual(both.typed(byTemperature: 0).condition, .snow)
+        XCTAssertEqual(both.typed(byTemperature: 2).condition, .rain)
+    }
 }

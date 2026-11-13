@@ -33,6 +33,25 @@ public struct RadarNow: Equatable, Codable, Sendable {
         return nil
     }
 
+    /// The mosaic's rain and snow layers can both light up for the same echo, and outside Canada
+    /// the snow layer isn't split by temperature at all. Decide the type from the air temperature:
+    /// snow at or below 1°C, rain at 3°C and above, and between the two keep what the radar says.
+    public func typed(byTemperature celsius: Double?) -> RadarNow {
+        guard let t = celsius, isPrecipitating else { return self }
+        var r = self
+        if t >= 3, isSnowing {
+            // Roughly 1 cm of snow per 1 mm of water.
+            r.rainMmPerHour = max(rainMmPerHour, snowCmPerHour)
+            r.snowCmPerHour = 0
+        } else if t <= 1, isRaining {
+            r.snowCmPerHour = max(snowCmPerHour, rainMmPerHour)
+            r.rainMmPerHour = 0
+        } else if isSnowing, isRaining {
+            r.snowCmPerHour = 0   // mixed near freezing: call it rain unless cold enough
+        }
+        return r
+    }
+
     /// "Light snow", "Moderate rain", using Environment Canada's rate bands.
     public var description: String? {
         if isSnowing {
@@ -118,7 +137,8 @@ public extension Forecast {
     /// When the radar shows rain or snow falling here now, say so even if the model or a
     /// distant station says cloudy. A dry radar changes nothing: it can miss very light snow.
     func applyingRadar(_ radar: RadarNow?) -> Forecast {
-        guard let radar, let condition = radar.condition else { return self }
+        guard let radar = radar?.typed(byTemperature: current.temperature),
+              let condition = radar.condition else { return self }
         var copy = self
         copy.current.condition = condition
         copy.observation?.conditionText = radar.description

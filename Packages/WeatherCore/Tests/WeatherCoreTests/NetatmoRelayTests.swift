@@ -34,12 +34,13 @@ final class NetatmoRelayTests: XCTestCase {
     func testMergeKeepsOfficialSky() {
         var official = Observation(stationName: "Toronto Pearson", observedAt: now, temperature: 3, humidity: 70,
                                    windSpeed: 20, windDirection: 270, condition: .rain, conditionText: "Light Rain", distanceKm: 25)
-        official.dataProvider = nil
+        official.dataProvider = "ON-MTO"
         let local = Observation(stationName: "2 Netatmo stations in Milton", observedAt: now, temperature: 2, humidity: 90, distanceKm: 0.5)
         let merged = HyperlocalObservationProvider.merge(official: official, netatmo: local)
         XCTAssertEqual(merged.temperature, 2)
         XCTAssertEqual(merged.condition, .rain)
         XCTAssertEqual(merged.skyStationName, "Toronto Pearson")
+        XCTAssertEqual(merged.skyDataProvider, "ON-MTO")
         XCTAssertNil(merged.windSpeed)   // Pearson is too far to speak for local wind
     }
 }

@@ -106,6 +106,7 @@ public struct HyperlocalObservationProvider: ObservationProvider {
         merged.condition = base?.condition
         merged.conditionText = base?.conditionText
         merged.skyStationName = base?.stationName
+        merged.skyDataProvider = base?.dataProvider
         if merged.windSpeed == nil, let base, base.isLocal {
             merged.windSpeed = base.windSpeed
             merged.windDirection = base.windDirection

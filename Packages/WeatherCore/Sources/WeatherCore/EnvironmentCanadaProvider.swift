@@ -23,6 +23,9 @@ public struct Observation: Equatable, Codable, Sendable {
     public var dataProvider: String?
     /// When the sky (condition) came from a different station than the readings.
     public var skyStationName: String?
+    /// Who runs the sky station, when it differs from the readings (e.g. Netatmo readings, ECCC sky).
+    /// nil with a skyStationName means Environment Canada.
+    public var skyDataProvider: String?
 
     public init(stationName: String, observedAt: Date, temperature: Double, feelsLike: Double? = nil,
                 feelsLikeKind: FeelsLikeKind? = nil, humidity: Double? = nil, windSpeed: Double? = nil,
