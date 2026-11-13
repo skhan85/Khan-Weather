@@ -83,10 +83,15 @@ public struct DailyForecast: Equatable, Codable, Sendable, Identifiable {
     public var feelsLikeLow: Double?
     public var precipitationProbability: Double?
     public var condition: WeatherCondition
+    /// Total rain and showers for the day, in mm.
+    public var rainSum: Double?
+    /// Total snowfall for the day, in cm.
+    public var snowfallSum: Double?
     public var id: Date { date }
 
     public init(date: Date, high: Double, low: Double, feelsLikeHigh: Double? = nil, feelsLikeLow: Double? = nil,
-                precipitationProbability: Double? = nil, condition: WeatherCondition) {
+                precipitationProbability: Double? = nil, condition: WeatherCondition,
+                rainSum: Double? = nil, snowfallSum: Double? = nil) {
         self.date = date
         self.high = high
         self.low = low
@@ -94,7 +99,32 @@ public struct DailyForecast: Equatable, Codable, Sendable, Identifiable {
         self.feelsLikeLow = feelsLikeLow
         self.precipitationProbability = precipitationProbability
         self.condition = condition
+        self.rainSum = rainSum
+        self.snowfallSum = snowfallSum
     }
+}
+
+/// Fifteen minutes of precipitation from the short-range forecast, used for "rain starting in 20 min".
+public struct PrecipitationSlot: Equatable, Codable, Sendable {
+    /// Start of the 15-minute period.
+    public var time: Date
+    /// Total precipitation in mm (water equivalent).
+    public var precipitation: Double
+    /// Rain in mm.
+    public var rain: Double
+    /// Snowfall in cm.
+    public var snowfall: Double
+
+    public init(time: Date, precipitation: Double, rain: Double = 0, snowfall: Double = 0) {
+        self.time = time
+        self.precipitation = precipitation
+        self.rain = rain
+        self.snowfall = snowfall
+    }
+
+    /// Below this a slot counts as dry; 0.1 mm per 15 min is about the lightest drizzle a gauge records.
+    static let wetThreshold = 0.1
+    var isWet: Bool { precipitation >= Self.wetThreshold || snowfall >= 0.1 }
 }
 
 public struct Forecast: Equatable, Codable, Sendable {
@@ -107,10 +137,12 @@ public struct Forecast: Equatable, Codable, Sendable {
     public var fetchedAt: Date
     /// Set when `current` comes from a real station observation rather than the forecast model.
     public var observation: Observation?
+    /// The next couple of hours in 15-minute steps. Empty if the provider has none.
+    public var minutely: [PrecipitationSlot]
 
     public init(location: Coordinate, timeZoneIdentifier: String, current: CurrentConditions,
                 hourly: [HourlyForecast], daily: [DailyForecast], source: String, fetchedAt: Date,
-                observation: Observation? = nil) {
+                observation: Observation? = nil, minutely: [PrecipitationSlot] = []) {
         self.location = location
         self.timeZoneIdentifier = timeZoneIdentifier
         self.current = current
@@ -119,6 +151,7 @@ public struct Forecast: Equatable, Codable, Sendable {
         self.source = source
         self.fetchedAt = fetchedAt
         self.observation = observation
+        self.minutely = minutely
     }
 
     public var timeZone: TimeZone { TimeZone(identifier: timeZoneIdentifier) ?? .current }

@@ -44,7 +44,9 @@ public struct OpenMeteoProvider: ForecastProvider {
     static let dailyFields = [
         "weather_code", "temperature_2m_max", "temperature_2m_min",
         "apparent_temperature_max", "apparent_temperature_min", "precipitation_probability_max",
+        "rain_sum", "showers_sum", "snowfall_sum",
     ]
+    static let minutelyFields = ["precipitation", "rain", "snowfall"]
 
     func url(for coordinate: Coordinate) -> URL {
         let c = coordinate.rounded
@@ -55,6 +57,9 @@ public struct OpenMeteoProvider: ForecastProvider {
             URLQueryItem(name: "current", value: Self.currentFields.joined(separator: ",")),
             URLQueryItem(name: "hourly", value: Self.hourlyFields.joined(separator: ",")),
             URLQueryItem(name: "daily", value: Self.dailyFields.joined(separator: ",")),
+            URLQueryItem(name: "minutely_15", value: Self.minutelyFields.joined(separator: ",")),
+            // 3 hours, so the 2-hour nowcast window is still covered if the request is a bit late.
+            URLQueryItem(name: "forecast_minutely_15", value: "12"),
             URLQueryItem(name: "timezone", value: "auto"),
             URLQueryItem(name: "timeformat", value: "unixtime"),
             URLQueryItem(name: "forecast_days", value: String(forecastDays)),
@@ -105,7 +110,22 @@ public struct OpenMeteoProvider: ForecastProvider {
                     feelsLikeHigh: d.apparentTemperatureMax.value(at: i),
                     feelsLikeLow: d.apparentTemperatureMin.value(at: i),
                     precipitationProbability: d.precipitationProbabilityMax.value(at: i),
-                    condition: WeatherCondition(wmoCode: d.weatherCode.value(at: i))
+                    condition: WeatherCondition(wmoCode: d.weatherCode.value(at: i)),
+                    rainSum: Self.sum(d.rainSum.value(at: i), d.showersSum.value(at: i)),
+                    snowfallSum: d.snowfallSum.value(at: i)
+                ))
+            }
+        }
+
+        var minutely: [PrecipitationSlot] = []
+        if let m = r.minutely15 {
+            for (i, time) in m.time.enumerated() {
+                guard let p = m.precipitation.value(at: i) else { continue }
+                minutely.append(PrecipitationSlot(
+                    time: Date(timeIntervalSince1970: TimeInterval(time)),
+                    precipitation: p,
+                    rain: m.rain.value(at: i) ?? 0,
+                    snowfall: m.snowfall.value(at: i) ?? 0
                 ))
             }
         }
@@ -117,8 +137,15 @@ public struct OpenMeteoProvider: ForecastProvider {
             hourly: hourly,
             daily: daily,
             source: "Open-Meteo",
-            fetchedAt: fetchedAt
+            fetchedAt: fetchedAt,
+            minutely: minutely
         )
+    }
+
+    /// Adds two optional amounts; nil only when both are missing.
+    static func sum(_ a: Double?, _ b: Double?) -> Double? {
+        if a == nil && b == nil { return nil }
+        return (a ?? 0) + (b ?? 0)
     }
 
     // MARK: - Wire format
@@ -130,6 +157,19 @@ public struct OpenMeteoProvider: ForecastProvider {
         let current: Current
         let hourly: Hourly?
         let daily: Daily?
+        let minutely15: Minutely15?
+
+        enum CodingKeys: String, CodingKey {
+            case latitude, longitude, timezone, current, hourly, daily
+            case minutely15 = "minutely_15"
+        }
+    }
+
+    struct Minutely15: Decodable {
+        let time: [Int]
+        let precipitation: [Double?]?
+        let rain: [Double?]?
+        let snowfall: [Double?]?
     }
 
     struct Current: Decodable {
@@ -181,6 +221,9 @@ public struct OpenMeteoProvider: ForecastProvider {
         let apparentTemperatureMax: [Double?]?
         let apparentTemperatureMin: [Double?]?
         let precipitationProbabilityMax: [Double?]?
+        let rainSum: [Double?]?
+        let showersSum: [Double?]?
+        let snowfallSum: [Double?]?
 
         enum CodingKeys: String, CodingKey {
             case time
@@ -190,6 +233,9 @@ public struct OpenMeteoProvider: ForecastProvider {
             case apparentTemperatureMax = "apparent_temperature_max"
             case apparentTemperatureMin = "apparent_temperature_min"
             case precipitationProbabilityMax = "precipitation_probability_max"
+            case rainSum = "rain_sum"
+            case showersSum = "showers_sum"
+            case snowfallSum = "snowfall_sum"
         }
     }
 }
