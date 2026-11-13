@@ -91,3 +91,27 @@ public extension WeatherCondition {
         return .overcast
     }
 }
+
+public extension WeatherFormat {
+    /// 8-point compass for the direction the wind comes from: "NW".
+    static func compass(_ degrees: Double?) -> String? {
+        guard let degrees else { return nil }
+        let names = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+        let i = Int(((degrees.truncatingRemainder(dividingBy: 360) + 360).truncatingRemainder(dividingBy: 360) / 45).rounded()) % 8
+        return names[i]
+    }
+
+    /// "Low", "Moderate", "High", "Very high", "Extreme" (WHO UV index bands).
+    static func uvLevel(_ uv: Double?) -> String? {
+        guard let uv else { return nil }
+        let level: String
+        switch uv {
+        case ..<3: level = "Low"
+        case ..<6: level = "Moderate"
+        case ..<8: level = "High"
+        case ..<11: level = "Very high"
+        default: level = "Extreme"
+        }
+        return "\(Int(uv.rounded())) \(level)"
+    }
+}

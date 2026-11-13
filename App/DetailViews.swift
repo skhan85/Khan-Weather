@@ -1,0 +1,204 @@
+import SwiftUI
+import WeatherCore
+
+/// "💧 40%" or "❄ 40%": a chance of precipitation that says what it's a chance of.
+struct PrecipChance: View {
+    let probability: Double?
+    let kind: PrecipitationKind
+    var font: Font = .caption
+
+    var body: some View {
+        if let probability, probability >= 10 {
+            HStack(spacing: 2) {
+                Image(systemName: kind.symbolName)
+                    .imageScale(.small)
+                Text(WeatherFormat.percent(probability))
+            }
+            .font(font)
+            .foregroundStyle(kind == .snow ? Color.cyan : Color.blue)
+            .accessibilityLabel("\(WeatherFormat.percent(probability)) chance of \(kind.noun)")
+        }
+    }
+}
+
+/// One labelled value in a detail list.
+private struct DetailRow: View {
+    let title: String
+    let value: String?
+    let systemImage: String
+
+    var body: some View {
+        if let value {
+            LabeledContent {
+                Text(value)
+            } label: {
+                Label(title, systemImage: systemImage)
+            }
+        }
+    }
+}
+
+private func chanceText(_ p: Double?, _ kind: PrecipitationKind) -> String? {
+    guard let p else { return nil }
+    return "\(WeatherFormat.percent(p)) chance of \(kind.noun)"
+}
+
+private func windText(_ speed: Double?, gusts: Double?, direction: Double?) -> String? {
+    guard let speed else { return nil }
+    var text = WeatherFormat.wind(speed)
+    if let dir = WeatherFormat.compass(direction) { text = "\(dir) \(text)" }
+    if let gusts, gusts >= speed + 10 { text += ", gusts \(WeatherFormat.wind(gusts))" }
+    return text
+}
+
+private func visibilityText(_ metres: Double?) -> String? {
+    guard let metres else { return nil }
+    let km = metres / 1000
+    return km >= 10 ? "\(Int(km.rounded())) km" : String(format: "%.1f km", km)
+}
+
+struct HourDetailView: View {
+    let hour: HourlyForecast
+    let timeZone: TimeZone
+
+    var body: some View {
+        List {
+            Section {
+                VStack(spacing: 6) {
+                    ConditionIcon(condition: hour.condition, isDay: hour.isDay)
+                        .font(.system(size: 44))
+                    Text(WeatherFormat.temperature(hour.temperature))
+                        .font(.system(size: 48, weight: .thin))
+                    Text(hour.condition.description)
+                        .font(.title3)
+                    if let feels = hour.feelsLike {
+                        Text("Feels like \(WeatherFormat.temperature(feels))")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+            }
+            Section {
+                DetailRow(title: "Precipitation", value: chanceText(hour.precipitationProbability, hour.precipitationKind),
+                          systemImage: hour.precipitationKind.symbolName)
+                DetailRow(title: "Amount", value: WeatherFormat.precipitationTotals(rainMm: hour.rain, snowCm: hour.snowfall),
+                          systemImage: "drop.triangle")
+                DetailRow(title: "Wind", value: windText(hour.windSpeed, gusts: hour.windGusts, direction: hour.windDirection),
+                          systemImage: "wind")
+                DetailRow(title: "Humidity", value: hour.humidity.map { WeatherFormat.percent($0) }, systemImage: "humidity")
+                DetailRow(title: "Dew point", value: hour.dewPoint.map { WeatherFormat.temperature($0) },
+                          systemImage: "thermometer.medium")
+                DetailRow(title: "UV index", value: WeatherFormat.uvLevel(hour.uvIndex), systemImage: "sun.max")
+                DetailRow(title: "Visibility", value: visibilityText(hour.visibility), systemImage: "eye")
+            }
+        }
+        .navigationTitle(hour.time.formatted(Date.FormatStyle(timeZone: timeZone).weekday(.wide).hour()))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct DayDetailView: View {
+    let day: DailyForecast
+    let hours: [HourlyForecast]
+    let timeZone: TimeZone
+
+    var body: some View {
+        List {
+            Section {
+                VStack(spacing: 6) {
+                    ConditionIcon(condition: day.condition)
+                        .font(.system(size: 44))
+                    Text("\(WeatherFormat.temperature(day.high)) / \(WeatherFormat.temperature(day.low))")
+                        .font(.system(size: 40, weight: .thin))
+                    Text(day.condition.description)
+                        .font(.title3)
+                    if let hi = day.feelsLikeHigh, let lo = day.feelsLikeLow {
+                        Text("Feels like \(WeatherFormat.temperature(hi)) / \(WeatherFormat.temperature(lo))")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+            }
+            Section {
+                DetailRow(title: "Precipitation", value: chanceText(day.precipitationProbability, day.precipitationKind),
+                          systemImage: day.precipitationKind.symbolName)
+                DetailRow(title: "Total", value: WeatherFormat.precipitationTotals(rainMm: day.rainSum, snowCm: day.snowfallSum),
+                          systemImage: "drop.triangle")
+                DetailRow(title: "Hours of precipitation",
+                          value: day.precipitationHours.flatMap { $0 > 0 ? "\(Int($0.rounded())) h" : nil },
+                          systemImage: "clock")
+                DetailRow(title: "Wind", value: windText(day.windSpeedMax, gusts: day.windGustsMax, direction: day.windDirectionDominant),
+                          systemImage: "wind")
+                DetailRow(title: "UV index", value: WeatherFormat.uvLevel(day.uvIndexMax), systemImage: "sun.max")
+                DetailRow(title: "Sunrise", value: day.sunrise.map { $0.formatted(Date.FormatStyle(time: .shortened, timeZone: timeZone)) },
+                          systemImage: "sunrise")
+                DetailRow(title: "Sunset", value: day.sunset.map { $0.formatted(Date.FormatStyle(time: .shortened, timeZone: timeZone)) },
+                          systemImage: "sunset")
+            }
+            if !hours.isEmpty {
+                Section("Hour by hour") {
+                    ForEach(hours) { hour in
+                        NavigationLink {
+                            HourDetailView(hour: hour, timeZone: timeZone)
+                        } label: {
+                            HStack {
+                                Text(hour.time, format: Date.FormatStyle(timeZone: timeZone).hour())
+                                    .frame(width: 56, alignment: .leading)
+                                ConditionIcon(condition: hour.condition, isDay: hour.isDay)
+                                    .frame(width: 28)
+                                PrecipChance(probability: hour.precipitationProbability, kind: hour.precipitationKind)
+                                Spacer()
+                                Text(WeatherFormat.temperature(hour.temperature))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle(day.date.formatted(Date.FormatStyle(timeZone: timeZone).weekday(.wide).month().day()))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// Full credits, one tap away from the main screen.
+struct SourcesView: View {
+    let forecast: Forecast
+    let hasAlerts: Bool
+    let isSavedPlace: Bool
+
+    var body: some View {
+        List {
+            Section {
+                Link("Forecast: Open-Meteo.com (CC BY 4.0)", destination: URL(string: "https://open-meteo.com/")!)
+                if forecast.observation != nil || hasAlerts || forecast.radar != nil {
+                    Link("Observations, radar and alerts: Environment and Climate Change Canada",
+                         destination: URL(string: "https://weather.gc.ca/")!)
+                }
+                if forecast.observation?.dataProvider == "ON-MTO" {
+                    Text("Road weather station: Ontario Ministry of Transportation")
+                }
+                if isSavedPlace {
+                    Link("Place search: Open-Meteo and GeoNames (CC BY 4.0), Apple Maps",
+                         destination: URL(string: "https://www.geonames.org/")!)
+                }
+            } footer: {
+                Text("Updated \(forecast.fetchedAt.formatted(date: .omitted, time: .shortened))")
+            }
+            if let o = forecast.observation {
+                Section("Right now") {
+                    LabeledContent("Station", value: o.stationName)
+                    if let km = o.distanceKm { LabeledContent("Distance", value: "\(Int(km.rounded())) km") }
+                    LabeledContent("Observed", value: o.observedAt.formatted(Date.FormatStyle(time: .shortened, timeZone: forecast.timeZone)))
+                    if let sky = o.skyStationName { LabeledContent("Sky from", value: sky) }
+                    if let radar = forecast.radar {
+                        LabeledContent("Radar scan", value: radar.time.formatted(Date.FormatStyle(time: .shortened, timeZone: forecast.timeZone)))
+                    }
+                }
+            }
+        }
+        .navigationTitle("Sources")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}

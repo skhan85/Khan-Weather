@@ -92,6 +92,14 @@ private struct ForecastList: View {
     let attribution: String
     let usingFallbackLocation: Bool
 
+    /// Short credit line; the full credits are one tap away.
+    private var sourceNames: String {
+        var names = ["Open-Meteo"]
+        if forecast.observation != nil || !alerts.isEmpty || forecast.radar != nil { names.append("Environment Canada") }
+        if forecast.observation?.dataProvider == "ON-MTO" { names.append("Ontario MTO") }
+        return "Sources: " + names.joined(separator: ", ")
+    }
+
     var body: some View {
         List {
             if usingFallbackLocation {
@@ -122,20 +130,22 @@ private struct ForecastList: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 18) {
                         ForEach(forecast.upcomingHours()) { hour in
-                            VStack(spacing: 6) {
-                                Text(hour.time, format: Date.FormatStyle(timeZone: forecast.timeZone).hour())
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                ConditionIcon(condition: hour.condition, isDay: hour.isDay)
-                                    .frame(height: 22)
-                                Text(WeatherFormat.temperature(hour.temperature))
-                                    .font(.headline)
-                                if let pop = hour.precipitationProbability, pop >= 10 {
-                                    Text(WeatherFormat.percent(pop))
-                                        .font(.caption2)
-                                        .foregroundStyle(.blue)
+                            NavigationLink {
+                                HourDetailView(hour: hour, timeZone: forecast.timeZone)
+                            } label: {
+                                VStack(spacing: 6) {
+                                    Text(hour.time, format: Date.FormatStyle(timeZone: forecast.timeZone).hour())
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    ConditionIcon(condition: hour.condition, isDay: hour.isDay)
+                                        .frame(height: 22)
+                                    Text(WeatherFormat.temperature(hour.temperature))
+                                        .font(.headline)
+                                    PrecipChance(probability: hour.precipitationProbability,
+                                                 kind: hour.precipitationKind, font: .caption2)
                                 }
                             }
+                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.vertical, 4)
@@ -146,17 +156,16 @@ private struct ForecastList: View {
 
             Section("\(forecast.daily.count)-day forecast") {
                 ForEach(forecast.daily) { day in
+                    NavigationLink {
+                        DayDetailView(day: day, hours: forecast.hours(on: day), timeZone: forecast.timeZone)
+                    } label: {
                     HStack {
                         Text(day.date, format: Date.FormatStyle(timeZone: forecast.timeZone).weekday(.abbreviated))
                             .frame(width: 48, alignment: .leading)
                         ConditionIcon(condition: day.condition)
                             .frame(width: 32)
                         VStack(alignment: .leading, spacing: 0) {
-                            if let pop = day.precipitationProbability, pop >= 10 {
-                                Text(WeatherFormat.percent(pop))
-                                    .font(.caption)
-                                    .foregroundStyle(.blue)
-                            }
+                            PrecipChance(probability: day.precipitationProbability, kind: day.precipitationKind)
                             if let totals = WeatherFormat.precipitationTotals(rainMm: day.rainSum, snowCm: day.snowfallSum) {
                                 Text(totals)
                                     .font(.caption2)
@@ -169,35 +178,22 @@ private struct ForecastList: View {
                         Text(WeatherFormat.temperature(day.high))
                             .frame(width: 44, alignment: .trailing)
                     }
+                    }
                 }
             }
 
             Section {
-                Link(attribution, destination: URL(string: "https://open-meteo.com/")!)
-                    .font(.footnote)
-                if forecast.observation != nil || !alerts.isEmpty {
-                    Link("Observations and alerts: Environment and Climate Change Canada",
-                         destination: URL(string: "https://weather.gc.ca/")!)
-                        .font(.footnote)
+                NavigationLink {
+                    SourcesView(forecast: forecast, hasAlerts: !alerts.isEmpty, isSavedPlace: isSavedPlace)
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(sourceNames)
+                            .font(.footnote)
+                        Text("Updated \(forecast.fetchedAt.formatted(date: .omitted, time: .shortened))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                if let radar = forecast.radar {
-                    Text("Precipitation now from Environment Canada radar, \(radar.time.formatted(date: .omitted, time: .shortened))")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                if forecast.observation?.dataProvider == "ON-MTO" {
-                    Text("Road weather station: Ontario Ministry of Transportation")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                if isSavedPlace {
-                    Link("Place search: Open-Meteo / GeoNames (CC BY 4.0)",
-                         destination: URL(string: "https://www.geonames.org/")!)
-                        .font(.footnote)
-                }
-                Text("Updated \(forecast.fetchedAt.formatted(date: .omitted, time: .shortened))")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -265,7 +261,6 @@ struct CurrentConditionsView: View {
         let time = o.observedAt.formatted(Date.FormatStyle(time: .shortened, timeZone: timeZone))
         var text = "Observed \(time) at \(o.stationName)\(distance(o, from: place))"
         text += "."
-        if let sky = o.skyStationName { text += " Sky from \(sky)." }
         return text
     }
 }
