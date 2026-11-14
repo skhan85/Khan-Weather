@@ -228,9 +228,16 @@ struct KhanWeatherWidgetView: View {
                 IconBadge(condition: current.condition, isDay: current.isDay, size: 38)
             }
             Spacer(minLength: 0)
-            Text(temp(current.temperature))
-                .font(.system(size: 42, weight: .bold, design: .rounded))
-                .minimumScaleFactor(0.7)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(temp(current.temperature))
+                    .font(.system(size: 42, weight: .bold, design: .rounded))
+                    .layoutPriority(1)
+                Text("Feels \(temp(current.feelsLike))")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .lineLimit(1)
+            }
+            .minimumScaleFactor(0.7)
             Text(entry.nowcast ?? current.condition.description)
                 .font(.caption.weight(.semibold))
                 .lineLimit(1)
