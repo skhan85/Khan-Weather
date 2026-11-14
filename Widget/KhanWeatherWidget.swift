@@ -60,12 +60,7 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
 
     /// The next 6 hours, with the first showing the same "now" as the app.
     private static func hoursStartingNow(_ forecast: Forecast) -> [HourlyForecast] {
-        var hours = forecast.upcomingHours(count: 6)
-        if !hours.isEmpty {
-            hours[0].temperature = forecast.current.temperature
-            hours[0].condition = forecast.current.condition
-        }
-        return hours
+        forecast.hoursStartingNow(count: 6)
     }
 
     private func loadEntry() async -> WeatherEntry {

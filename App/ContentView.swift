@@ -164,12 +164,7 @@ private struct ForecastList: View {
     /// The next hours, with "Now" showing the same temperature as the Now card
     /// (which may come from a nearby station rather than the forecast model).
     private var hoursStartingNow: [HourlyForecast] {
-        var hours = forecast.upcomingHours(count: hourlyCount)
-        if !hours.isEmpty {
-            hours[0].temperature = forecast.current.temperature
-            hours[0].condition = forecast.current.condition
-        }
-        return hours
+        forecast.hoursStartingNow(count: hourlyCount)
     }
 
     private var weekLow: Double { forecast.daily.map(\.low).min() ?? 0 }
