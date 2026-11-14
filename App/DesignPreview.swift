@@ -25,6 +25,8 @@ struct DesignPreview: View {
                     .frame(width: 338, height: 158)
                 widget(.clear, isDay: false, family: .systemMedium)
                     .frame(width: 338, height: 158)
+                widget(.partlyCloudy, isDay: true, family: .systemLarge)
+                    .frame(width: 338, height: 354)
 
                 Text("Icons on dark").font(.headline)
                 iconGrid.padding().background(SkyBackground(condition: .clear, isDay: false))
@@ -71,7 +73,7 @@ struct DesignPreview: View {
                                        condition: condition, isDay: isDay),
             high: entry.high, low: entry.low, placeName: "Milton", error: nil,
             alert: condition == .thunderstorm ? "Severe thunderstorm warning" : nil,
-            hours: entry.hours)
+            hours: entry.hours, days: entry.days)
         return KhanWeatherWidgetView(entry: entry, family: family)
             .padding(16)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
