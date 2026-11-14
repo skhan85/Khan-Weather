@@ -2,27 +2,35 @@ import Foundation
 
 /// Khan Weather's own temperature forecast: a weighted average of several models.
 ///
-/// For the next day or two the high-resolution models (Environment Canada's HRDPS at 2.5 km and
-/// NOAA's HRRR at 3 km) count most, because they resolve the lake, the escarpment and local
-/// winds. Further out they stop, and the global models take over with ECMWF, usually the most
-/// accurate, counting most. Weights shift gradually between 36 and 60 hours so the curve
-/// doesn't jump. A model with no value for an hour (out of range or out of its area) is skipped.
+/// The weights come from scoring 12 months of archived forecasts (Nov 2025 to Oct 2026) against
+/// hourly readings at Toronto Pearson and Hamilton Airport (tools/score_models.py), fitted for the
+/// lowest error on held-out days. Each row is one forecast day; hours in between are interpolated
+/// so the curve doesn't jump. What the scoring found:
+/// - Today (first 24 h): NOAA's HRRR/GFS, which update every hour, are far ahead.
+/// - Tomorrow: ICON, UKMO and the Canadian models count most.
+/// - Days 3 to 5: GFS leads, with ECMWF, ICON and UKMO close behind.
+/// - Day 6 on: ECMWF leads.
+/// A model with no value for an hour (out of range or out of its area) is skipped.
 public enum ModelBlend {
     public static let members: [WeatherModel] = [
         .canadaHighRes, .usHighRes, .canada, .europe, .germany, .uk, .us,
     ]
 
-    static let shortRange: [WeatherModel: Double] = [
-        .canadaHighRes: 3, .usHighRes: 2.5, .canada: 1.5, .europe: 1.5, .germany: 1, .uk: 1, .us: 0.5,
-    ]
-    static let longRange: [WeatherModel: Double] = [
-        .europe: 3, .canada: 2, .germany: 1.5, .uk: 1.5, .us: 1, .canadaHighRes: 1, .usHighRes: 1,
+    /// Weights by forecast day, centred at lead hours 12, 36, 60, 84, 108 and 132.
+    static let byDay: [[WeatherModel: Double]] = [
+        [.usHighRes: 0.45, .us: 0.32, .germany: 0.12, .uk: 0.08, .europe: 0.03],
+        [.germany: 0.27, .uk: 0.21, .canadaHighRes: 0.15, .europe: 0.15, .canada: 0.13, .usHighRes: 0.05, .us: 0.05],
+        [.us: 0.27, .germany: 0.25, .uk: 0.18, .europe: 0.17, .canada: 0.13],
+        [.us: 0.31, .europe: 0.20, .germany: 0.19, .uk: 0.16, .canada: 0.14],
+        [.us: 0.33, .europe: 0.19, .uk: 0.18, .germany: 0.16, .canada: 0.14],
+        [.europe: 0.34, .us: 0.26, .canada: 0.15, .uk: 0.15, .germany: 0.10],
     ]
 
     /// The weight of `model` at `leadHours` from now.
     static func weight(_ model: WeatherModel, leadHours: Double) -> Double {
-        let f = min(max((leadHours - 36) / 24, 0), 1)   // 0 up to 36 h, 1 from 60 h
-        return (shortRange[model] ?? 0) * (1 - f) + (longRange[model] ?? 0) * f
+        let x = min(max((leadHours - 12) / 24, 0), Double(byDay.count - 1))
+        let i = Int(x), j = min(i + 1, byDay.count - 1), f = x - Double(i)
+        return (byDay[i][model] ?? 0) * (1 - f) + (byDay[j][model] ?? 0) * f
     }
 
     /// Weighted average of the models that have a value; nil if none do.

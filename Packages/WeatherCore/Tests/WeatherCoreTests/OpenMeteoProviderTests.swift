@@ -112,9 +112,9 @@ final class OpenMeteoProviderTests: XCTestCase {
         let blend = """
         {
           "hourly": { "time": [1762952400, 1762956000],
-                      "temperature_2m_gem_hrdps_continental": [-5.0, null],
+                      "temperature_2m_gfs_hrrr": [-5.0, null],
                       "temperature_2m_ecmwf_ifs025": [-3.0, null],
-                      "apparent_temperature_gem_hrdps_continental": [-9.0, null] }
+                      "apparent_temperature_gfs_hrrr": [-9.0, null] }
         }
         """.data(using: .utf8)!
         let provider = OpenMeteoProvider(loader: { request in
@@ -123,8 +123,8 @@ final class OpenMeteoProviderTests: XCTestCase {
                     HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
         })
         let forecast = try await provider.forecast(for: .fallback)
-        // Hours already past use the short-range weights: HRDPS 3, ECMWF 1.5.
-        let expected: Double = (-15.0 - 4.5) / 4.5
+        // Hours already past use the first day's weights: HRRR 0.45, ECMWF 0.03.
+        let expected: Double = (-5.0 * 0.45 - 3.0 * 0.03) / 0.48
         XCTAssertEqual(forecast.hourly[0].temperature, expected, accuracy: 0.001)
         XCTAssertEqual(forecast.hourly[0].feelsLike, -9.0)
         XCTAssertEqual(forecast.hourly[1].temperature, -2.4, "keeps the default where no model has a value")
@@ -132,11 +132,13 @@ final class OpenMeteoProviderTests: XCTestCase {
     }
 
     func testBlendWeightsShiftWithLeadTime() throws {
-        let values: [WeatherModel: Double] = [.canadaHighRes: 0, .europe: 10]
-        let short: Double = 15.0 / 4.5
-        let long: Double = 30.0 / 4.0
-        XCTAssertEqual(try XCTUnwrap(ModelBlend.blend(values, leadHours: 6)), short, accuracy: 0.001)
-        XCTAssertEqual(try XCTUnwrap(ModelBlend.blend(values, leadHours: 100)), long, accuracy: 0.001)
+        let values: [WeatherModel: Double] = [.us: 0, .europe: 10]
+        let today: Double = 0.3 / 0.35                      // GFS 0.32, ECMWF 0.03
+        let day6: Double = 3.4 / 0.6                        // GFS 0.26, ECMWF 0.34
+        let between: Double = 10 * 0.185 / (0.185 + 0.29)   // halfway between days 3 and 4 at 72 h
+        XCTAssertEqual(try XCTUnwrap(ModelBlend.blend(values, leadHours: 6)), today, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(ModelBlend.blend(values, leadHours: 200)), day6, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(ModelBlend.blend(values, leadHours: 72)), between, accuracy: 0.001)
         XCTAssertNil(ModelBlend.blend([:], leadHours: 6))
         XCTAssertNil(ModelBlend.blend([.bestMatch: 5], leadHours: 6), "best match isn't part of the blend")
     }
