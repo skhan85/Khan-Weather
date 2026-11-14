@@ -20,8 +20,6 @@ final class WeatherViewModel: ObservableObject {
     @Published private(set) var alerts: [WeatherAlert] = []
     /// Air quality and pollen at the forecast spot; nil if the service didn't answer.
     @Published private(set) var airQuality: AirQuality?
-    /// Environment Canada's written forecast, in Canada.
-    @Published private(set) var textForecast: TextForecast?
 
     let provider: ForecastProvider
     let observations: ObservationProvider
@@ -52,7 +50,6 @@ final class WeatherViewModel: ObservableObject {
         var name: String?
         var alerts: [WeatherAlert]
         var airQuality: AirQuality?
-        var textForecast: TextForecast? = nil
         var at: Date
     }
     private var cache: [UUID?: Snapshot] = [:]
@@ -75,13 +72,11 @@ final class WeatherViewModel: ObservableObject {
                 placeName = snap.name
                 alerts = snap.alerts
                 airQuality = snap.airQuality
-                textForecast = snap.textForecast
             } else {
                 state = .loading
                 placeName = place?.name
                 alerts = []
                 airQuality = nil
-                textForecast = nil
             }
         }
         let target: Coordinate
@@ -104,7 +99,6 @@ final class WeatherViewModel: ObservableObject {
         let radarTask = Task { try? await ECCCRadarProvider().now(at: target) }
         let alertsTask = Task { try? await alertProvider.alerts(near: target) }
         let airTask = Task { try? await AirQualityProvider().airQuality(at: target) }
-        let textTask = Task { try? await TextForecastProvider().forecast(near: target) }
 
         let base: Forecast
         do {
@@ -137,10 +131,6 @@ final class WeatherViewModel: ObservableObject {
                 self.airQuality = fresh
             }
             group.addTask { @MainActor in
-                guard let fresh = await textTask.value, gen == self.generation else { return }
-                self.textForecast = fresh
-            }
-            group.addTask { @MainActor in
                 let observed = await observedTask.value ?? nil
                 let radar = await radarTask.value ?? nil
                 guard gen == self.generation else { return }
@@ -148,8 +138,7 @@ final class WeatherViewModel: ObservableObject {
             }
         }
         guard gen == generation, case .loaded(let shown) = state else { return }
-        cache[key] = Snapshot(forecast: shown, name: placeName, alerts: alerts, airQuality: airQuality,
-                              textForecast: textForecast, at: Date())
+        cache[key] = Snapshot(forecast: shown, name: placeName, alerts: alerts, airQuality: airQuality, at: Date())
     }
 
     /// Fetches saved places in the background so the first switch to each one is instant.
@@ -163,11 +152,10 @@ final class WeatherViewModel: ObservableObject {
             async let radar = try? ECCCRadarProvider().now(at: target)
             async let fetchedAlerts = try? alertProvider.alerts(near: target)
             async let air = try? AirQualityProvider().airQuality(at: target)
-            async let text = try? TextForecastProvider().forecast(near: target)
             guard let base = await forecast else { continue }
             let full = base.applying(await observed ?? nil).applyingRadar(await radar ?? nil)
             let snap = Snapshot(forecast: full, name: place.name, alerts: await fetchedAlerts ?? [],
-                                airQuality: await air, textForecast: await text ?? nil, at: Date())
+                                airQuality: await air, at: Date())
             // Don't overwrite a fresher entry from a refresh that ran meanwhile.
             if let existing = cache[place.id], existing.at > snap.at { continue }
             cache[place.id] = snap
