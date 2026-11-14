@@ -17,7 +17,7 @@ struct KhanWeatherApp: App {
         }
         .backgroundTask(.appRefresh(AlertNotifier.taskID)) {
             AlertNotifier.schedule()
-            await AlertNotifier.check()
+            await AlertNotifier.checkAll()
         }
     }
 }

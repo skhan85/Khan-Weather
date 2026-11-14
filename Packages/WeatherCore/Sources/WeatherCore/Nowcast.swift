@@ -114,3 +114,29 @@ public extension WeatherFormat {
         String(format: "%.1f in", max(0.1, (value * 10).rounded() / 10))
     }
 }
+
+/// When a "rain starting soon" notification is worth sending.
+public enum RainHeadsUp {
+    /// iOS may wait up to an hour between background checks, so look a bit further ahead than "now".
+    public static let lookAhead = 60
+    /// One heads-up per wet spell: stay quiet this long after the last one.
+    public static let quietPeriod: TimeInterval = 3 * 3600
+
+    /// The nowcast to announce, or nil when it's dry, already wet, too far off, or we just told them.
+    public static func shouldNotify(_ nowcast: Nowcast?, lastNotified: Date?, now: Date = Date()) -> Nowcast? {
+        guard let nowcast, case .starting(let minutes) = nowcast.change, minutes <= lookAhead else { return nil }
+        if let lastNotified, now.timeIntervalSince(lastNotified) < quietPeriod { return nil }
+        return nowcast
+    }
+
+    /// "Rain starting in about 25 min" plus the time, e.g. "around 3:40 PM".
+    public static func body(_ nowcast: Nowcast, at now: Date = Date(), timeZone: TimeZone) -> String {
+        guard case .starting(let minutes) = nowcast.change else { return nowcast.text + "." }
+        let start = now.addingTimeInterval(Double(minutes) * 60)
+        let f = DateFormatter()
+        f.timeZone = timeZone
+        f.timeStyle = .short
+        f.dateStyle = .none
+        return "\(nowcast.text), around \(f.string(from: start))."
+    }
+}

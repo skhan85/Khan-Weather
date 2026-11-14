@@ -11,17 +11,20 @@ enum AlertNotifier {
     static let taskID = "com.skhan85.KhanWeather.alerts"
     static let enabledKey = "alertNotifications"
     static let advisoriesKey = "alertNotificationsAdvisories"
+    static let rainKey = "rainNotifications"
+    private static let lastRainKey = "lastRainNotification"
     private static let lastLocationKey = "lastCurrentLocation"
     private static let notifiedKey = "notifiedAlertIDs"
 
     private static var defaults: UserDefaults { .standard }
     static var isEnabled: Bool { defaults.bool(forKey: enabledKey) }
+    static var rainEnabled: Bool { defaults.bool(forKey: rainKey) }
 
     // MARK: Scheduling
 
     /// Asks iOS for the next background check. iOS decides the actual time.
     static func schedule() {
-        guard isEnabled else { return }
+        guard isEnabled || rainEnabled else { return }
         let request = BGAppRefreshTaskRequest(identifier: taskID)
         request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
         try? BGTaskScheduler.shared.submit(request)
@@ -39,11 +42,14 @@ enum AlertNotifier {
         defaults.set([c.latitude, c.longitude], forKey: lastLocationKey)
     }
 
+    private static var lastLocation: Coordinate? {
+        guard let a = defaults.array(forKey: lastLocationKey) as? [Double], a.count == 2 else { return nil }
+        return Coordinate(latitude: a[0], longitude: a[1])
+    }
+
     private static func places() -> [(name: String, coordinate: Coordinate)] {
         var list: [(String, Coordinate)] = []
-        if let a = defaults.array(forKey: lastLocationKey) as? [Double], a.count == 2 {
-            list.append(("your location", Coordinate(latitude: a[0], longitude: a[1])))
-        }
+        if let here = lastLocation { list.append(("your location", here)) }
         if let data = defaults.data(forKey: "savedPlaces"),
            let saved = try? JSONDecoder().decode([SavedPlace].self, from: data) {
             list += saved.map { ($0.name, $0.coordinate) }
@@ -77,6 +83,13 @@ enum AlertNotifier {
         }
     }
 
+    /// Everything a background wake should do.
+    static func checkAll() async {
+        async let alerts: Void = check()
+        async let rain: Void = checkRain()
+        _ = await (alerts, rain)
+    }
+
     static func check(provider: AlertProvider = WorldAlertProvider()) async {
         guard isEnabled else { return }
         let includeAdvisories = defaults.bool(forKey: advisoriesKey)
@@ -100,5 +113,30 @@ enum AlertNotifier {
         content.threadIdentifier = place
         let request = UNNotificationRequest(identifier: a.id, content: content, trigger: nil)
         try? await UNUserNotificationCenter.current().add(request)
+    }
+
+    // MARK: Rain and snow starting soon
+
+    /// Looks at the next two hours at the last known location and posts a heads-up when rain
+    /// or snow is about to start. One per wet spell.
+    static func checkRain(provider: OpenMeteoProvider = OpenMeteoProvider()) async {
+        guard rainEnabled, let here = lastLocation,
+              let forecast = try? await provider.forecast(for: here) else { return }
+        let last = defaults.object(forKey: lastRainKey) as? Date
+        guard let nowcast = RainHeadsUp.shouldNotify(forecast.nowcast(), lastNotified: last) else { return }
+        defaults.set(Date(), forKey: lastRainKey)
+        let content = UNMutableNotificationContent()
+        content.title = nowcast.kind == .snow ? "Snow on the way" : "Rain on the way"
+        content.body = RainHeadsUp.body(nowcast, timeZone: forecast.timeZone)
+        content.sound = .default
+        content.threadIdentifier = "rain"
+        let request = UNNotificationRequest(identifier: "rain-\(Int(Date().timeIntervalSince1970))", content: content, trigger: nil)
+        try? await UNUserNotificationCenter.current().add(request)
+    }
+
+    /// Opening the app shows the same "rain starting" line, so don't repeat it as a notification.
+    static func markRainSeen(_ nowcast: Nowcast?) {
+        guard let nowcast, case .starting = nowcast.change else { return }
+        defaults.set(Date(), forKey: lastRainKey)
     }
 }

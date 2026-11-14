@@ -45,6 +45,7 @@ enum DisplaySettings {
     static let mainTemperatureKey = "mainTemperature"
     static let hourlyCountKey = "hourlyCount"
     static let showDetailsKey = "showTodayDetails"
+    static let showAirQualityKey = "showAirQuality"
 
     static var clock: ClockStyle {
         UserDefaults.standard.string(forKey: clockKey).flatMap(ClockStyle.init) ?? .automatic

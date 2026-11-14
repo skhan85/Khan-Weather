@@ -18,6 +18,7 @@ struct ContentView: View {
     @AppStorage(DisplaySettings.mainTemperatureKey) private var mainTemperature = MainTemperature.actual.rawValue
     @AppStorage(DisplaySettings.hourlyCountKey) private var hourlyCount = 24
     @AppStorage(DisplaySettings.showDetailsKey) private var showDetails = true
+    @AppStorage(DisplaySettings.showAirQualityKey) private var showAirQuality = true
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -41,12 +42,13 @@ struct ContentView: View {
                 case .loaded(let forecast):
                     ForecastList(forecast: forecast,
                                  alerts: model.alerts,
+                                 airQuality: model.airQuality,
                                  placeName: model.placeName,
                                  isSavedPlace: places.selected != nil,
                                  attribution: model.provider.attribution,
                                  usingFallbackLocation: model.usingFallbackLocation)
                         .id([temperatureUnit, windUnit, precipitationUnit, pressureUnit, distanceUnit, clock,
-                             mainTemperature, String(hourlyCount), String(showDetails)].joined(separator: "-"))
+                             mainTemperature, String(hourlyCount), String(showDetails), String(showAirQuality)].joined(separator: "-"))
                         .refreshable { await reload() }
                         .transition(.opacity)
                 }
@@ -130,19 +132,24 @@ struct ContentView: View {
         model.onCurrentLocation = { AlertNotifier.rememberCurrentLocation($0) }
         await model.refresh(place: places.selected)
         AlertNotifier.markSeen(model.alerts)
+        if places.selected == nil, case .loaded(let f) = model.state { AlertNotifier.markRainSeen(f.nowcast()) }
         WidgetCenter.shared.reloadAllTimelines()
+        // Warm up the saved places so the first switch to one is quick.
+        Task { await model.prefetch(places.places) }
     }
 }
 
 private struct ForecastList: View {
     let forecast: Forecast
     let alerts: [WeatherAlert]
+    let airQuality: AirQuality?
     let placeName: String?
     let isSavedPlace: Bool
     let attribution: String
     let usingFallbackLocation: Bool
     @AppStorage(DisplaySettings.hourlyCountKey) private var hourlyCount = 24
     @AppStorage(DisplaySettings.showDetailsKey) private var showDetails = true
+    @AppStorage(DisplaySettings.showAirQualityKey) private var showAirQuality = true
 
     /// Environment Canada's mosaic covers Canada and the northern US.
     static func radarCovers(_ c: Coordinate) -> Bool {
@@ -224,6 +231,15 @@ private struct ForecastList: View {
                     TodayDetailsView(forecast: forecast)
                 } header: {
                     SkySectionHeader(title: "Today", systemImage: "sun.horizon")
+                }
+                .glassRow()
+            }
+
+            if showAirQuality, let airQuality, airQuality.usAQI != nil {
+                Section {
+                    AirQualityView(air: airQuality)
+                } header: {
+                    SkySectionHeader(title: "Air quality", systemImage: "aqi.medium")
                 }
                 .glassRow()
             }
