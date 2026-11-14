@@ -140,11 +140,11 @@ struct KhanWeatherWidgetView: View {
     }
 
     private var hourly: some View {
-        HStack(spacing: 0) {
-            ForEach(entry.hours.prefix(5)) { hour in
+        HStack(spacing: 6) {
+            ForEach(entry.hours.prefix(4)) { hour in
                 VStack(spacing: 6) {
                     Text(hour.time, format: Date.FormatStyle(timeZone: entry.timeZone).hour())
-                        .font(.caption.weight(.semibold))
+                        .font(.caption2.weight(.semibold))
                         .foregroundStyle(.white.opacity(0.88))
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
