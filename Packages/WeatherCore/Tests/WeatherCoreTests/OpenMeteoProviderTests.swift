@@ -124,16 +124,19 @@ final class OpenMeteoProviderTests: XCTestCase {
         })
         let forecast = try await provider.forecast(for: .fallback)
         // Hours already past use the short-range weights: HRDPS 3, ECMWF 1.5.
-        XCTAssertEqual(forecast.hourly[0].temperature, (-5.0 * 3 + -3.0 * 1.5) / 4.5, accuracy: 0.001)
+        let expected: Double = (-15.0 - 4.5) / 4.5
+        XCTAssertEqual(forecast.hourly[0].temperature, expected, accuracy: 0.001)
         XCTAssertEqual(forecast.hourly[0].feelsLike, -9.0)
         XCTAssertEqual(forecast.hourly[1].temperature, -2.4, "keeps the default where no model has a value")
         XCTAssertEqual(forecast.daily[0].high, 1.2, "a day the blend doesn't fully cover keeps its own high")
     }
 
-    func testBlendWeightsShiftWithLeadTime() {
+    func testBlendWeightsShiftWithLeadTime() throws {
         let values: [WeatherModel: Double] = [.canadaHighRes: 0, .europe: 10]
-        XCTAssertEqual(ModelBlend.blend(values, leadHours: 6)!, 10 * 1.5 / 4.5, accuracy: 0.001)
-        XCTAssertEqual(ModelBlend.blend(values, leadHours: 100)!, 10 * 3 / 4, accuracy: 0.001)
+        let short: Double = 15.0 / 4.5
+        let long: Double = 30.0 / 4.0
+        XCTAssertEqual(try XCTUnwrap(ModelBlend.blend(values, leadHours: 6)), short, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(ModelBlend.blend(values, leadHours: 100)), long, accuracy: 0.001)
         XCTAssertNil(ModelBlend.blend([:], leadHours: 6))
         XCTAssertNil(ModelBlend.blend([.bestMatch: 5], leadHours: 6), "best match isn't part of the blend")
     }

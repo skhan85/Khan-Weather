@@ -18,7 +18,9 @@ final class ModelComparisonTests: XCTestCase {
         let blend = days.filter { $0.model == .blend }
         XCTAssertEqual(blend.count, 2)
         // Day 1 (short range): GEM 1.5, ECMWF 1.5, ICON 1, GFS 0.5.
-        XCTAssertEqual(blend[0].high!, (2.9 * 1.5 + 3.5 * 1.5 + 3.1 * 1 + 4.0 * 0.5) / 4.5, accuracy: 0.001)
+        let weighted: Double = 2.9 * 1.5 + 3.5 * 1.5 + 3.1 + 4.0 * 0.5
+        let expected: Double = weighted / 4.5
+        XCTAssertEqual(try XCTUnwrap(blend[0].high), expected, accuracy: 0.001)
         let gemDay2 = try XCTUnwrap(days.first { $0.model == .canada && $0.date.timeIntervalSince1970 == 1794632400 })
         XCTAssertEqual(gemDay2.high, 5.5)
         XCTAssertEqual(gemDay2.rainMm, 6)
