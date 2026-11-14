@@ -154,6 +154,20 @@ jobs:
           shoot "iPad Pro 13-inch (M4)" ipad
           ls -l shots
 
+      # Also put them on the ci-screenshots branch, so they can be viewed on GitHub
+      # (and fetched with git) without downloading a zip.
+      - name: Publish screenshots to the ci-screenshots branch
+        if: always()
+        run: |
+          [ -n "$(ls shots 2>/dev/null)" ] || exit 0
+          cd shots
+          git init -q -b ci-screenshots
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A
+          git commit -qm "Screenshots for ${{ github.sha }}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-screenshots
+
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
