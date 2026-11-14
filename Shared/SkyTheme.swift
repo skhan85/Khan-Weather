@@ -191,6 +191,8 @@ extension View {
             .background { SkyBackground(condition: condition, isDay: isDay).ignoresSafeArea() }
             .environment(\.colorScheme, .dark)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            // Keep the bar see-through even when scrolled; the system's light bar hides the white title.
+            .toolbarBackground(.hidden, for: .navigationBar)
     }
 }
 

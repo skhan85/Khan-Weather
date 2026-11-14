@@ -338,7 +338,25 @@ public extension Forecast {
         c.time = o.observedAt
         copy.current = c
         copy.hourly = nudged(toward: o.temperature, at: o.observedAt)
+        copy.daily = copy.dailyIncluding(c, at: o.observedAt)
         return copy
+    }
+
+    /// Today's high and low widened to take in the reading and the eased hours, so the day never
+    /// says 5° while it's 7° out.
+    func dailyIncluding(_ now: CurrentConditions, at time: Date) -> [DailyForecast] {
+        daily.map { day in
+            let hours = self.hours(on: day)
+            guard hours.contains(where: { abs($0.time.timeIntervalSince(time)) < 3600 }) else { return day }
+            var d = day
+            let temps = hours.map(\.temperature) + [now.temperature]
+            d.high = max(d.high, temps.max()!)
+            d.low = min(d.low, temps.min()!)
+            let feels = hours.compactMap(\.feelsLike) + [now.feelsLike]
+            d.feelsLikeHigh = d.feelsLikeHigh.map { max($0, feels.max()!) }
+            d.feelsLikeLow = d.feelsLikeLow.map { min($0, feels.min()!) }
+            return d
+        }
     }
 
     /// How long a station reading keeps pulling the forecast toward it.

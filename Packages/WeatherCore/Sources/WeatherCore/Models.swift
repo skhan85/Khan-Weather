@@ -355,7 +355,12 @@ public extension Forecast {
             let hours = self.hours(on: day)
             guard d.condition.isPrecipitation || d.condition == .thunderstorm || d.condition == .thunderstormHail,
                   !hours.isEmpty else { return d }
-            if (d.precipitationProbability ?? 100) < Self.headlineChance {
+            // A low chance only means a dry day when the models also expect little: 2 mm over
+            // 7 hours is a wet day whatever the probability says.
+            let wetHours = hours.filter { ($0.precipitation ?? 0) >= 0.1 }.count
+            let total = (d.rainSum ?? 0) + (d.snowfallSum ?? 0) * 0.7
+            let substantial = total >= 1 || wetHours >= 3
+            if (d.precipitationProbability ?? 100) < Self.headlineChance, !substantial {
                 d.condition = Self.dryHeadline(hours)
                 return d
             }
