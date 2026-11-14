@@ -127,6 +127,12 @@ final class OpenMeteoProviderTests: XCTestCase {
         let expected: Double = (-15.0 - 4.5) / 4.5
         XCTAssertEqual(forecast.hourly[0].temperature, expected, accuracy: 0.001)
         XCTAssertEqual(forecast.hourly[0].feelsLike, -9.0)
+        XCTAssertEqual(forecast.hourly[0].modelLow, -5.0)
+        XCTAssertEqual(forecast.hourly[0].modelHigh, -3.0)
+        XCTAssertEqual(forecast.hourly[0].modelCount, 2)
+        XCTAssertEqual(forecast.hourly[0].modelsFreezing, 2)
+        XCTAssertEqual(forecast.daily[0].modelSpread, 2.0)
+        XCTAssertEqual(forecast.daily[0].confidence, .sure)
         XCTAssertEqual(forecast.hourly[1].temperature, -2.4, "keeps the default where no model has a value")
         XCTAssertEqual(forecast.daily[0].high, 1.2, "a day the blend doesn't fully cover keeps its own high")
     }

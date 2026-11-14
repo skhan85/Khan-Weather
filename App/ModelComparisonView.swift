@@ -77,6 +77,15 @@ struct ModelComparisonView: View {
             }
             Section {
                 NavigationLink {
+                    ModelGridView(location: location, timeZone: timeZone)
+                } label: {
+                    Label {
+                        Text("All models, all 10 days").font(.subheadline.weight(.semibold))
+                    } icon: {
+                        Image(systemName: "square.grid.3x3").foregroundStyle(Brand.gold)
+                    }
+                }
+                NavigationLink {
                     AccuracyView()
                 } label: {
                     Label {

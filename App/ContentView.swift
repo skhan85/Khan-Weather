@@ -219,6 +219,15 @@ private struct ForecastList: View {
                                  current: index == 0 ? forecast.current.temperature : nil)
                     }
                 }
+                NavigationLink {
+                    ModelGridView(location: forecast.location, timeZone: forecast.timeZone)
+                } label: {
+                    Label {
+                        Text("Compare all models").font(.subheadline.weight(.semibold))
+                    } icon: {
+                        Image(systemName: "square.grid.3x3").foregroundStyle(Brand.gold)
+                    }
+                }
             } header: {
                 SkySectionHeader(title: "\(forecast.daily.count)-day forecast", systemImage: "calendar")
             }
@@ -341,6 +350,9 @@ private struct DailyRow: View {
                         .foregroundStyle(.white.opacity(0.82))
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
+                }
+                if let confidence = day.confidence {
+                    ConfidenceMark(confidence: confidence)
                 }
             }
             .frame(width: 62, alignment: .leading)
@@ -546,5 +558,30 @@ struct TodayDetailsView: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+/// Three small bars: all gold when the models agree on the day, one when they don't.
+struct ConfidenceMark: View {
+    let confidence: ForecastConfidence
+
+    private var filled: Int {
+        switch confidence {
+        case .sure: return 3
+        case .fair: return 2
+        case .unsure: return 1
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(0..<3, id: \.self) { i in
+                Capsule()
+                    .fill(i < filled ? Brand.gold : .white.opacity(0.25))
+                    .frame(width: 7, height: 4)
+            }
+        }
+        .accessibilityElement()
+        .accessibilityLabel(confidence.label)
     }
 }

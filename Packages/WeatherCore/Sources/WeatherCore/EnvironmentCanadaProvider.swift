@@ -358,6 +358,8 @@ public extension Forecast {
             var h = hour
             h.temperature += gap * share
             h.feelsLike = h.feelsLike.map { $0 + gap * share }
+            h.modelLow = h.modelLow.map { $0 + gap * share }
+            h.modelHigh = h.modelHigh.map { $0 + gap * share }
             return h
         }
     }

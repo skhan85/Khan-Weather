@@ -86,6 +86,14 @@ public struct HourlyForecast: Equatable, Codable, Sendable, Identifiable {
     public var snowfall: Double?
     /// metres
     public var visibility: Double?
+    // How the models in the blend see this hour (North America only).
+    /// Coldest and warmest model temperature, °C.
+    public var modelLow: Double?
+    public var modelHigh: Double?
+    /// Models with a value, and how many of them have at least 0.2 mm or are at or below 0 °C.
+    public var modelCount: Int?
+    public var modelsWet: Int?
+    public var modelsFreezing: Int?
     public var id: Date { time }
 
     /// What a precipitation chance for this hour would be.
@@ -131,7 +139,17 @@ public struct DailyForecast: Equatable, Codable, Sendable, Identifiable {
     public var windGustsMax: Double?
     public var windDirectionDominant: Double?
     public var precipitationHours: Double?
+    /// How far apart the blended models are over the day, on average, °C. nil without a blend.
+    public var modelSpread: Double?
     public var id: Date { date }
+
+    /// Sure when the models are within about 2°, unsure past about 4°.
+    public var confidence: ForecastConfidence? {
+        guard let modelSpread else { return nil }
+        if modelSpread <= 2.5 { return .sure }
+        if modelSpread <= 4.5 { return .fair }
+        return .unsure
+    }
 
     /// What the day's precipitation chance is a chance of.
     public var precipitationKind: PrecipitationKind {
@@ -263,6 +281,18 @@ public protocol ForecastProvider: Sendable {
 }
 
 /// Rain, snow, or either, so a "40%" can say what it's a chance of.
+public enum ForecastConfidence: String, Sendable {
+    case sure, fair, unsure
+
+    public var label: String {
+        switch self {
+        case .sure: return "Models agree"
+        case .fair: return "Models mostly agree"
+        case .unsure: return "Models disagree"
+        }
+    }
+}
+
 public enum PrecipitationKind: String, Codable, Sendable {
     case rain, snow, mixed
 

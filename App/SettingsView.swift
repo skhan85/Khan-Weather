@@ -17,6 +17,7 @@ struct SettingsView: View {
     @AppStorage(AlertNotifier.enabledKey) private var alertNotifications = false
     @AppStorage(AlertNotifier.advisoriesKey) private var alertAdvisories = false
     @AppStorage(AlertNotifier.rainKey) private var rainNotifications = false
+    @AppStorage(AlertNotifier.frostKey) private var frostNotifications = false
     @AppStorage(DisplaySettings.showAirQualityKey) private var showAirQuality = true
     @State private var notificationsDenied = false
 
@@ -69,13 +70,22 @@ struct SettingsView: View {
                                 if allowed { AlertNotifier.schedule() } else { rainNotifications = false }
                             }
                         }
+                    Toggle("Frost tonight", isOn: $frostNotifications)
+                        .onChange(of: frostNotifications) { _, on in
+                            guard on else { return }
+                            Task {
+                                let allowed = await AlertNotifier.requestPermission()
+                                notificationsDenied = !allowed
+                                if allowed { AlertNotifier.schedule() } else { frostNotifications = false }
+                            }
+                        }
                 } header: {
                     Text("Notifications")
                 } footer: {
                     if notificationsDenied {
                         Text("Notifications are turned off for Khan Weather. Turn them on in the iPhone Settings app, under Notifications.")
                     } else {
-                        Text("Warnings and watches from Environment Canada, the US National Weather Service and Germany's DWD, for your location and saved places. Rain and snow heads-ups are for your location, at most one per wet spell. iOS decides when the app may check, usually every 15 to 60 minutes and less often in Low Power Mode, so treat these as a heads-up, not an emergency alarm.")
+                        Text("Warnings and watches from Environment Canada, the US National Weather Service and Germany's DWD, for your location and saved places. Rain, snow and frost heads-ups are for your location and only fire when most forecast models agree; rain at most once per wet spell, frost once an afternoon. iOS decides when the app may check, usually every 15 to 60 minutes and less often in Low Power Mode, so treat these as a heads-up, not an emergency alarm.")
                     }
                 }
                 Section {

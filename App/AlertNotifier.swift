@@ -12,6 +12,8 @@ enum AlertNotifier {
     static let enabledKey = "alertNotifications"
     static let advisoriesKey = "alertNotificationsAdvisories"
     static let rainKey = "rainNotifications"
+    static let frostKey = "frostNotifications"
+    private static let lastFrostDayKey = "lastFrostNotificationDay"
     private static let lastRainKey = "lastRainNotification"
     private static let lastLocationKey = "lastCurrentLocation"
     private static let notifiedKey = "notifiedAlertIDs"
@@ -19,12 +21,13 @@ enum AlertNotifier {
     private static var defaults: UserDefaults { .standard }
     static var isEnabled: Bool { defaults.bool(forKey: enabledKey) }
     static var rainEnabled: Bool { defaults.bool(forKey: rainKey) }
+    static var frostEnabled: Bool { defaults.bool(forKey: frostKey) }
 
     // MARK: Scheduling
 
     /// Asks iOS for the next background check. iOS decides the actual time.
     static func schedule() {
-        guard isEnabled || rainEnabled else { return }
+        guard isEnabled || rainEnabled || frostEnabled else { return }
         let request = BGAppRefreshTaskRequest(identifier: taskID)
         request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
         try? BGTaskScheduler.shared.submit(request)
@@ -86,7 +89,7 @@ enum AlertNotifier {
     /// Everything a background wake should do.
     static func checkAll() async {
         async let alerts: Void = check()
-        async let rain: Void = checkRain()
+        async let rain: Void = checkForecast()
         _ = await (alerts, rain)
     }
 
@@ -119,11 +122,19 @@ enum AlertNotifier {
 
     /// Looks at the next two hours at the last known location and posts a heads-up when rain
     /// or snow is about to start. One per wet spell.
-    static func checkRain(provider: OpenMeteoProvider = OpenMeteoProvider()) async {
-        guard rainEnabled, let here = lastLocation,
+    /// One forecast fetch for the rain and frost heads-ups at the last known location.
+    static func checkForecast(provider: OpenMeteoProvider = OpenMeteoProvider()) async {
+        guard rainEnabled || frostEnabled, let here = lastLocation,
               let forecast = try? await provider.forecast(for: here) else { return }
+        if rainEnabled { await checkRain(forecast) }
+        if frostEnabled { await checkFrost(forecast) }
+    }
+
+    private static func checkRain(_ forecast: Forecast) async {
         let last = defaults.object(forKey: lastRainKey) as? Date
-        guard let nowcast = RainHeadsUp.shouldNotify(forecast.nowcast(), lastNotified: last) else { return }
+        guard let nowcast = RainHeadsUp.shouldNotify(forecast.nowcast(), lastNotified: last),
+              // Only when most models also see it, so one model's stray shower doesn't buzz the phone.
+              ModelAgreement.wetAgrees(forecast.hourly) else { return }
         defaults.set(Date(), forKey: lastRainKey)
         let content = UNMutableNotificationContent()
         content.title = nowcast.kind == .snow ? "Snow on the way" : "Rain on the way"
@@ -131,6 +142,24 @@ enum AlertNotifier {
         content.sound = .default
         content.threadIdentifier = "rain"
         let request = UNNotificationRequest(identifier: "rain-\(Int(Date().timeIntervalSince1970))", content: content, trigger: nil)
+        try? await UNUserNotificationCenter.current().add(request)
+    }
+
+    /// "Frost likely tonight", once a day, in the afternoon or evening, when most models agree.
+    private static func checkFrost(_ forecast: Forecast, now: Date = Date()) async {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = forecast.timeZone
+        let hour = calendar.component(.hour, from: now)
+        let today = AccuracyLog.dayString(now, timeZone: forecast.timeZone)
+        guard (14...22).contains(hour), defaults.string(forKey: lastFrostDayKey) != today,
+              let frost = ModelAgreement.frost(forecast, now: now) else { return }
+        defaults.set(today, forKey: lastFrostDayKey)
+        let content = UNMutableNotificationContent()
+        content.title = "Frost likely tonight"
+        content.body = "\(frost.agreeing) of \(frost.total) forecast models drop to \(WeatherFormat.temperature(0)) or below by about \(TimeText.hour(frost.time, forecast.timeZone)). Cover plants and watch for icy spots."
+        content.sound = .default
+        content.threadIdentifier = "frost"
+        let request = UNNotificationRequest(identifier: "frost-\(today)", content: content, trigger: nil)
         try? await UNUserNotificationCenter.current().add(request)
     }
 
