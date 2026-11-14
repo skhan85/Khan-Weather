@@ -56,6 +56,8 @@ struct ContentView: View {
             .tint(.white)
             .navigationTitle("Khan Weather")
             .navigationBarTitleDisplayMode(.inline)
+            // Back buttons on the hour and day screens show just a white arrow, not "Khan Weather".
+            .toolbarRole(.editor)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Image("Logo")
@@ -92,11 +94,14 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showingPlaces) {
                 PlacesView(store: places)
+                    .tint(.blue)
             }
             .sheet(isPresented: $showingSettings) {
                 SettingsView()
+                    .tint(.blue)
             }
         }
+        .tint(.white)
         .preferredColorScheme(Appearance(rawValue: appearance)?.colorScheme)
         .task { await reload() }
         .onChange(of: places.selectedID) { _, _ in
@@ -149,6 +154,17 @@ private struct ForecastList: View {
         "Sources: " + Credits.shortNames(forecast: forecast, alerts: alerts).joined(separator: ", ")
     }
 
+    /// The next hours, with "Now" showing the same temperature as the Now card
+    /// (which may come from a nearby station rather than the forecast model).
+    private var hoursStartingNow: [HourlyForecast] {
+        var hours = forecast.upcomingHours(count: hourlyCount)
+        if !hours.isEmpty {
+            hours[0].temperature = forecast.current.temperature
+            hours[0].condition = forecast.current.condition
+        }
+        return hours
+    }
+
     private var weekLow: Double { forecast.daily.map(\.low).min() ?? 0 }
     private var weekHigh: Double { forecast.daily.map(\.high).max() ?? 0 }
 
@@ -179,7 +195,7 @@ private struct ForecastList: View {
             }
 
             Section {
-                HourlyCurve(hours: forecast.upcomingHours(count: hourlyCount), timeZone: forecast.timeZone)
+                HourlyCurve(hours: hoursStartingNow, timeZone: forecast.timeZone)
                     // A new forecast starts the strip back at "now" instead of keeping an old scroll position.
                     .id(forecast.fetchedAt)
             } header: {
