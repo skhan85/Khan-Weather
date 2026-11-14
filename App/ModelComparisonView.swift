@@ -107,7 +107,7 @@ struct ModelComparisonView: View {
 
     private var footer: String {
         let source = usedModel == .blend
-            ? "Khan Weather's temperatures are a weighted blend: the high-res Canadian and US models count most for the next two days, then the European model leads. The first hours are also eased toward nearby station readings."
+            ? "Khan Weather's temperatures are a blend of seven models, weighted by how accurate each model was near Milton over the past year. NOAA's hourly-updated HRRR leads today, the German, UK and Canadian models lead tomorrow, NOAA's GFS leads days 3 to 5, and the European model leads after that. The first hours are also eased toward nearby station readings."
             : "Khan Weather's temperatures here come from \(usedModel.name)."
         return source + " High-res models only reach a day or two ahead. Models via Open-Meteo.com (CC BY 4.0)."
     }
