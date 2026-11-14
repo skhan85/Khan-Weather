@@ -28,6 +28,12 @@ public struct Observation: Equatable, Codable, Sendable {
     public var skyDataProvider: String?
     /// Nearby home rain gauges (Netatmo) that reported, and the most any of them caught in the
     /// last hour, in mm. Several dry gauges next door outrank a distant station or a faint radar echo.
+    /// How far the sky station is, when the sky came from a different station than the readings.
+    public var skyDistanceKm: Double?
+    /// Whether the sky (rain, snow, cloud) was reported within `localRadiusKm`.
+    public var skyIsLocal: Bool {
+        skyStationName == nil ? isLocal : (skyDistanceKm ?? .infinity) <= Self.localRadiusKm
+    }
     public var rainGauges: Int?
     public var rainLastHourMm: Double?
 
@@ -352,9 +358,7 @@ public extension Forecast {
     /// Rain from a distant station or the model, when the rain gauges right here are dry, becomes
     /// cloud. Snow is left alone: home gauges aren't heated and miss it.
     func dryIfGaugesSay(_ o: Observation) -> Forecast {
-        guard o.gaugesSayDry, current.temperature > 1, current.condition.isPrecipitation,
-              current.condition != .snow, current.condition != .snowShowers, current.condition != .snowGrains
-        else { return self }
+        guard o.gaugesSayDry, current.temperature > 1, current.condition.isRainLike else { return self }
         var copy = self
         copy.current.condition = .overcast
         copy.observation?.conditionText = nil

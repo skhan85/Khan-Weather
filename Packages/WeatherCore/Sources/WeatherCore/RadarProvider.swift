@@ -140,8 +140,17 @@ public extension Forecast {
     /// When the radar shows rain or snow falling here now, say so even if the model or a
     /// distant station says cloudy. A dry radar changes nothing: it can miss very light snow.
     func applyingRadar(_ radar: RadarNow?) -> Forecast {
-        guard let radar = radar?.typed(byTemperature: current.temperature),
-              let condition = radar.condition else { return self }
+        guard let radar = radar?.typed(byTemperature: current.temperature) else { return self }
+        guard let condition = radar.condition else {
+            // Dry radar overhead, yet "rain" from a station far away or the model: it isn't raining
+            // here. Snow stays, as the radar can miss very light snow.
+            guard current.temperature > 1, current.condition.isRainLike,
+                  !(observation?.skyIsLocal ?? false) else { return self }
+            var copy = self
+            copy.current.condition = .overcast
+            copy.observation?.conditionText = nil
+            return copy
+        }
         // A light rain echo over dry rain gauges next door is rain aloft that isn't reaching the
         // ground. Snow and heavier rain still count.
         if observation?.gaugesSayDry == true, !radar.isSnowing, radar.rainMmPerHour < Self.gaugeVetoRate {

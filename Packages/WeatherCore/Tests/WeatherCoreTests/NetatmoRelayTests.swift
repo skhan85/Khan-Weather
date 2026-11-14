@@ -83,4 +83,21 @@ final class NetatmoRelayTests: XCTestCase {
         let local = try XCTUnwrap(NetatmoRelayProvider.parse(Data(json.utf8), near: milton, now: now, radiusKm: 5, maxAge: 3600))
         XCTAssertFalse(local.gaugesSayDry)
     }
+
+    func testDryRadarOverhearsDistantRain() {
+        // No rain gauges nearby: the radar over Milton decides.
+        let local = Observation(stationName: "2 Netatmo stations in Milton", observedAt: now, temperature: 7, distanceKm: 2.9)
+        let pearson = Observation(stationName: "Toronto Pearson", observedAt: now, temperature: 6, condition: .rain,
+                                  conditionText: "Light Rain", distanceKm: 25)
+        let merged = HyperlocalObservationProvider.merge(official: pearson, netatmo: local)
+        XCTAssertFalse(merged.skyIsLocal)
+        let forecast = Forecast(location: milton, timeZoneIdentifier: "America/Toronto",
+                                current: CurrentConditions(time: now, temperature: 5, feelsLike: 2, feelsLikeKind: .apparent,
+                                                           condition: .rain, isDay: true),
+                                hourly: [], daily: [], source: "t", fetchedAt: now).applying(merged)
+        XCTAssertEqual(forecast.current.condition, .rain, "without radar, the distant sky stands")
+        let dry = forecast.applyingRadar(RadarNow(rainMmPerHour: 0, snowCmPerHour: 0, time: now))
+        XCTAssertEqual(dry.current.condition, .overcast)
+        XCTAssertNil(dry.observation?.conditionText)
+    }
 }
