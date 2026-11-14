@@ -51,4 +51,36 @@ final class NetatmoRelayTests: XCTestCase {
         let close = Observation(stationName: "2 Netatmo stations in Milton", observedAt: now, temperature: 4, distanceKm: 1)
         XCTAssertEqual(HyperlocalObservationProvider.merge(official: official, netatmo: close).temperature, 4)
     }
+
+    func testDryGaugesNextDoorOverruleDistantRain() throws {
+        // Nov 14, 12:18: "Light Rain" from Pearson, 25 km away, while it was dry in Milton.
+        let json = #"""
+        {"stations":[
+          {"lat":43.5142,"lon":-79.8845,"city":"Milton","temperature":7.1,"observed":1794580705,"rain_60min":0},
+          {"lat":43.52,"lon":-79.84,"city":"Milton","temperature":6.9,"observed":1794580600}
+        ]}
+        """#
+        let local = try XCTUnwrap(NetatmoRelayProvider.parse(Data(json.utf8), near: milton, now: now, radiusKm: 5, maxAge: 3600))
+        XCTAssertEqual(local.rainGauges, 1)
+        XCTAssertTrue(local.gaugesSayDry)
+        let pearson = Observation(stationName: "Toronto Pearson", observedAt: now, temperature: 6, condition: .rain,
+                                  conditionText: "Light Rain", distanceKm: 25)
+        let merged = HyperlocalObservationProvider.merge(official: pearson, netatmo: local)
+        let forecast = Forecast(location: milton, timeZoneIdentifier: "America/Toronto",
+                                current: CurrentConditions(time: now, temperature: 5, feelsLike: 2, feelsLikeKind: .apparent,
+                                                           condition: .rain, isDay: true),
+                                hourly: [], daily: [], source: "t", fetchedAt: now)
+        let shown = forecast.applying(merged)
+        XCTAssertEqual(shown.current.condition, .overcast)
+        XCTAssertNil(shown.observation?.conditionText)
+        // A faint radar echo doesn't bring the rain back; a real downpour would.
+        XCTAssertEqual(shown.applyingRadar(RadarNow(rainMmPerHour: 0.3, snowCmPerHour: 0, time: now)).current.condition, .overcast)
+        XCTAssertEqual(shown.applyingRadar(RadarNow(rainMmPerHour: 4, snowCmPerHour: 0, time: now)).current.condition, .rain)
+    }
+
+    func testWetGaugeKeepsRain() throws {
+        let json = #"{"stations":[{"lat":43.5142,"lon":-79.8845,"temperature":7,"observed":1794580705,"rain_60min":0.4}]}"#
+        let local = try XCTUnwrap(NetatmoRelayProvider.parse(Data(json.utf8), near: milton, now: now, radiusKm: 5, maxAge: 3600))
+        XCTAssertFalse(local.gaugesSayDry)
+    }
 }

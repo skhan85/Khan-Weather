@@ -26,6 +26,13 @@ public struct Observation: Equatable, Codable, Sendable {
     /// Who runs the sky station, when it differs from the readings (e.g. Netatmo readings, ECCC sky).
     /// nil with a skyStationName means Environment Canada.
     public var skyDataProvider: String?
+    /// Nearby home rain gauges (Netatmo) that reported, and the most any of them caught in the
+    /// last hour, in mm. Several dry gauges next door outrank a distant station or a faint radar echo.
+    public var rainGauges: Int?
+    public var rainLastHourMm: Double?
+
+    /// Local gauges report and none caught a drop in the last hour.
+    public var gaugesSayDry: Bool { (rainGauges ?? 0) > 0 && (rainLastHourMm ?? 1) == 0 }
 
     public init(stationName: String, observedAt: Date, temperature: Double, feelsLike: Double? = nil,
                 feelsLikeKind: FeelsLikeKind? = nil, humidity: Double? = nil, windSpeed: Double? = nil,
@@ -314,7 +321,7 @@ public extension Forecast {
             // user's temperature or wind, but it does tell us whether it's raining.
             c.condition = o.condition ?? c.condition
             copy.current = c
-            return copy
+            return copy.dryIfGaugesSay(o)
         }
         c.temperature = o.temperature
         // Wind chill from the stronger of the station's wind and the forecast wind for this spot.
@@ -339,6 +346,18 @@ public extension Forecast {
         copy.current = c
         copy.hourly = nudged(toward: o.temperature, at: o.observedAt)
         copy.daily = copy.dailyIncluding(c, at: o.observedAt)
+        return copy.dryIfGaugesSay(o)
+    }
+
+    /// Rain from a distant station or the model, when the rain gauges right here are dry, becomes
+    /// cloud. Snow is left alone: home gauges aren't heated and miss it.
+    func dryIfGaugesSay(_ o: Observation) -> Forecast {
+        guard o.gaugesSayDry, current.temperature > 1, current.condition.isPrecipitation,
+              current.condition != .snow, current.condition != .snowShowers, current.condition != .snowGrains
+        else { return self }
+        var copy = self
+        copy.current.condition = .overcast
+        copy.observation?.conditionText = nil
         return copy
     }
 

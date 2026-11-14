@@ -134,11 +134,19 @@ public struct ECCCRadarProvider: Sendable {
 }
 
 public extension Forecast {
+    /// Radar rain lighter than this (mm/h) is overruled by dry local rain gauges.
+    static let gaugeVetoRate: Double = 1.0
+
     /// When the radar shows rain or snow falling here now, say so even if the model or a
     /// distant station says cloudy. A dry radar changes nothing: it can miss very light snow.
     func applyingRadar(_ radar: RadarNow?) -> Forecast {
         guard let radar = radar?.typed(byTemperature: current.temperature),
               let condition = radar.condition else { return self }
+        // A light rain echo over dry rain gauges next door is rain aloft that isn't reaching the
+        // ground. Snow and heavier rain still count.
+        if observation?.gaugesSayDry == true, !radar.isSnowing, radar.rainMmPerHour < Self.gaugeVetoRate {
+            return self
+        }
         var copy = self
         copy.current.condition = condition
         copy.observation?.conditionText = radar.description

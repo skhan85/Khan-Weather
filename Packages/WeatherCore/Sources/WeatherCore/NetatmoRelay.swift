@@ -84,6 +84,11 @@ public struct NetatmoRelayProvider: ObservationProvider {
                             windSpeed: wind?.wind_strength, windDirection: wind?.wind_angle,
                             distanceKm: first.1)
         o.dataProvider = "NETATMO"
+        let gauges = fresh.compactMap(\.0.rain_60min)
+        if !gauges.isEmpty {
+            o.rainGauges = gauges.count
+            o.rainLastHourMm = gauges.max()
+        }
         return o
     }
 }
