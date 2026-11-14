@@ -22,10 +22,15 @@ struct WeatherEntry: TimelineEntry {
 
     static let placeholder: WeatherEntry = {
         let now = Date()
-        let hours = (1...5).map { i in
-            HourlyForecast(time: now.addingTimeInterval(Double(i) * 3600), temperature: 21 + Double(i % 3),
-                           precipitationProbability: i == 4 ? 40 : 0,
-                           condition: i == 4 ? .rainShowers : .partlyCloudy, isDay: true)
+        var hours: [HourlyForecast] = []
+        for i in 1...5 {
+            let time: Date = now.addingTimeInterval(Double(i) * 3600)
+            let temperature: Double = 21 + Double(i % 3)
+            let rainy: Bool = i == 4
+            let condition: WeatherCondition = rainy ? .rainShowers : .partlyCloudy
+            let chance: Double = rainy ? 40 : 0
+            hours.append(HourlyForecast(time: time, temperature: temperature,
+                                        precipitationProbability: chance, condition: condition, isDay: true))
         }
         return WeatherEntry(
             date: now,
