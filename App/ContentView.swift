@@ -36,7 +36,7 @@ struct ContentView: View {
                         Text(message)
                     } actions: {
                         Button("Try again") { Task { await model.refresh() } }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(.bordered)
                     }
                 case .loaded(let forecast):
                     ForecastList(forecast: forecast,
@@ -56,11 +56,13 @@ struct ContentView: View {
             .tint(.white)
             .navigationTitle("Khan Weather")
             .navigationBarTitleDisplayMode(.inline)
+            .skyTitle("Khan Weather")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { showingSettings = true } label: {
                         Label("Settings", systemImage: "gearshape")
                     }
+                    .tint(.white)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
@@ -77,6 +79,7 @@ struct ContentView: View {
                     } label: {
                         Label("Places", systemImage: places.selected == nil ? "location.circle" : "mappin.circle")
                     }
+                    .tint(.white)
                 }
             }
             .sheet(isPresented: $showingPlaces) {
@@ -177,7 +180,7 @@ private struct ForecastList: View {
 
             Section {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 4) {
+                    HStack(alignment: .top, spacing: 4) {
                         ForEach(Array(forecast.upcomingHours(count: hourlyCount).enumerated()), id: \.element.id) { index, hour in
                             NavigationLink {
                                 HourDetailView(hour: hour, timeZone: forecast.timeZone)
@@ -193,7 +196,7 @@ private struct ForecastList: View {
                                         .font(.body.weight(.semibold))
                                     PrecipChance(probability: hour.precipitationProbability,
                                                  kind: hour.precipitationKind, font: .caption2.weight(.semibold))
-                                        .frame(minHeight: 14)
+                                        .frame(height: 14)
                                 }
                                 .frame(minWidth: 50)
                                 .padding(.vertical, 8)

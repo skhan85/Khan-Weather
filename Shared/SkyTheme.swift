@@ -188,6 +188,19 @@ extension View {
     }
 }
 
+extension View {
+    /// White navigation-bar title for the sky screens (the system title stays dark there).
+    func skyTitle(_ title: String) -> some View {
+        toolbar {
+            ToolbarItem(placement: .principal) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(.white)
+            }
+        }
+    }
+}
+
 /// Section title that reads well on the sky.
 struct SkySectionHeader: View {
     let title: String

@@ -109,6 +109,7 @@ struct HourDetailView: View {
         }
         .skyBackground(hour.condition, isDay: hour.isDay)
         .navigationTitle(hour.time.formatted(Date.FormatStyle(timeZone: timeZone).weekday(.wide).hour()))
+        .skyTitle(hour.time.formatted(Date.FormatStyle(timeZone: timeZone).weekday(.wide).hour()))
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -193,6 +194,7 @@ struct DayDetailView: View {
         }
         .skyBackground(day.condition, isDay: true)
         .navigationTitle(day.date.formatted(Date.FormatStyle(timeZone: timeZone).weekday(.wide).month().day()))
+        .skyTitle(day.date.formatted(Date.FormatStyle(timeZone: timeZone).weekday(.wide).month().day()))
         .navigationBarTitleDisplayMode(.inline)
     }
 }
