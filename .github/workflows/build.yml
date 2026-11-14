@@ -115,6 +115,15 @@ jobs:
             | tee sim-build.log | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
           grep -q "BUILD SUCCEEDED" sim-build.log
 
+      - name: Check forecast service from the runner
+        continue-on-error: true
+        run: |
+          base="https://api.open-meteo.com/v1/forecast?latitude=43.52&longitude=-79.88&hourly=temperature_2m&timezone=auto&forecast_days=1"
+          for m in best_match gem_seamless; do
+            curl -sS -m 30 -o "om-$m.json" -w "$m: HTTP %{http_code} in %{time_total}s\n" "$base&models=$m" || true
+            python3 -c "import json,sys; h=json.load(open(sys.argv[1]))['hourly']; print(' '.join(f'{t[11:13]}h:{v}' for t,v in zip(h['time'],h['temperature_2m'])))" "om-$m.json" || true
+          done
+
       - name: Take screenshots
         run: |
           set -x
