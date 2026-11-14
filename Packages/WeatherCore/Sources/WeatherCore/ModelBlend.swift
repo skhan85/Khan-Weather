@@ -33,15 +33,18 @@ public enum ModelBlend {
         return (byDay[i][model] ?? 0) * (1 - f) + (byDay[j][model] ?? 0) * f
     }
 
-    /// Weighted average of the models that have a value; nil if none do.
+    /// Weighted average of the models that have a value; nil if none do. If only models weighted
+    /// zero at this range have a value (say only GEM came back today), their plain average is used.
     public static func blend(_ values: [WeatherModel: Double], leadHours: Double) -> Double? {
+        let present = values.filter { members.contains($0.key) }
+        guard !present.isEmpty else { return nil }
         var sum = 0.0, total = 0.0
-        for (model, value) in values {
+        for (model, value) in present {
             let w = weight(model, leadHours: leadHours)
-            guard w > 0 else { continue }
             sum += value * w
             total += w
         }
-        return total > 0 ? sum / total : nil
+        if total > 0 { return sum / total }
+        return present.values.reduce(0, +) / Double(present.count)
     }
 }
