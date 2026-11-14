@@ -116,6 +116,7 @@ struct SettingsView: View {
                 }
                 Section("About") {
                     LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
+                    LabeledContent("Build", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "")
                     Link("Forecast and air quality: Open-Meteo.com (CC BY 4.0)", destination: URL(string: "https://open-meteo.com/")!)
                     Link("Canada: Environment and Climate Change Canada", destination: URL(string: "https://weather.gc.ca/")!)
                     Link("US: National Weather Service", destination: URL(string: "https://www.weather.gov/")!)

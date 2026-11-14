@@ -176,13 +176,23 @@ final class EnvironmentCanadaProviderTests: XCTestCase {
         let forecast = try OpenMeteoProvider.parse(OpenMeteoProviderTests.sample, fetchedAt: now)
         let far = Observation(stationName: "Burlington Lift Bridge", observedAt: now, temperature: 6,
                               feelsLike: 0.7, feelsLikeKind: .windChill, humidity: 79, windSpeed: 39,
-                              condition: .drizzle, conditionText: "Drizzle", distanceKm: 20)
+                              condition: .fog, conditionText: "Fog", distanceKm: 20)
         let merged = forecast.applying(far)
-        XCTAssertEqual(merged.current.condition, .drizzle)
+        XCTAssertEqual(merged.current.condition, .fog)
+        XCTAssertEqual(merged.skySource, "Burlington Lift Bridge, 20 km away")
         XCTAssertEqual(merged.current.temperature, forecast.current.temperature)
         XCTAssertEqual(merged.current.feelsLike, forecast.current.feelsLike)
         XCTAssertEqual(merged.current.windSpeed, forecast.current.windSpeed)
         XCTAssertEqual(merged.observation?.stationName, "Burlington Lift Bridge")
+
+        // Rain 20 km away doesn't make it rain here; the forecast's sky stays (the radar decides later).
+        var wet = far
+        wet.condition = .drizzle
+        wet.conditionText = "Drizzle"
+        let kept = forecast.applying(wet)
+        XCTAssertEqual(kept.current.condition, forecast.current.condition)
+        XCTAssertNil(kept.observation?.conditionText)
+        XCTAssertNil(kept.skySource)
     }
 
     func testSkyComesFromNearestReportingStation() {
