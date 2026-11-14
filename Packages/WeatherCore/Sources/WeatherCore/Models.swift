@@ -212,6 +212,23 @@ public struct Forecast: Equatable, Codable, Sendable {
         Array(hourly.filter { $0.time.addingTimeInterval(3600) > date }.prefix(count))
     }
 
+    /// The next hours, with the first one showing current conditions (the same numbers as the
+    /// "now" card, which may come from a nearby station) instead of the forecast for that hour.
+    public func hoursStartingNow(from date: Date = Date(), count: Int = 24) -> [HourlyForecast] {
+        var hours = upcomingHours(from: date, count: count)
+        guard !hours.isEmpty else { return hours }
+        let c = current
+        hours[0].temperature = c.temperature
+        hours[0].feelsLike = c.feelsLike
+        hours[0].condition = c.condition
+        hours[0].isDay = c.isDay
+        hours[0].humidity = c.humidity ?? hours[0].humidity
+        hours[0].windSpeed = c.windSpeed ?? hours[0].windSpeed
+        hours[0].windDirection = c.windDirection ?? hours[0].windDirection
+        hours[0].windGusts = c.windGusts ?? hours[0].windGusts
+        return hours
+    }
+
     /// The forecast hour that contains `date`, for values the "now" request doesn't carry
     /// (UV, visibility, dew point).
     public func hour(at date: Date = Date()) -> HourlyForecast? {

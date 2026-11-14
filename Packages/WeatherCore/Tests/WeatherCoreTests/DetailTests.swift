@@ -12,6 +12,27 @@ final class DetailTests: XCTestCase {
         XCTAssertEqual(PrecipitationKind.guess(rain: 0, snow: 0, condition: .overcast, low: -1, high: 7), .mixed)
     }
 
+    func testFirstHourShowsCurrentConditions() {
+        let now = Date(timeIntervalSince1970: 1_762_956_000)
+        var hour = HourlyForecast(time: now.addingTimeInterval(-1800), temperature: 4, feelsLike: 0,
+                                  condition: .partlyCloudy, isDay: true)
+        hour.windSpeed = 15
+        hour.windGusts = 32
+        let current = CurrentConditions(time: now, temperature: 5, feelsLike: 2, feelsLikeKind: .windChill,
+                                        windSpeed: 8, condition: .overcast, isDay: true)
+        let forecast = Forecast(location: .fallback, timeZoneIdentifier: "America/Toronto", current: current,
+                                hourly: [hour, HourlyForecast(time: now.addingTimeInterval(1800), temperature: 4,
+                                                              condition: .overcast, isDay: true)],
+                                daily: [], source: "test", fetchedAt: now)
+        let hours = forecast.hoursStartingNow(from: now, count: 2)
+        XCTAssertEqual(hours[0].temperature, 5)
+        XCTAssertEqual(hours[0].feelsLike, 2)
+        XCTAssertEqual(hours[0].windSpeed, 8)
+        XCTAssertEqual(hours[0].windGusts, 32, "keeps the forecast gusts when there's no current value")
+        XCTAssertEqual(hours[0].condition, .overcast)
+        XCTAssertEqual(hours[1].temperature, 4)
+    }
+
     func testCompassAndUV() {
         XCTAssertEqual(WeatherFormat.compass(0), "N")
         XCTAssertEqual(WeatherFormat.compass(24), "NE")

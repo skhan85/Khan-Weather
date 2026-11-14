@@ -108,37 +108,48 @@ final class OpenMeteoProviderTests: XCTestCase {
         XCTAssertEqual(forecast.source, "Open-Meteo")
     }
 
-    func testCanadaUsesEnvironmentCanadaTemperatures() async throws {
-        let gem = """
+    func testNorthAmericaUsesBlendedTemperatures() async throws {
+        let blend = """
         {
-          "hourly": { "time": [1762952400, 1762956000], "temperature_2m": [-5.0, null], "apparent_temperature": [-9.0, null] },
-          "daily": { "time": [1762923600], "temperature_2m_max": [0.5], "temperature_2m_min": [-6.0],
-                     "apparent_temperature_max": [-4.0], "apparent_temperature_min": [-12.0] }
+          "hourly": { "time": [1762952400, 1762956000],
+                      "temperature_2m_gem_hrdps_continental": [-5.0, null],
+                      "temperature_2m_ecmwf_ifs025": [-3.0, null],
+                      "apparent_temperature_gem_hrdps_continental": [-9.0, null] }
         }
         """.data(using: .utf8)!
         let provider = OpenMeteoProvider(loader: { request in
-            let isGEM = request.url!.query!.contains("models=gem_seamless")
-            return (isGEM ? gem : Self.sample,
+            let isBlend = request.url!.query!.contains("gem_hrdps_continental")
+            return (isBlend ? blend : Self.sample,
                     HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
         })
         let forecast = try await provider.forecast(for: .fallback)
-        XCTAssertEqual(forecast.hourly[0].temperature, -5.0)
+        // Hours already past use the short-range weights: HRDPS 3, ECMWF 1.5.
+        let expected: Double = (-15.0 - 4.5) / 4.5
+        XCTAssertEqual(forecast.hourly[0].temperature, expected, accuracy: 0.001)
         XCTAssertEqual(forecast.hourly[0].feelsLike, -9.0)
-        XCTAssertEqual(forecast.hourly[1].temperature, -2.4, "keeps the default where GEM has no value")
-        XCTAssertEqual(forecast.daily[0].high, 0.5)
-        XCTAssertEqual(forecast.daily[0].low, -6.0)
-        XCTAssertEqual(forecast.daily[1].high, 4.0)
+        XCTAssertEqual(forecast.hourly[1].temperature, -2.4, "keeps the default where no model has a value")
+        XCTAssertEqual(forecast.daily[0].high, 1.2, "a day the blend doesn't fully cover keeps its own high")
     }
 
-    func testCanadianModelFailureKeepsDefault() async throws {
+    func testBlendWeightsShiftWithLeadTime() throws {
+        let values: [WeatherModel: Double] = [.canadaHighRes: 0, .europe: 10]
+        let short: Double = 15.0 / 4.5
+        let long: Double = 30.0 / 4.0
+        XCTAssertEqual(try XCTUnwrap(ModelBlend.blend(values, leadHours: 6)), short, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(ModelBlend.blend(values, leadHours: 100)), long, accuracy: 0.001)
+        XCTAssertNil(ModelBlend.blend([:], leadHours: 6))
+        XCTAssertNil(ModelBlend.blend([.bestMatch: 5], leadHours: 6), "best match isn't part of the blend")
+    }
+
+    func testBlendFailureKeepsDefault() async throws {
         let provider = OpenMeteoProvider(loader: { request in
-            let isGEM = request.url!.query!.contains("models=gem_seamless")
-            return (Self.sample, HTTPURLResponse(url: request.url!, statusCode: isGEM ? 500 : 200,
+            let isBlend = request.url!.query!.contains("gem_hrdps_continental")
+            return (Self.sample, HTTPURLResponse(url: request.url!, statusCode: isBlend ? 500 : 200,
                                                  httpVersion: nil, headerFields: nil)!)
         })
         let forecast = try await provider.forecast(for: .fallback)
         XCTAssertEqual(forecast.hourly[0].temperature, -2.0)
-        XCTAssertFalse(OpenMeteoProvider.mightUseCanadianModel(Coordinate(latitude: 51.5, longitude: -0.12)))
+        XCTAssertFalse(OpenMeteoProvider.usesBlend(Coordinate(latitude: 51.5, longitude: -0.12)))
     }
 
     func testWMOCodes() {

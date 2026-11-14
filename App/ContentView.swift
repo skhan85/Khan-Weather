@@ -43,6 +43,7 @@ struct ContentView: View {
                     ForecastList(forecast: forecast,
                                  alerts: model.alerts,
                                  airQuality: model.airQuality,
+                                 textForecast: model.textForecast,
                                  placeName: model.placeName,
                                  isSavedPlace: places.selected != nil,
                                  attribution: model.provider.attribution,
@@ -143,6 +144,7 @@ private struct ForecastList: View {
     let forecast: Forecast
     let alerts: [WeatherAlert]
     let airQuality: AirQuality?
+    let textForecast: TextForecast?
     let placeName: String?
     let isSavedPlace: Bool
     let attribution: String
@@ -164,12 +166,7 @@ private struct ForecastList: View {
     /// The next hours, with "Now" showing the same temperature as the Now card
     /// (which may come from a nearby station rather than the forecast model).
     private var hoursStartingNow: [HourlyForecast] {
-        var hours = forecast.upcomingHours(count: hourlyCount)
-        if !hours.isEmpty {
-            hours[0].temperature = forecast.current.temperature
-            hours[0].condition = forecast.current.condition
-        }
-        return hours
+        forecast.hoursStartingNow(count: hourlyCount)
     }
 
     private var weekLow: Double { forecast.daily.map(\.low).min() ?? 0 }
@@ -231,6 +228,15 @@ private struct ForecastList: View {
                     TodayDetailsView(forecast: forecast)
                 } header: {
                     SkySectionHeader(title: "Today", systemImage: "sun.horizon")
+                }
+                .glassRow()
+            }
+
+            if let textForecast {
+                Section {
+                    TextForecastView(forecast: textForecast)
+                } header: {
+                    SkySectionHeader(title: "Environment Canada's forecast", systemImage: "text.quote")
                 }
                 .glassRow()
             }
@@ -532,6 +538,45 @@ struct TodayDetailsView: View {
                 .accessibilityElement(children: .combine)
             }
         }
+        .padding(.vertical, 4)
+    }
+}
+
+/// Environment Canada's written forecast: the next few periods, with the rest a tap away.
+private struct TextForecastView: View {
+    let forecast: TextForecast
+    @State private var showAll = false
+
+    var body: some View {
+        let shown = showAll ? forecast.periods : Array(forecast.periods.prefix(3))
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(shown) { period in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(period.name)
+                        .font(.subheadline.weight(.heavy))
+                        .foregroundStyle(Brand.gold)
+                    Text(period.text)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            HStack {
+                Text("For \(forecast.cityName), written by Environment Canada forecasters.")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.7))
+                Spacer(minLength: 8)
+                if forecast.periods.count > 3 {
+                    Button(showAll ? "Less" : "More days") {
+                        withAnimation { showAll.toggle() }
+                    }
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Brand.gold)
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .fontDesign(.rounded)
         .padding(.vertical, 4)
     }
 }

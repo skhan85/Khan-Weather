@@ -26,40 +26,40 @@ public struct OpenMeteoProvider: ForecastProvider {
     }
 
     public func forecast(for coordinate: Coordinate) async throws -> Forecast {
-        // In and near Canada, temperatures come from Environment Canada's model (GEM), which
-        // Open-Meteo's default blend doesn't use there. Everything else stays on the default.
-        async let canadian = Self.mightUseCanadianModel(coordinate) ? canadianTemperatures(for: coordinate) : nil
+        // In North America, temperatures are a weighted blend of several models (see ModelBlend).
+        // Everything else stays on Open-Meteo's default.
+        async let blended = Self.usesBlend(coordinate) ? blendedTemperatures(for: coordinate) : nil
         let request = URLRequest(url: url(for: coordinate), timeoutInterval: 20)
         let (data, response) = try await loader(request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw ForecastError.httpStatus(http.statusCode)
         }
         let forecast = try Self.parse(data, fetchedAt: Date())
-        guard let temps = await canadian else { return forecast }
+        guard let temps = await blended else { return forecast }
         return forecast.applying(temps)
     }
 
-    static func mightUseCanadianModel(_ c: Coordinate) -> Bool {
-        (41.5...84).contains(c.latitude) && (-141.5...(-52)).contains(c.longitude)
+    /// North America, where the high-resolution Canadian and US models cover the spot.
+    static func usesBlend(_ c: Coordinate) -> Bool {
+        (24...84).contains(c.latitude) && (-170...(-52)).contains(c.longitude)
     }
 
-    /// Hourly and daily temperatures from GEM. nil if the request fails, so the default stays.
-    func canadianTemperatures(for coordinate: Coordinate) async -> ModelTemperatures? {
-        let request = URLRequest(url: canadianURL(for: coordinate), timeoutInterval: 15)
+    /// Blended hourly temperatures. nil if the request fails, so the default stays.
+    func blendedTemperatures(for coordinate: Coordinate, now: Date = Date()) async -> ModelTemperatures? {
+        let request = URLRequest(url: blendURL(for: coordinate), timeoutInterval: 15)
         guard let (data, response) = try? await loader(request) else { return nil }
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { return nil }
-        return try? Self.parseTemperatures(data)
+        return try? Self.parseBlend(data, now: now)
     }
 
-    func canadianURL(for coordinate: Coordinate) -> URL {
+    func blendURL(for coordinate: Coordinate) -> URL {
         let c = coordinate.rounded
         var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "latitude", value: String(c.latitude)),
             URLQueryItem(name: "longitude", value: String(c.longitude)),
             URLQueryItem(name: "hourly", value: "temperature_2m,apparent_temperature"),
-            URLQueryItem(name: "daily", value: "temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min"),
-            URLQueryItem(name: "models", value: "gem_seamless"),
+            URLQueryItem(name: "models", value: ModelBlend.members.map(\.rawValue).joined(separator: ",")),
             URLQueryItem(name: "timezone", value: "auto"),
             URLQueryItem(name: "timeformat", value: "unixtime"),
             URLQueryItem(name: "forecast_days", value: String(forecastDays)),
@@ -67,32 +67,31 @@ public struct OpenMeteoProvider: ForecastProvider {
         return components.url!
     }
 
-    /// Temperatures from one model, keyed by time, to lay over the default forecast.
+    /// Blended temperatures keyed by hour, to lay over the default forecast.
     struct ModelTemperatures {
         var hourly: [Int: (temperature: Double, feelsLike: Double?)] = [:]
-        var daily: [Int: (high: Double, low: Double, feelsLikeHigh: Double?, feelsLikeLow: Double?)] = [:]
     }
 
-    static func parseTemperatures(_ data: Data) throws -> ModelTemperatures {
-        struct Wire: Decodable {
-            let hourly: Hourly?
-            let daily: Daily?
+    /// With several models, Open-Meteo suffixes each field: "temperature_2m_gem_seamless".
+    static func parseBlend(_ data: Data, now: Date) throws -> ModelTemperatures {
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let hourly = root["hourly"] as? [String: Any],
+              let times = hourly["time"] as? [NSNumber] else { throw ForecastError.missingData("hourly") }
+        func series(_ field: String, _ model: WeatherModel) -> [Double?] {
+            ((hourly["\(field)_\(model.rawValue)"] as? [Any]) ?? []).map { ($0 as? NSNumber)?.doubleValue }
         }
-        let r = try JSONDecoder().decode(Wire.self, from: data)
-        var temps = ModelTemperatures()
-        if let h = r.hourly {
-            for (i, time) in h.time.enumerated() {
-                guard let t = h.temperature.value(at: i) else { continue }
-                temps.hourly[time] = (t, h.apparentTemperature.value(at: i))
+        let temps = Dictionary(uniqueKeysWithValues: ModelBlend.members.map { ($0, series("temperature_2m", $0)) })
+        let feels = Dictionary(uniqueKeysWithValues: ModelBlend.members.map { ($0, series("apparent_temperature", $0)) })
+        var out = ModelTemperatures()
+        for (i, t) in times.enumerated() {
+            let lead = (t.doubleValue - now.timeIntervalSince1970) / 3600
+            func at(_ s: [WeatherModel: [Double?]]) -> [WeatherModel: Double] {
+                s.compactMapValues { i < $0.count ? $0[i] : nil }
             }
+            guard let temp = ModelBlend.blend(at(temps), leadHours: lead) else { continue }
+            out.hourly[t.intValue] = (temp, ModelBlend.blend(at(feels), leadHours: lead))
         }
-        if let d = r.daily {
-            for (i, time) in d.time.enumerated() {
-                guard let high = d.temperatureMax.value(at: i), let low = d.temperatureMin.value(at: i) else { continue }
-                temps.daily[time] = (high, low, d.apparentTemperatureMax.value(at: i), d.apparentTemperatureMin.value(at: i))
-            }
-        }
-        return temps
+        return out
     }
 
     static let currentFields = [
@@ -368,7 +367,8 @@ public struct OpenMeteoProvider: ForecastProvider {
 }
 
 extension Forecast {
-    /// Swaps in another model's temperatures wherever it has them for the same hour or day.
+    /// Swaps in blended temperatures wherever they cover an hour, then recomputes each fully
+    /// covered day's high and low from those hours (Open-Meteo builds its daily values the same way).
     func applying(_ temps: OpenMeteoProvider.ModelTemperatures) -> Forecast {
         var copy = self
         copy.hourly = hourly.map { hour in
@@ -381,11 +381,14 @@ extension Forecast {
         }
         copy.daily = daily.map { day in
             var d = day
-            if let t = temps.daily[Int(day.date.timeIntervalSince1970)] {
-                d.high = t.high
-                d.low = t.low
-                d.feelsLikeHigh = t.feelsLikeHigh ?? d.feelsLikeHigh
-                d.feelsLikeLow = t.feelsLikeLow ?? d.feelsLikeLow
+            let hours = copy.hours(on: day).filter { temps.hourly[Int($0.time.timeIntervalSince1970)] != nil }
+            guard hours.count >= 23 else { return d }   // 23 allows the short day when clocks change
+            d.high = hours.map(\.temperature).max()!
+            d.low = hours.map(\.temperature).min()!
+            let feels = hours.compactMap(\.feelsLike)
+            if feels.count == hours.count {
+                d.feelsLikeHigh = feels.max()
+                d.feelsLikeLow = feels.min()
             }
             return d
         }

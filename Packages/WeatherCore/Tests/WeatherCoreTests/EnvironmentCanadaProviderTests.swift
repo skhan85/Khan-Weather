@@ -121,6 +121,22 @@ final class EnvironmentCanadaProviderTests: XCTestCase {
         XCTAssertEqual(merged.daily, forecast.daily)
     }
 
+    func testForecastHoursEaseTowardTheReading() {
+        let t0 = Date(timeIntervalSince1970: 1_794_000_000)
+        let hours = (0..<8).map { HourlyForecast(time: t0.addingTimeInterval(Double($0) * 3600), temperature: 2,
+                                                 feelsLike: -1, condition: .overcast) }
+        let forecast = Forecast(location: .fallback, timeZoneIdentifier: "America/Toronto",
+                                current: CurrentConditions(time: t0, temperature: 2, feelsLike: -1, feelsLikeKind: .apparent,
+                                                           condition: .overcast, isDay: true),
+                                hourly: hours, daily: [], source: "t", fetchedAt: t0)
+        let nudged = forecast.nudged(toward: 5, at: t0.addingTimeInterval(600))
+        XCTAssertEqual(nudged[0].temperature, 5, accuracy: 0.001, "the hour of the reading starts at it")
+        XCTAssertEqual(nudged[0].feelsLike!, 2, accuracy: 0.001)
+        XCTAssertGreaterThan(nudged[3].temperature, 2)
+        XCTAssertLessThan(nudged[3].temperature, 5)
+        XCTAssertEqual(nudged[7].temperature, 2, "7 hours on, the model stands")
+    }
+
     func testWindChillAndHumidex() {
         // Saad's case: 6 °C, 39 km/h at Burlington Lift Bridge. ECCC showed −6; the formula gives about +1.
         XCTAssertEqual(try XCTUnwrap(EnvironmentCanadaProvider.windChill(temperature: 6, windKmh: 39)), 0.7, accuracy: 0.1)
