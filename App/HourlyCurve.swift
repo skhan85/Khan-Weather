@@ -7,6 +7,8 @@ import WeatherCore
 struct HourlyCurve: View {
     let hours: [HourlyForecast]
     let timeZone: TimeZone
+    /// Label the first column "Now" (off for a future day's hours).
+    var firstIsNow = true
 
     private let columnWidth: CGFloat = 58
 
@@ -47,7 +49,7 @@ struct HourlyCurve: View {
 
     @ViewBuilder
     private func timeLabel(index: Int, hour: HourlyForecast) -> some View {
-        if index == 0 {
+        if index == 0 && firstIsNow {
             Text("Now")
                 .font(.footnote.weight(.heavy))
                 .foregroundStyle(.black.opacity(0.8))

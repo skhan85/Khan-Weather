@@ -56,6 +56,8 @@ struct ContentView: View {
             .tint(.white)
             .navigationTitle("Khan Weather")
             .navigationBarTitleDisplayMode(.inline)
+            // Back buttons on the hour and day screens show just a white arrow, not "Khan Weather".
+            .toolbarRole(.editor)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Image("Logo")
@@ -92,11 +94,14 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showingPlaces) {
                 PlacesView(store: places)
+                    .tint(.blue)
             }
             .sheet(isPresented: $showingSettings) {
                 SettingsView()
+                    .tint(.blue)
             }
         }
+        .tint(.white)
         .preferredColorScheme(Appearance(rawValue: appearance)?.colorScheme)
         .task { await reload() }
         .onChange(of: places.selectedID) { _, _ in

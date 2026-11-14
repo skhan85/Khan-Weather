@@ -41,12 +41,75 @@ private struct DetailRow: View {
 
     var body: some View {
         if let value {
-            LabeledContent {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Brand.gold)
+                    .frame(width: 28)
+                Text(title)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.85))
+                Spacer(minLength: 8)
                 Text(value)
-            } label: {
-                Label(title, systemImage: systemImage)
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.trailing)
+            }
+            .padding(.vertical, 2)
+            .accessibilityElement(children: .combine)
+        }
+    }
+}
+
+/// The big card at the top of the hour and day screens, in the same style as the main Now card.
+struct DetailHero: View {
+    let tag: String
+    let condition: WeatherCondition
+    var isDay = true
+    let temperature: String
+    let headline: String
+    var detail: String? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(tag.uppercased())
+                .font(.caption.weight(.heavy))
+                .tracking(1.2)
+                .foregroundStyle(.black.opacity(0.8))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Brand.gold))
+            HStack(spacing: 16) {
+                IconBadge(condition: condition, isDay: isDay, size: 88)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(temperature)
+                        .font(.system(size: 56, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                    Text(headline)
+                        .font(.title3.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let detail {
+                        Text(detail)
+                            .font(.headline)
+                            .foregroundStyle(.white.opacity(0.9))
+                    }
+                }
             }
         }
+        .foregroundStyle(.white)
+        .fontDesign(.rounded)
+        .shadow(color: .black.opacity(0.25), radius: 3, y: 1)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(LinearGradient(colors: [.white.opacity(0.22), .white.opacity(0.06)],
+                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+                .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(.white.opacity(0.3), lineWidth: 1))
+        }
+        .padding(.horizontal, 16)
     }
 }
 
@@ -74,22 +137,12 @@ struct HourDetailView: View {
     var body: some View {
         List {
             Section {
-                VStack(spacing: 6) {
-                    ConditionIcon(condition: hour.condition, isDay: hour.isDay)
-                        .font(.system(size: 52))
-                    Text(WeatherFormat.temperature(hour.temperature))
-                        .font(.system(size: 72, weight: .thin, design: .rounded))
-                    Text(hour.condition.description)
-                        .font(.title3)
-                    if let feels = hour.feelsLike {
-                        Text("Feels like \(WeatherFormat.temperature(feels))")
-                            .foregroundStyle(.white.opacity(0.88))
-                    }
-                }
-                .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.35), radius: 4, y: 1)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
+                DetailHero(tag: hour.time.formatted(Date.FormatStyle(timeZone: timeZone).weekday(.wide).hour()),
+                           condition: hour.condition, isDay: hour.isDay,
+                           temperature: WeatherFormat.temperature(hour.temperature),
+                           headline: hour.condition.description,
+                           detail: hour.feelsLike.map { "Feels like \(WeatherFormat.temperature($0))" })
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
             }
             .listRowBackground(Color.clear)
             Section {
@@ -104,9 +157,12 @@ struct HourDetailView: View {
                           systemImage: "thermometer.medium")
                 DetailRow(title: "UV index", value: WeatherFormat.uvLevel(hour.uvIndex), systemImage: "sun.max")
                 DetailRow(title: "Visibility", value: visibilityText(hour.visibility), systemImage: "eye")
+            } header: {
+                SkySectionHeader(title: "Details", systemImage: "list.bullet")
             }
             .glassRow()
         }
+        .fontDesign(.rounded)
         .skyBackground(hour.condition, isDay: hour.isDay)
         .navigationTitle(hour.time.formatted(Date.FormatStyle(timeZone: timeZone).weekday(.wide).hour()))
         .skyTitle(hour.time.formatted(Date.FormatStyle(timeZone: timeZone).weekday(.wide).hour()))
@@ -123,24 +179,23 @@ struct DayDetailView: View {
     var body: some View {
         List {
             Section {
-                VStack(spacing: 6) {
-                    ConditionIcon(condition: day.condition)
-                        .font(.system(size: 52))
-                    Text("\(WeatherFormat.temperature(day.high)) / \(WeatherFormat.temperature(day.low))")
-                        .font(.system(size: 56, weight: .thin, design: .rounded))
-                    Text(day.summary ?? day.condition.description)
-                        .font(.title3)
-                    if let hi = day.feelsLikeHigh, let lo = day.feelsLikeLow {
-                        Text("Feels like \(WeatherFormat.temperature(hi)) / \(WeatherFormat.temperature(lo))")
-                            .foregroundStyle(.white.opacity(0.88))
-                    }
-                }
-                .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.35), radius: 4, y: 1)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
+                DetailHero(tag: day.date.formatted(Date.FormatStyle(timeZone: timeZone).weekday(.wide)),
+                           condition: day.condition,
+                           temperature: "\(WeatherFormat.temperature(day.high)) / \(WeatherFormat.temperature(day.low))",
+                           headline: day.summary ?? day.condition.description,
+                           detail: day.feelsLikeHigh.flatMap { hi in day.feelsLikeLow.map { lo in
+                               "Feels like \(WeatherFormat.temperature(hi)) / \(WeatherFormat.temperature(lo))" } })
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
             }
             .listRowBackground(Color.clear)
+            if !hours.isEmpty {
+                Section {
+                    HourlyCurve(hours: hours, timeZone: timeZone, firstIsNow: false)
+                } header: {
+                    SkySectionHeader(title: "Hour by hour", systemImage: "clock")
+                }
+                .glassRow()
+            }
             Section {
                 DetailRow(title: "Precipitation", value: chanceText(day.precipitationProbability, day.precipitationKind),
                           systemImage: day.precipitationKind.symbolName)
@@ -156,6 +211,8 @@ struct DayDetailView: View {
                           systemImage: "sunrise")
                 DetailRow(title: "Sunset", value: day.sunset.map { TimeText.time($0, timeZone) },
                           systemImage: "sunset")
+            } header: {
+                SkySectionHeader(title: "Details", systemImage: "list.bullet")
             }
             .glassRow()
             if let location {
@@ -163,35 +220,17 @@ struct DayDetailView: View {
                     NavigationLink {
                         ModelComparisonView(day: day, location: location, timeZone: timeZone)
                     } label: {
-                        Label("Compare models", systemImage: "chart.bar.xaxis")
-                    }
-                }
-                .glassRow()
-            }
-            if !hours.isEmpty {
-                Section {
-                    ForEach(hours) { hour in
-                        NavigationLink {
-                            HourDetailView(hour: hour, timeZone: timeZone)
-                        } label: {
-                            HStack {
-                                Text(TimeText.hour(hour.time, timeZone))
-                                    .frame(width: 56, alignment: .leading)
-                                ConditionIcon(condition: hour.condition, isDay: hour.isDay)
-                                    .frame(width: 28)
-                                PrecipChance(probability: hour.precipitationProbability, kind: hour.precipitationKind)
-                                Spacer()
-                                Text(WeatherFormat.temperature(hour.temperature))
-                                    .fontWeight(.semibold)
-                            }
+                        Label {
+                            Text("Compare forecast models").font(.body.weight(.semibold))
+                        } icon: {
+                            Image(systemName: "chart.bar.xaxis").foregroundStyle(Brand.gold)
                         }
                     }
-                } header: {
-                    SkySectionHeader(title: "Hour by hour", systemImage: "clock")
                 }
                 .glassRow()
             }
         }
+        .fontDesign(.rounded)
         .skyBackground(day.condition, isDay: true)
         .navigationTitle(day.date.formatted(Date.FormatStyle(timeZone: timeZone).weekday(.wide).month().day()))
         .skyTitle(day.date.formatted(Date.FormatStyle(timeZone: timeZone).weekday(.wide).month().day()))
