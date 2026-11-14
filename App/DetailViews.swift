@@ -207,6 +207,12 @@ struct DayDetailView: View {
                 DetailRow(title: "Wind", value: windText(day.windSpeedMax, gusts: day.windGustsMax, direction: day.windDirectionDominant),
                           systemImage: "wind")
                 DetailRow(title: "UV index", value: WeatherFormat.uvLevel(day.uvIndexMax), systemImage: "sun.max")
+                DetailRow(title: "Forecast confidence",
+                          value: day.confidence.map {
+                              let half = (day.modelSpread ?? 0) / 2 * (UnitSettings.current.temperature == .fahrenheit ? 1.8 : 1)
+                              return "\($0.label) (±\(String(format: "%.0f", half))°)"
+                          },
+                          systemImage: "checkmark.seal")
                 DetailRow(title: "Sunrise", value: day.sunrise.map { TimeText.time($0, timeZone) },
                           systemImage: "sunrise")
                 DetailRow(title: "Sunset", value: day.sunset.map { TimeText.time($0, timeZone) },

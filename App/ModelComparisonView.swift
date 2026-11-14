@@ -75,6 +75,27 @@ struct ModelComparisonView: View {
                 }
                 .glassRow()
             }
+            Section {
+                NavigationLink {
+                    ModelGridView(location: location, timeZone: timeZone)
+                } label: {
+                    Label {
+                        Text("All models, all 10 days").font(.subheadline.weight(.semibold))
+                    } icon: {
+                        Image(systemName: "square.grid.3x3").foregroundStyle(Brand.gold)
+                    }
+                }
+                NavigationLink {
+                    AccuracyView()
+                } label: {
+                    Label {
+                        Text("Which model has been most accurate?").font(.subheadline.weight(.semibold))
+                    } icon: {
+                        Image(systemName: "target").foregroundStyle(Brand.gold)
+                    }
+                }
+            }
+            .glassRow()
         }
         .foregroundStyle(.white)
         .skyBackground(day.condition, isDay: true)

@@ -58,7 +58,7 @@ public struct OpenMeteoProvider: ForecastProvider {
         components.queryItems = [
             URLQueryItem(name: "latitude", value: String(c.latitude)),
             URLQueryItem(name: "longitude", value: String(c.longitude)),
-            URLQueryItem(name: "hourly", value: "temperature_2m,apparent_temperature"),
+            URLQueryItem(name: "hourly", value: "temperature_2m,apparent_temperature,precipitation"),
             URLQueryItem(name: "models", value: ModelBlend.members.map(\.rawValue).joined(separator: ",")),
             URLQueryItem(name: "timezone", value: "auto"),
             URLQueryItem(name: "timeformat", value: "unixtime"),
@@ -69,7 +69,16 @@ public struct OpenMeteoProvider: ForecastProvider {
 
     /// Blended temperatures keyed by hour, to lay over the default forecast.
     struct ModelTemperatures {
-        var hourly: [Int: (temperature: Double, feelsLike: Double?)] = [:]
+        struct Hour {
+            var temperature: Double
+            var feelsLike: Double?
+            var low: Double
+            var high: Double
+            var count: Int
+            var wet: Int
+            var freezing: Int
+        }
+        var hourly: [Int: Hour] = [:]
     }
 
     /// With several models, Open-Meteo suffixes each field: "temperature_2m_gem_seamless".
@@ -82,14 +91,20 @@ public struct OpenMeteoProvider: ForecastProvider {
         }
         let temps = Dictionary(uniqueKeysWithValues: ModelBlend.members.map { ($0, series("temperature_2m", $0)) })
         let feels = Dictionary(uniqueKeysWithValues: ModelBlend.members.map { ($0, series("apparent_temperature", $0)) })
+        let precip = Dictionary(uniqueKeysWithValues: ModelBlend.members.map { ($0, series("precipitation", $0)) })
         var out = ModelTemperatures()
         for (i, t) in times.enumerated() {
             let lead = (t.doubleValue - now.timeIntervalSince1970) / 3600
             func at(_ s: [WeatherModel: [Double?]]) -> [WeatherModel: Double] {
                 s.compactMapValues { i < $0.count ? $0[i] : nil }
             }
-            guard let temp = ModelBlend.blend(at(temps), leadHours: lead) else { continue }
-            out.hourly[t.intValue] = (temp, ModelBlend.blend(at(feels), leadHours: lead))
+            let hourTemps = at(temps)
+            guard let temp = ModelBlend.blend(hourTemps, leadHours: lead) else { continue }
+            let values = Array(hourTemps.values)
+            let wet = at(precip).filter { hourTemps[$0.key] != nil && $0.value >= 0.2 }.count
+            out.hourly[t.intValue] = .init(temperature: temp, feelsLike: ModelBlend.blend(at(feels), leadHours: lead),
+                                           low: values.min()!, high: values.max()!, count: values.count,
+                                           wet: wet, freezing: values.filter { $0 <= 0 }.count)
         }
         return out
     }
@@ -376,12 +391,19 @@ extension Forecast {
             if let t = temps.hourly[Int(hour.time.timeIntervalSince1970)] {
                 h.temperature = t.temperature
                 h.feelsLike = t.feelsLike ?? h.feelsLike
+                h.modelLow = t.low
+                h.modelHigh = t.high
+                h.modelCount = t.count
+                h.modelsWet = t.wet
+                h.modelsFreezing = t.freezing
             }
             return h
         }
         copy.daily = daily.map { day in
             var d = day
             let hours = copy.hours(on: day).filter { temps.hourly[Int($0.time.timeIntervalSince1970)] != nil }
+            let spreads = hours.compactMap { h in h.modelHigh.flatMap { hi in h.modelLow.map { hi - $0 } } }
+            if !spreads.isEmpty { d.modelSpread = spreads.reduce(0, +) / Double(spreads.count) }
             guard hours.count >= 23 else { return d }   // 23 allows the short day when clocks change
             d.high = hours.map(\.temperature).max()!
             d.low = hours.map(\.temperature).min()!

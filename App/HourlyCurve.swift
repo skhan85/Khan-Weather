@@ -12,8 +12,9 @@ struct HourlyCurve: View {
 
     private let columnWidth: CGFloat = 58
 
-    private var low: Double { hours.map(\.temperature).min() ?? 0 }
-    private var high: Double { hours.map(\.temperature).max() ?? 0 }
+    private var low: Double { hours.map { min($0.temperature, $0.modelLow ?? $0.temperature) }.min() ?? 0 }
+    private var high: Double { hours.map { max($0.temperature, $0.modelHigh ?? $0.temperature) }.max() ?? 0 }
+    private var hasBand: Bool { hours.contains { $0.modelLow != nil } }
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -33,8 +34,11 @@ struct HourlyCurve: View {
                         .buttonStyle(.plain)
                     }
                 }
-                curve
-                    .frame(width: columnWidth * CGFloat(hours.count), height: 74)
+                ZStack {
+                    if hasBand { band }
+                    curve
+                }
+                .frame(width: columnWidth * CGFloat(hours.count), height: 74)
                 HStack(spacing: 0) {
                     ForEach(hours) { hour in
                         PrecipChance(probability: hour.precipitationProbability, kind: hour.precipitationKind,
@@ -66,10 +70,32 @@ struct HourlyCurve: View {
         }
     }
 
+    private var span: Double { max(high - low, 4) }
+    private var floor: Double { low - span * 0.6 }
+
+    /// Where the models spread: the faint band behind the line. Wider means less sure.
+    private var band: some View {
+        Chart {
+            ForEach(Array(hours.enumerated()), id: \.element.id) { index, hour in
+                if let lo = hour.modelLow, let hi = hour.modelHigh {
+                    AreaMark(x: .value("Hour", Double(index)), yStart: .value("Low", lo), yEnd: .value("High", hi))
+                        .interpolationMethod(.catmullRom)
+                        .foregroundStyle(.white.opacity(0.16))
+                }
+            }
+        }
+        .chartXScale(domain: -0.5 ... Double(hours.count) - 0.5)
+        .chartYScale(domain: floor ... high + span * 0.9)
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartLegend(.hidden)
+        .accessibilityHidden(true)
+    }
+
     private var curve: some View {
         // Leave room above the line for the numbers and below it for the shaded area.
-        let span = max(high - low, 4)
-        let floor = low - span * 0.6
+        let span = self.span
+        let floor = self.floor
         return Chart {
             ForEach(Array(hours.enumerated()), id: \.element.id) { index, hour in
                 AreaMark(x: .value("Hour", Double(index)), yStart: .value("Base", floor), yEnd: .value("Temp", hour.temperature))

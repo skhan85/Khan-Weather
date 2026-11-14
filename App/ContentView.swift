@@ -190,7 +190,10 @@ private struct ForecastList: View {
             Section {
                 CurrentConditionsView(current: forecast.current, placeName: placeName, isSavedPlace: isSavedPlace,
                                       observation: forecast.observation, timeZone: forecast.timeZone,
-                                      today: forecast.day(), outlook: Outlook.text(forecast))
+                                      today: forecast.day(), outlook: Outlook.text(forecast),
+                                      wear: WhatToWear.tip(current: forecast.current,
+                                                           upcoming: Array(forecast.upcomingHours(count: 13).dropFirst()),
+                                                           hourText: { TimeText.hour($0, forecast.timeZone) }))
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
@@ -214,6 +217,15 @@ private struct ForecastList: View {
                         DailyRow(day: day, isToday: index == 0, timeZone: forecast.timeZone,
                                  weekLow: weekLow, weekHigh: weekHigh,
                                  current: index == 0 ? forecast.current.temperature : nil)
+                    }
+                }
+                NavigationLink {
+                    ModelGridView(location: forecast.location, timeZone: forecast.timeZone)
+                } label: {
+                    Label {
+                        Text("Compare all models").font(.subheadline.weight(.semibold))
+                    } icon: {
+                        Image(systemName: "square.grid.3x3").foregroundStyle(Brand.gold)
                     }
                 }
             } header: {
@@ -267,6 +279,11 @@ private struct ForecastList: View {
             .glassRow()
         }
         .listSectionSpacing(14)
+        .task(id: forecast.fetchedAt) {
+            // Keep score of the models for where the user actually is, not saved places.
+            guard !isSavedPlace, !usingFallbackLocation else { return }
+            await AccuracyTracker.update(location: forecast.location, timeZone: forecast.timeZone)
+        }
         .fontDesign(.rounded)
     }
 }
@@ -334,6 +351,9 @@ private struct DailyRow: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
                 }
+                if let confidence = day.confidence {
+                    ConfidenceMark(confidence: confidence)
+                }
             }
             .frame(width: 62, alignment: .leading)
             VStack(spacing: 1) {
@@ -364,6 +384,8 @@ struct CurrentConditionsView: View {
     var today: DailyForecast? = nil
     /// "Cooling to 1° by 11 PM."
     var outlook: String? = nil
+    /// "Warm jacket, and an umbrella from 1 PM."
+    var wear: String? = nil
     @AppStorage(DisplaySettings.mainTemperatureKey) private var mainTemperature = MainTemperature.actual.rawValue
 
     private var feelsFirst: Bool { mainTemperature == MainTemperature.feelsLike.rawValue }
@@ -420,6 +442,14 @@ struct CurrentConditionsView: View {
                         RoundedRectangle(cornerRadius: 2).fill(Brand.gold).frame(width: 4).padding(.vertical, 6)
                     }
             }
+            if let wear {
+                        Label {
+                            Text(wear).font(.subheadline.weight(.semibold))
+                        } icon: {
+                            Image(systemName: "tshirt.fill").foregroundStyle(Brand.gold)
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     if let today {
@@ -528,5 +558,30 @@ struct TodayDetailsView: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+/// Three small bars: all gold when the models agree on the day, one when they don't.
+struct ConfidenceMark: View {
+    let confidence: ForecastConfidence
+
+    private var filled: Int {
+        switch confidence {
+        case .sure: return 3
+        case .fair: return 2
+        case .unsure: return 1
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(0..<3, id: \.self) { i in
+                Capsule()
+                    .fill(i < filled ? Brand.gold : .white.opacity(0.25))
+                    .frame(width: 7, height: 4)
+            }
+        }
+        .accessibilityElement()
+        .accessibilityLabel(confidence.label)
     }
 }
