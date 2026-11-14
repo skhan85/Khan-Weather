@@ -138,15 +138,16 @@ jobs:
             xcrun simctl privacy "$udid" grant location "$BUNDLE" || true
             xcrun simctl location "$udid" set 43.5183,-79.8774 || true
             xcrun simctl launch "$udid" "$BUNDLE"
-            sleep 30
+            sleep 60
             xcrun simctl io "$udid" screenshot "shots/${label}-main.png"
             xcrun simctl ui "$udid" appearance dark
             sleep 3
             xcrun simctl io "$udid" screenshot "shots/${label}-main-dark-mode.png"
             xcrun simctl ui "$udid" appearance light
             xcrun simctl terminate "$udid" "$BUNDLE" || true
+            sleep 3
             xcrun simctl launch "$udid" "$BUNDLE" -designPreview
-            sleep 8
+            sleep 25
             xcrun simctl io "$udid" screenshot "shots/${label}-design-preview.png"
             xcrun simctl shutdown "$udid" || true
           }

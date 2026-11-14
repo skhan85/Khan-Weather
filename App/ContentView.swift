@@ -36,7 +36,7 @@ struct ContentView: View {
                         Text(message)
                     } actions: {
                         Button("Try again") { Task { await model.refresh() } }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(.bordered)
                     }
                 case .loaded(let forecast):
                     ForecastList(forecast: forecast,
@@ -57,10 +57,20 @@ struct ContentView: View {
             .navigationTitle("Khan Weather")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Image("Logo")
+                        .resizable()
+                        .frame(width: 30, height: 30)
+                        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(.white.opacity(0.35), lineWidth: 0.5))
+                        .shadow(color: .black.opacity(0.25), radius: 3, y: 1)
+                        .accessibilityLabel("Khan Weather")
+                }
                 ToolbarItem(placement: .topBarLeading) {
                     Button { showingSettings = true } label: {
                         Label("Settings", systemImage: "gearshape")
                     }
+                    .tint(.white)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
@@ -77,6 +87,7 @@ struct ContentView: View {
                     } label: {
                         Label("Places", systemImage: places.selected == nil ? "location.circle" : "mappin.circle")
                     }
+                    .tint(.white)
                 }
             }
             .sheet(isPresented: $showingPlaces) {
@@ -177,15 +188,15 @@ private struct ForecastList: View {
 
             Section {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 4) {
+                    HStack(alignment: .top, spacing: 4) {
                         ForEach(Array(forecast.upcomingHours(count: hourlyCount).enumerated()), id: \.element.id) { index, hour in
                             NavigationLink {
                                 HourDetailView(hour: hour, timeZone: forecast.timeZone)
                             } label: {
                                 VStack(spacing: 8) {
                                     Text(index == 0 ? "Now" : TimeText.hour(hour.time, forecast.timeZone))
-                                        .font(.caption.weight(index == 0 ? .bold : .medium))
-                                        .foregroundStyle(index == 0 ? HierarchicalShapeStyle.primary : HierarchicalShapeStyle.secondary)
+                                        .font(.footnote.weight(index == 0 ? .bold : .semibold))
+                                        .foregroundStyle(.white.opacity(index == 0 ? 1 : 0.85))
                                     ConditionIcon(condition: hour.condition, isDay: hour.isDay)
                                         .font(.title3)
                                         .frame(height: 26)
@@ -193,7 +204,7 @@ private struct ForecastList: View {
                                         .font(.body.weight(.semibold))
                                     PrecipChance(probability: hour.precipitationProbability,
                                                  kind: hour.precipitationKind, font: .caption2.weight(.semibold))
-                                        .frame(minHeight: 14)
+                                        .frame(height: 14)
                                 }
                                 .frame(minWidth: 50)
                                 .padding(.vertical, 8)
@@ -257,8 +268,8 @@ private struct ForecastList: View {
                         Text(sourceNames)
                             .font(.footnote)
                         Text("Updated \(TimeText.time(forecast.fetchedAt, .current))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.footnote)
+                            .foregroundStyle(.white.opacity(0.82))
                     }
                 }
             }
@@ -285,7 +296,7 @@ private struct DailyRow: View {
                 if let totals = WeatherFormat.precipitationTotals(rainMm: day.rainSum, snowCm: day.snowfallSum) {
                     Text(totals)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.white.opacity(0.82))
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
                 }
@@ -300,7 +311,7 @@ private struct DailyRow: View {
             .frame(width: 36)
             Text(WeatherFormat.temperature(day.low))
                 .font(.body.weight(.medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.82))
                 .frame(width: 36, alignment: .trailing)
             TemperatureRangeBar(low: day.low, high: day.high, weekLow: weekLow, weekHigh: weekHigh, current: current)
             Text(WeatherFormat.temperature(day.high))
@@ -353,7 +364,7 @@ struct CurrentConditionsView: View {
             if let today {
                 Text("H:\(WeatherFormat.temperature(today.high))   L:\(WeatherFormat.temperature(today.low))")
                     .font(.headline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.88))
             }
             HStack(spacing: 20) {
                 if let humidity = current.humidity {
@@ -364,7 +375,7 @@ struct CurrentConditionsView: View {
                 }
             }
             .font(.subheadline.weight(.medium))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.white.opacity(0.88))
             .padding(.top, 2)
             Group {
                 if let observation, observation.isLocal {
@@ -375,13 +386,13 @@ struct CurrentConditionsView: View {
                     Text("Model estimate (no nearby station)")
                 }
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.footnote)
+            .foregroundStyle(.white.opacity(0.88))
             .multilineTextAlignment(.center)
             .padding(.top, 2)
         }
         .foregroundStyle(.white)
-        .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
+        .shadow(color: .black.opacity(0.35), radius: 4, y: 1)
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
     }
@@ -442,8 +453,8 @@ struct TodayDetailsView: View {
             ForEach(tiles) { tile in
                 VStack(alignment: .leading, spacing: 4) {
                     Label(tile.title, systemImage: tile.systemImage)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.82))
                     Text(tile.value)
                         .font(.body.weight(.semibold))
                 }
