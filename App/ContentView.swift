@@ -172,52 +172,16 @@ private struct ForecastList: View {
             Section {
                 CurrentConditionsView(current: forecast.current, placeName: placeName, isSavedPlace: isSavedPlace,
                                       observation: forecast.observation, timeZone: forecast.timeZone,
-                                      today: forecast.day())
+                                      today: forecast.day(), outlook: Outlook.text(forecast))
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-            }
-
-            if let nowcast = forecast.nowcast() {
-                Section {
-                    Label(nowcast.text, systemImage: nowcast.kind == .rain ? "umbrella.fill" : "snowflake")
-                        .font(.subheadline.weight(.semibold))
-                        .symbolRenderingMode(.multicolor)
-                }
-                .glassRow()
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
             }
 
             Section {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(alignment: .top, spacing: 4) {
-                        ForEach(Array(forecast.upcomingHours(count: hourlyCount).enumerated()), id: \.element.id) { index, hour in
-                            NavigationLink {
-                                HourDetailView(hour: hour, timeZone: forecast.timeZone)
-                            } label: {
-                                VStack(spacing: 8) {
-                                    Text(index == 0 ? "Now" : TimeText.hour(hour.time, forecast.timeZone))
-                                        .font(.footnote.weight(index == 0 ? .bold : .semibold))
-                                        .foregroundStyle(.white.opacity(index == 0 ? 1 : 0.85))
-                                    ConditionIcon(condition: hour.condition, isDay: hour.isDay)
-                                        .font(.title3)
-                                        .frame(height: 26)
-                                    Text(WeatherFormat.temperature(hour.temperature))
-                                        .font(.body.weight(.semibold))
-                                    PrecipChance(probability: hour.precipitationProbability,
-                                                 kind: hour.precipitationKind, font: .caption2.weight(.semibold))
-                                        .frame(height: 14)
-                                }
-                                .frame(minWidth: 50)
-                                .padding(.vertical, 8)
-                                .background(index == 0 ? Color.white.opacity(0.12) : .clear,
-                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
-                // A new forecast starts the row back at "now" instead of keeping an old scroll position.
-                .id(forecast.fetchedAt)
+                HourlyCurve(hours: forecast.upcomingHours(count: hourlyCount), timeZone: forecast.timeZone)
+                    // A new forecast starts the strip back at "now" instead of keeping an old scroll position.
+                    .id(forecast.fetchedAt)
             } header: {
                 SkySectionHeader(title: "Next \(hourlyCount) hours", systemImage: "clock")
             }
@@ -276,6 +240,31 @@ private struct ForecastList: View {
             .glassRow()
         }
         .listSectionSpacing(14)
+        .fontDesign(.rounded)
+    }
+}
+
+/// One plain sentence about the next few hours, e.g. "Cooling to 1° by 11 PM."
+enum Outlook {
+    static func text(_ forecast: Forecast) -> String? {
+        if let nowcast = forecast.nowcast() { return nowcast.text }
+        let next = forecast.upcomingHours(count: 7)
+        guard let now = next.first, next.count > 3 else { return nil }
+        let later = next.dropFirst()
+        let tz = forecast.timeZone
+        // Rain or snow coming up is the most useful thing to say.
+        if let wet = later.first(where: { ($0.precipitationProbability ?? 0) >= 50 }) {
+            return "\(wet.precipitationKind.noun.capitalized) likely around \(TimeText.hour(wet.time, tz))."
+        }
+        let target = later.last!
+        let change = target.temperature - now.temperature
+        let at = TimeText.hour(target.time, tz)
+        if change <= -2 { return "Cooling to \(WeatherFormat.temperature(target.temperature)) by \(at)." }
+        if change >= 2 { return "Warming to \(WeatherFormat.temperature(target.temperature)) by \(at)." }
+        if target.condition != now.condition {
+            return "\(target.condition.description) by \(at)."
+        }
+        return "Steady around \(WeatherFormat.temperature(now.temperature)) for the next few hours."
     }
 }
 
@@ -292,7 +281,8 @@ private struct DailyRow: View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(isToday ? "Today" : day.date.formatted(Date.FormatStyle(timeZone: timeZone).weekday(.abbreviated)))
-                    .font(.body.weight(.semibold))
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(isToday ? Brand.gold : .white)
                 if let totals = WeatherFormat.precipitationTotals(rainMm: day.rainSum, snowCm: day.snowfallSum) {
                     Text(totals)
                         .font(.caption2)
@@ -303,12 +293,11 @@ private struct DailyRow: View {
             }
             .frame(width: 62, alignment: .leading)
             VStack(spacing: 1) {
-                ConditionIcon(condition: day.condition)
-                    .font(.title3)
+                IconBadge(condition: day.condition, size: 34)
                 PrecipChance(probability: day.precipitationProbability, kind: day.precipitationKind,
                              font: .caption2.weight(.semibold), showsIcon: false)
             }
-            .frame(width: 36)
+            .frame(width: 40)
             Text(WeatherFormat.temperature(day.low))
                 .font(.body.weight(.medium))
                 .foregroundStyle(.white.opacity(0.82))
@@ -329,54 +318,78 @@ struct CurrentConditionsView: View {
     var observation: Observation?
     var timeZone: TimeZone = .current
     var today: DailyForecast? = nil
+    /// "Cooling to 1° by 11 PM."
+    var outlook: String? = nil
     @AppStorage(DisplaySettings.mainTemperatureKey) private var mainTemperature = MainTemperature.actual.rawValue
 
     private var feelsFirst: Bool { mainTemperature == MainTemperature.feelsLike.rawValue }
 
+    private var feelsText: String {
+        if feelsFirst {
+            return "\(WeatherFormat.feelsLikeLabel(current.feelsLikeKind)). Actual \(WeatherFormat.temperature(current.temperature))"
+        }
+        return "\(WeatherFormat.feelsLikeLabel(current.feelsLikeKind)) \(WeatherFormat.temperature(current.feelsLike))"
+    }
+
     var body: some View {
-        VStack(spacing: 6) {
-            if let placeName {
-                Label(placeName, systemImage: isSavedPlace ? "mappin" : "location.fill")
-                    .font(.title2.weight(.semibold))
-                    .labelStyle(.titleAndIcon)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                if let placeName {
+                    Label(placeName, systemImage: isSavedPlace ? "mappin" : "location.fill")
+                        .font(.title3.weight(.bold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+                Spacer()
+                Text("NOW")
+                    .font(.caption.weight(.heavy))
+                    .tracking(1.5)
+                    .foregroundStyle(.black.opacity(0.8))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Brand.gold))
             }
-            Text(WeatherFormat.temperature(feelsFirst ? current.feelsLike : current.temperature))
-                .font(.system(size: 96, weight: .thin, design: .rounded))
-                .contentTransition(.numericText())
-                .padding(.vertical, -6)
-            HStack(spacing: 8) {
-                ConditionIcon(condition: current.condition, isDay: current.isDay)
-                    .font(.title)
+            HStack(alignment: .center, spacing: 16) {
+                IconBadge(condition: current.condition, isDay: current.isDay, size: 96)
                     .symbolEffect(.bounce, value: current.time)
-                Text(observation?.conditionText ?? current.condition.description)
-                    .font(.title3.weight(.medium))
-            }
-            Group {
-                if feelsFirst {
-                    Text("\(WeatherFormat.feelsLikeLabel(current.feelsLikeKind)). Actual \(WeatherFormat.temperature(current.temperature))")
-                } else {
-                    Text("\(WeatherFormat.feelsLikeLabel(current.feelsLikeKind)) \(WeatherFormat.temperature(current.feelsLike))")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(WeatherFormat.temperature(feelsFirst ? current.feelsLike : current.temperature))
+                        .font(.system(size: 76, weight: .bold, design: .rounded))
+                        .contentTransition(.numericText())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    Text(observation?.conditionText ?? current.condition.description)
+                        .font(.title3.weight(.semibold))
+                    Text(feelsText)
+                        .font(.headline)
+                        .foregroundStyle(.white.opacity(0.9))
                 }
             }
-            .font(.headline)
-            if let today {
-                Text("H:\(WeatherFormat.temperature(today.high))   L:\(WeatherFormat.temperature(today.low))")
+            if let outlook {
+                Text(outlook)
                     .font(.headline)
-                    .foregroundStyle(.white.opacity(0.88))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.black.opacity(0.18)))
+                    .overlay(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 2).fill(Brand.gold).frame(width: 4).padding(.vertical, 6)
+                    }
             }
-            HStack(spacing: 20) {
-                if let humidity = current.humidity {
-                    Label(WeatherFormat.percent(humidity), systemImage: "humidity.fill")
-                }
-                if let wind = current.windSpeed {
-                    Label(WeatherFormat.wind(wind), systemImage: "wind")
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    if let today {
+                        FactChip(text: "\(WeatherFormat.temperature(today.high)) / \(WeatherFormat.temperature(today.low))",
+                                 systemImage: "thermometer.medium")
+                    }
+                    if let humidity = current.humidity {
+                        FactChip(text: WeatherFormat.percent(humidity), systemImage: "humidity.fill")
+                    }
+                    if let wind = current.windSpeed {
+                        FactChip(text: WeatherFormat.wind(wind), systemImage: "wind")
+                    }
                 }
             }
-            .font(.subheadline.weight(.medium))
-            .foregroundStyle(.white.opacity(0.88))
-            .padding(.top, 2)
             Group {
                 if let observation, observation.isLocal {
                     Text(Self.localCaption(observation, from: placeName, timeZone: timeZone))
@@ -388,13 +401,19 @@ struct CurrentConditionsView: View {
             }
             .font(.footnote)
             .foregroundStyle(.white.opacity(0.88))
-            .multilineTextAlignment(.center)
-            .padding(.top, 2)
         }
         .foregroundStyle(.white)
-        .shadow(color: .black.opacity(0.35), radius: 4, y: 1)
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
+        .fontDesign(.rounded)
+        .shadow(color: .black.opacity(0.25), radius: 3, y: 1)
+        .padding(18)
+        .background {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(LinearGradient(colors: [.white.opacity(0.22), .white.opacity(0.06)],
+                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+                .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(.white.opacity(0.3), lineWidth: 1))
+        }
+        .padding(.horizontal, 16)
     }
 
     /// ", 13 km from Oakville": the distance is to the forecast spot, not to the town in the station's name.

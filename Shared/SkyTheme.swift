@@ -167,7 +167,7 @@ struct TemperatureRangeBar: View {
                 }
             }
         }
-        .frame(height: 5)
+        .frame(height: 8)
         .accessibilityHidden(true)
     }
 }
@@ -213,10 +213,52 @@ struct SkySectionHeader: View {
     let systemImage: String
 
     var body: some View {
-        Label(title, systemImage: systemImage)
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.white.opacity(0.92))
+        Label {
+            Text(title).foregroundStyle(.white.opacity(0.95))
+        } icon: {
+            Image(systemName: systemImage).foregroundStyle(Brand.gold)
+        }
+            .font(.subheadline.weight(.bold))
+            .fontDesign(.rounded)
             .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
             .textCase(nil)
+    }
+}
+
+/// Khan Weather's own accent: a warm gold used for highlights on the sky.
+enum Brand {
+    static let gold = Color(red: 1.0, green: 0.78, blue: 0.32)
+}
+
+/// A weather icon sitting in a soft round badge.
+struct IconBadge: View {
+    let condition: WeatherCondition
+    var isDay: Bool = true
+    var size: CGFloat = 36
+
+    var body: some View {
+        ConditionIcon(condition: condition, isDay: isDay)
+            .font(.system(size: size * 0.5))
+            .frame(width: size, height: size)
+            .background(Circle().fill(.white.opacity(0.14)))
+            .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 0.5))
+    }
+}
+
+/// Rounded "chip" for a small fact, e.g. humidity.
+struct FactChip: View {
+    let text: String
+    let systemImage: String
+
+    var body: some View {
+        Label {
+            Text(text)
+        } icon: {
+            Image(systemName: systemImage).foregroundStyle(Brand.gold)
+        }
+        .font(.subheadline.weight(.semibold))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Capsule().fill(.white.opacity(0.14)))
     }
 }

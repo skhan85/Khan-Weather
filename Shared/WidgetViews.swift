@@ -106,35 +106,40 @@ struct KhanWeatherWidgetView: View {
 
     private func summary(_ current: CurrentConditions) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            if let place = entry.placeName {
-                Text(place)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+            HStack(alignment: .top) {
+                if let place = entry.placeName {
+                    Text(place)
+                        .font(.subheadline.weight(.bold))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.7)
+                }
+                Spacer(minLength: 4)
+                IconBadge(condition: current.condition, isDay: current.isDay, size: 38)
             }
-            Text(temp(current.temperature))
-                .font(.system(size: 44, weight: .light, design: .rounded))
-                .minimumScaleFactor(0.7)
             Spacer(minLength: 0)
-            ConditionIcon(condition: current.condition, isDay: current.isDay)
-                .font(.title3)
+            Text(temp(current.temperature))
+                .font(.system(size: 42, weight: .bold, design: .rounded))
+                .minimumScaleFactor(0.7)
             Text(entry.nowcast ?? current.condition.description)
-                .font(.caption.weight(.medium))
+                .font(.caption.weight(.semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
             if let alert = entry.alert {
                 Label(alert, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color(red: 1, green: 0.78, blue: 0.3))
+                    .foregroundStyle(Brand.gold)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             } else {
-                Text("H:\(temp(entry.high))  L:\(temp(entry.low))")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.9))
+                HStack(spacing: 3) {
+                    Image(systemName: "thermometer.medium").foregroundStyle(Brand.gold)
+                    Text("\(temp(entry.high)) / \(temp(entry.low))")
+                }
+                .font(.caption.weight(.bold))
             }
         }
         .foregroundStyle(.white)
+        .fontDesign(.rounded)
         .frame(maxWidth: .infinity, alignment: .leading)
         .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
     }
@@ -148,9 +153,7 @@ struct KhanWeatherWidgetView: View {
                         .foregroundStyle(.white.opacity(0.88))
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
-                    ConditionIcon(condition: hour.condition, isDay: hour.isDay)
-                        .font(.body)
-                        .frame(height: 22)
+                    IconBadge(condition: hour.condition, isDay: hour.isDay, size: 30)
                     Text(temp(hour.temperature))
                         .font(.subheadline.weight(.semibold))
                 }
