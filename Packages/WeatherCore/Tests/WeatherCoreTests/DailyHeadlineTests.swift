@@ -67,4 +67,14 @@ final class DailyHeadlineTests: XCTestCase {
         XCTAssertEqual(d.condition, .snow)
         XCTAssertNil(d.summary)
     }
+
+    func testLowChanceButSteadyRainStaysRain() {
+        // Nov 14: 23% chance, yet 2 mm over 7 hours. The day screen said Overcast while every model showed rain.
+        var hours = (0..<24).map { hour($0, 4, .overcast) }
+        for h in 16...22 { hours[h] = hour(h, 3, .rain, rain: 0.3) }
+        let day = DailyForecast(date: time(0), high: 5, low: 1, precipitationProbability: 23, condition: .rain,
+                                rainSum: 2.1, snowfallSum: 0)
+        let d = forecast(day, hours).withDailyHeadlines().daily[0]
+        XCTAssertEqual(d.condition, .rain)
+    }
 }

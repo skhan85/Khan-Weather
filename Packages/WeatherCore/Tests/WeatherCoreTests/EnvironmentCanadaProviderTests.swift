@@ -137,6 +137,26 @@ final class EnvironmentCanadaProviderTests: XCTestCase {
         XCTAssertEqual(nudged[7].temperature, 2, "7 hours on, the model stands")
     }
 
+    func testTodaysHighTakesInTheReading() {
+        let t0 = Date(timeIntervalSince1970: 1_794_000_000)
+        let hours = (0..<8).map { HourlyForecast(time: t0.addingTimeInterval(Double($0) * 3600), temperature: 5,
+                                                 feelsLike: 2, condition: .overcast) }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        let day = DailyForecast(date: calendar.startOfDay(for: t0), high: 5, low: 1, feelsLikeHigh: 2, feelsLikeLow: -3,
+                                precipitationProbability: nil, condition: .overcast)
+        let forecast = Forecast(location: .fallback, timeZoneIdentifier: "America/Toronto",
+                                current: CurrentConditions(time: t0, temperature: 5, feelsLike: 2, feelsLikeKind: .apparent,
+                                                           condition: .overcast, isDay: true),
+                                hourly: hours, daily: [day], source: "t", fetchedAt: t0)
+        let now = CurrentConditions(time: t0, temperature: 7, feelsLike: 3, feelsLikeKind: .windChill,
+                                    condition: .overcast, isDay: true)
+        let d = forecast.dailyIncluding(now, at: t0)[0]
+        XCTAssertEqual(d.high, 7)
+        XCTAssertEqual(d.low, 1)
+        XCTAssertEqual(d.feelsLikeHigh, 3)
+    }
+
     func testWindChillAndHumidex() {
         // Saad's case: 6 °C, 39 km/h at Burlington Lift Bridge. ECCC showed −6; the formula gives about +1.
         XCTAssertEqual(try XCTUnwrap(EnvironmentCanadaProvider.windChill(temperature: 6, windKmh: 39)), 0.7, accuracy: 0.1)
