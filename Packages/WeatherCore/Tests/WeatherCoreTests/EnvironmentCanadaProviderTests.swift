@@ -155,6 +155,11 @@ final class EnvironmentCanadaProviderTests: XCTestCase {
         XCTAssertEqual(d.high, 7)
         XCTAssertEqual(d.low, 1)
         XCTAssertEqual(d.feelsLikeHigh, 3)
+        // And through the full path, with a Netatmo reading.
+        var o = Observation(stationName: "2 Netatmo stations in Milton", observedAt: t0.addingTimeInterval(540),
+                            temperature: 7, distanceKm: 2.9)
+        o.dataProvider = "NETATMO"
+        XCTAssertEqual(forecast.applying(o).daily[0].high, 7)
     }
 
     func testWindChillAndHumidex() {

@@ -84,6 +84,11 @@ public struct NetatmoRelayProvider: ObservationProvider {
                             windSpeed: wind?.wind_strength, windDirection: wind?.wind_angle,
                             distanceKm: first.1)
         o.dataProvider = "NETATMO"
+        let gauges = fresh.compactMap(\.0.rain_60min)
+        if !gauges.isEmpty {
+            o.rainGauges = gauges.count
+            o.rainLastHourMm = gauges.max()
+        }
         return o
     }
 }
@@ -122,6 +127,7 @@ public struct HyperlocalObservationProvider: ObservationProvider {
         merged.conditionText = base?.conditionText
         merged.skyStationName = base?.stationName
         merged.skyDataProvider = base?.dataProvider
+        merged.skyDistanceKm = base?.distanceKm
         if merged.windSpeed == nil, let base, base.isLocal {
             merged.windSpeed = base.windSpeed
             merged.windDirection = base.windDirection

@@ -106,6 +106,14 @@ public struct UnitSettings: Equatable, Sendable {
 }
 
 public extension WeatherCondition {
+    /// Rain, drizzle and showers, but not snow (which radar and home gauges can miss).
+    var isRainLike: Bool {
+        switch self {
+        case .drizzle, .freezingDrizzle, .rain, .freezingRain, .rainShowers: return true
+        default: return false
+        }
+    }
+
     /// Rain, snow, drizzle and the like, but not thunderstorms.
     var isPrecipitation: Bool {
         switch self {

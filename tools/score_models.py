@@ -13,10 +13,15 @@ from datetime import datetime, timedelta, timezone, date
 START, END = date(2025, 11, 1), date(2026, 10, 31)
 MODELS = ["gem_hrdps_continental", "gfs_hrrr", "gem_seamless", "ecmwf_ifs025",
           "icon_seamless", "ukmo_seamless", "gfs_seamless", "best_match"]
-BLEND = MODELS[:7]
+# Extra candidates to score alongside, e.g. EXTRA=gem_regional,ecmwf_aifs025_single
+EXTRA = [m for m in os.environ.get("EXTRA", "").split(",") if m]
+BLEND = MODELS[:7] + EXTRA
+MODELS = MODELS + EXTRA
 NAMES = {"gem_hrdps_continental": "HRDPS", "gfs_hrrr": "HRRR", "gem_seamless": "GEM",
          "ecmwf_ifs025": "ECMWF", "icon_seamless": "ICON", "ukmo_seamless": "UKMO",
          "gfs_seamless": "GFS", "best_match": "BestMatch", "blend_now": "AppBlend"}
+for _m in EXTRA:
+    NAMES.setdefault(_m, _m)
 LEADS = [0, 1, 2, 3, 4, 5]          # previous_dayN
 # Candidate stations (climate id, label). Hourly + daily share the id at these.
 STATIONS = [("6158731", "Toronto Pearson"), ("6153193", "Hamilton Airport")]
@@ -122,7 +127,8 @@ def forecasts(lat, lon, cid):
              "models": ",".join(MODELS), "timezone": "GMT",
              "start_date": a.isoformat(), "end_date": (b + timedelta(days=1)).isoformat()}
         url = "https://previous-runs-api.open-meteo.com/v1/forecast?" + urllib.parse.urlencode(q)
-        d = get_json(url, f"fc-{cid}-{a.isoformat()}.json")
+        d = get_json(url, f"fc-{cid}-{a.isoformat()}.json" if not EXTRA
+                     else f"fc-{cid}-{a.isoformat()}-{'_'.join(EXTRA)}.json")
         h = d["hourly"]
         times = h["time"]
         for m in MODELS:
