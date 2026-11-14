@@ -140,8 +140,8 @@ final class OpenMeteoProviderTests: XCTestCase {
     func testBlendWeightsShiftWithLeadTime() throws {
         let values: [WeatherModel: Double] = [.us: 0, .europe: 10]
         let today: Double = 0.3 / 0.35                      // GFS 0.32, ECMWF 0.03
-        let day6: Double = 3.4 / 0.6                        // GFS 0.26, ECMWF 0.34
-        let between: Double = 10 * 0.185 / (0.185 + 0.29)   // halfway between days 3 and 4 at 72 h
+        let day6: Double = 1.65 / 0.315                     // GFS 0.15, ECMWF 0.165
+        let between: Double = 10 * 0.08 / (0.08 + 0.2325)   // halfway between days 3 and 4 at 72 h
         XCTAssertEqual(try XCTUnwrap(ModelBlend.blend(values, leadHours: 6)), today, accuracy: 0.001)
         XCTAssertEqual(try XCTUnwrap(ModelBlend.blend(values, leadHours: 200)), day6, accuracy: 0.001)
         XCTAssertEqual(try XCTUnwrap(ModelBlend.blend(values, leadHours: 72)), between, accuracy: 0.001)
