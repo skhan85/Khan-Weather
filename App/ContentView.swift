@@ -134,6 +134,8 @@ struct ContentView: View {
         AlertNotifier.markSeen(model.alerts)
         if places.selected == nil, case .loaded(let f) = model.state { AlertNotifier.markRainSeen(f.nowcast()) }
         WidgetCenter.shared.reloadAllTimelines()
+        // Warm up the saved places so the first switch to one is quick.
+        Task { await model.prefetch(places.places) }
     }
 }
 
