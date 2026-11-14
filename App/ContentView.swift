@@ -278,25 +278,42 @@ private struct ForecastList: View {
 
 /// One plain sentence about the next few hours, e.g. "Cooling to 1° by 11 PM."
 enum Outlook {
+    /// Whole degrees in the user's unit, exactly as the screen shows them.
+    private static func shown(_ celsius: Double) -> Int {
+        Int(UnitSettings.current.temperature.convert(celsius).rounded())
+    }
+
+    private static func isCloudOnly(_ c: WeatherCondition) -> Bool {
+        [.mainlyClear, .partlyCloudy, .overcast].contains(c)
+    }
+
+    /// Built from the same numbers as the Now card and the hourly curve, so they never disagree.
     static func text(_ forecast: Forecast) -> String? {
         if let nowcast = forecast.nowcast() { return nowcast.text }
-        let next = forecast.upcomingHours(count: 7)
-        guard let now = next.first, next.count > 3 else { return nil }
-        let later = next.dropFirst()
+        let later = Array(forecast.upcomingHours(count: 7).dropFirst())
+        guard later.count >= 3, let last = later.last else { return nil }
         let tz = forecast.timeZone
+        let now = forecast.current
         // Rain or snow coming up is the most useful thing to say.
         if let wet = later.first(where: { ($0.precipitationProbability ?? 0) >= 50 }) {
             return "\(wet.precipitationKind.noun.capitalized) likely around \(TimeText.hour(wet.time, tz))."
         }
-        let target = later.last!
-        let change = target.temperature - now.temperature
-        let at = TimeText.hour(target.time, tz)
-        if change <= -2 { return "Cooling to \(WeatherFormat.temperature(target.temperature)) by \(at)." }
-        if change >= 2 { return "Warming to \(WeatherFormat.temperature(target.temperature)) by \(at)." }
-        if target.condition != now.condition {
-            return "\(target.condition.description) by \(at)."
+        let nowShown = shown(now.temperature)
+        let targetShown = shown(last.temperature)
+        if abs(targetShown - nowShown) >= 2 {
+            // Name the first hour that reaches the temperature it settles at.
+            let reach = later.first(where: { shown($0.temperature) == targetShown }) ?? last
+            let verb = targetShown < nowShown ? "Cooling" : "Warming"
+            return "\(verb) to \(WeatherFormat.temperature(last.temperature)) by \(TimeText.hour(reach.time, tz))."
         }
-        return "Steady around \(WeatherFormat.temperature(now.temperature)) for the next few hours."
+        if last.condition != now.condition && !(isCloudOnly(last.condition) && isCloudOnly(now.condition)) {
+            return "\(last.condition.description) by \(TimeText.hour(last.time, tz))."
+        }
+        // Steady: quote the temperature the coming hours mostly show.
+        let counts = Dictionary(grouping: later, by: { shown($0.temperature) }).mapValues(\.count)
+        let typical = counts.max { $0.value < $1.value }?.key ?? nowShown
+        let typicalHour = later.first(where: { shown($0.temperature) == typical }) ?? last
+        return "Steady around \(WeatherFormat.temperature(typicalHour.temperature)) for the next few hours."
     }
 }
 
