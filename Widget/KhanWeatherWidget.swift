@@ -44,6 +44,20 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
         return Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(30 * 60)))
     }
 
+    /// Runs `operation`, giving up with nil after `seconds`.
+    private static func withDeadline<T>(_ seconds: Double, _ operation: @escaping () async -> T?) async -> T? {
+        await withTaskGroup(of: T?.self) { group in
+            group.addTask { await operation() }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+    }
+
     /// The next 6 hours, with the first showing the same "now" as the app.
     private static func hoursStartingNow(_ forecast: Forecast) -> [HourlyForecast] {
         var hours = forecast.upcomingHours(count: 6)
@@ -61,11 +75,15 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
             Coordinate(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude)
         } ?? .fallback
         async let place = PlaceNameResolver.name(for: coordinate)
-        async let observed = try? observations.observation(near: coordinate)
-        async let active = try? alerts.alerts(near: coordinate)
-        async let radarNow = try? ECCCRadarProvider().now(at: coordinate)
+        // Extras get a hard deadline: if a station or alert service is slow, iOS would otherwise
+        // give up on the whole refresh and keep showing an old widget.
+        let observations = self.observations
+        let alerts = self.alerts
+        async let observed = Self.withDeadline(8) { try? await observations.observation(near: coordinate) }
+        async let active = Self.withDeadline(8) { try? await alerts.alerts(near: coordinate) }
+        async let radarNow = Self.withDeadline(6) { try? await ECCCRadarProvider().now(at: coordinate) }
         do {
-            let forecast = try await provider.forecast(for: coordinate).applying(await observed ?? nil)
+            let forecast = try await provider.forecast(for: coordinate).applying(await observed)
                 .applyingRadar(await radarNow)
             let today = forecast.daily.first
             return WeatherEntry(date: Date(), current: forecast.current, high: today?.high, low: today?.low,
