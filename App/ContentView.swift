@@ -56,8 +56,16 @@ struct ContentView: View {
             .tint(.white)
             .navigationTitle("Khan Weather")
             .navigationBarTitleDisplayMode(.inline)
-            .skyTitle("Khan Weather")
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Image("Logo")
+                        .resizable()
+                        .frame(width: 30, height: 30)
+                        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).stroke(.white.opacity(0.35), lineWidth: 0.5))
+                        .shadow(color: .black.opacity(0.25), radius: 3, y: 1)
+                        .accessibilityLabel("Khan Weather")
+                }
                 ToolbarItem(placement: .topBarLeading) {
                     Button { showingSettings = true } label: {
                         Label("Settings", systemImage: "gearshape")
