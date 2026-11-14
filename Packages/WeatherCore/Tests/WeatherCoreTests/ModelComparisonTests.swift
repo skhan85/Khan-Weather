@@ -22,4 +22,20 @@ final class ModelComparisonTests: XCTestCase {
         let best = try XCTUnwrap(days.first { $0.model == .bestMatch && $0.date.timeIntervalSince1970 == 1794632400 })
         XCTAssertEqual(best.rainMm ?? 0, 4.5, accuracy: 0.001)
     }
+
+    func testFallsBackToCoreModelsWhenOneIsRefused() async throws {
+        let json = #"{"daily":{"time":[1794546000],"temperature_2m_max_gem_seamless":[2.9],"temperature_2m_min_gem_seamless":[-1.0]}}"#
+        let provider = ModelComparisonProvider(loader: { request in
+            let refused = request.url!.query!.contains("gfs_hrrr")
+            return (Data(json.utf8), HTTPURLResponse(url: request.url!, statusCode: refused ? 400 : 200,
+                                                     httpVersion: nil, headerFields: nil)!)
+        })
+        let days = try await provider.days(at: .fallback)
+        XCTAssertEqual(days.map(\.model), [.canada])
+    }
+
+    func testCanadaUsesGEMForTemperatures() {
+        XCTAssertEqual(WeatherModel.usedForTemperatures(at: Coordinate(latitude: 43.52, longitude: -79.88)), .canada)
+        XCTAssertEqual(WeatherModel.usedForTemperatures(at: Coordinate(latitude: 51.5, longitude: -0.12)), .bestMatch)
+    }
 }

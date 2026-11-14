@@ -11,41 +11,75 @@ struct ModelComparisonView: View {
     @State private var failed = false
     @State private var loading = true
 
+    private var usedModel: WeatherModel { .usedForTemperatures(at: location) }
+
     var body: some View {
         List {
             if loading {
                 ProgressView("Asking each model…")
+                    .tint(.white)
+                    .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
+                    .glassRow()
             } else if failed {
                 ContentUnavailableView("Couldn't load the models", systemImage: "exclamationmark.triangle",
                                        description: Text("Check your connection and try again."))
+                    .glassRow()
             } else {
                 if let summary = agreement {
-                    Section { Text(summary).font(.subheadline) }
+                    Section {
+                        HStack(spacing: 10) {
+                            RoundedRectangle(cornerRadius: 2).fill(Brand.gold).frame(width: 4)
+                            Text(summary)
+                                .font(.subheadline.weight(.semibold))
+                                .fontDesign(.rounded)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .glassRow()
                 }
                 Section {
                     ForEach(rows) { row in
                         HStack(spacing: 12) {
-                            ConditionIcon(condition: row.condition)
-                                .frame(width: 28)
+                            IconBadge(condition: row.condition, size: 36)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(row.model.name)
-                                    .font(.subheadline.weight(row.model == .bestMatch ? .semibold : .regular))
+                                    .font(.subheadline.weight(row.model == usedModel ? .bold : .semibold))
+                                if row.model == usedModel {
+                                    Text("Used by Khan Weather")
+                                        .font(.caption2.weight(.heavy))
+                                        .foregroundStyle(.black.opacity(0.8))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 1)
+                                        .background(Capsule().fill(Brand.gold))
+                                }
                                 if let totals = WeatherFormat.precipitationTotals(rainMm: row.rainMm, snowCm: row.snowCm) {
-                                    Text(totals).font(.caption).foregroundStyle(.secondary)
+                                    Text(totals).font(.caption.weight(.medium)).foregroundStyle(.white.opacity(0.75))
                                 }
                             }
-                            Spacer()
-                            Text(WeatherFormat.temperature(row.low)).foregroundStyle(.secondary)
-                            Text(WeatherFormat.temperature(row.high)).frame(width: 40, alignment: .trailing)
+                            Spacer(minLength: 4)
+                            Text(WeatherFormat.temperature(row.low))
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(.white.opacity(0.7))
+                            Text(WeatherFormat.temperature(row.high))
+                                .font(.body.weight(.bold))
+                                .frame(width: 40, alignment: .trailing)
                         }
+                        .fontDesign(.rounded)
                     }
+                } header: {
+                    SkySectionHeader(title: "Low and high by model", systemImage: "chart.bar.xaxis")
                 } footer: {
-                    Text("Khan Weather uses the best match, which picks the sharpest local model for your spot. Models via Open-Meteo.com (CC BY 4.0).")
+                    Text("Khan Weather's temperatures come from \(usedModel.name). High-res models only reach a day or two ahead, so they drop out for later days. Models via Open-Meteo.com (CC BY 4.0).")
+                        .foregroundStyle(.white.opacity(0.8))
                 }
+                .glassRow()
             }
         }
+        .foregroundStyle(.white)
+        .skyBackground(day.condition, isDay: true)
         .navigationTitle("Compare models")
+        .skyTitle("Compare models")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
     }
