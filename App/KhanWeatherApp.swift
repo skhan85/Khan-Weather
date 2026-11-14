@@ -6,7 +6,11 @@ struct KhanWeatherApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            if ProcessInfo.processInfo.arguments.contains("-designPreview") {
+                DesignPreview()
+            } else {
+                ContentView()
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { AlertNotifier.schedule() }

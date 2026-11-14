@@ -6,16 +6,28 @@ struct PrecipChance: View {
     let probability: Double?
     let kind: PrecipitationKind
     var font: Font = .caption
+    var showsIcon = true
+    @Environment(\.colorScheme) private var colorScheme
+
+    /// Brighter blues on the dark sky screens so the number stays readable.
+    private var colour: Color {
+        if colorScheme == .dark {
+            return kind == .snow ? Color(red: 0.75, green: 0.92, blue: 1) : Color(red: 0.52, green: 0.80, blue: 1)
+        }
+        return kind == .snow ? .cyan : .blue
+    }
 
     var body: some View {
         if let probability, probability >= 10 {
             HStack(spacing: 2) {
-                Image(systemName: kind.symbolName)
-                    .imageScale(.small)
+                if showsIcon {
+                    Image(systemName: kind.symbolName)
+                        .imageScale(.small)
+                }
                 Text(WeatherFormat.percent(probability))
             }
             .font(font)
-            .foregroundStyle(kind == .snow ? Color.cyan : Color.blue)
+            .foregroundStyle(colour)
             .accessibilityLabel("\(WeatherFormat.percent(probability)) chance of \(kind.noun)")
         }
     }
@@ -64,9 +76,9 @@ struct HourDetailView: View {
             Section {
                 VStack(spacing: 6) {
                     ConditionIcon(condition: hour.condition, isDay: hour.isDay)
-                        .font(.system(size: 44))
+                        .font(.system(size: 52))
                     Text(WeatherFormat.temperature(hour.temperature))
-                        .font(.system(size: 48, weight: .thin))
+                        .font(.system(size: 72, weight: .thin, design: .rounded))
                     Text(hour.condition.description)
                         .font(.title3)
                     if let feels = hour.feelsLike {
@@ -74,9 +86,12 @@ struct HourDetailView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)
             }
+            .listRowBackground(Color.clear)
             Section {
                 DetailRow(title: "Precipitation", value: chanceText(hour.precipitationProbability, hour.precipitationKind),
                           systemImage: hour.precipitationKind.symbolName)
@@ -90,7 +105,9 @@ struct HourDetailView: View {
                 DetailRow(title: "UV index", value: WeatherFormat.uvLevel(hour.uvIndex), systemImage: "sun.max")
                 DetailRow(title: "Visibility", value: visibilityText(hour.visibility), systemImage: "eye")
             }
+            .glassRow()
         }
+        .skyBackground(hour.condition, isDay: hour.isDay)
         .navigationTitle(hour.time.formatted(Date.FormatStyle(timeZone: timeZone).weekday(.wide).hour()))
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -107,9 +124,9 @@ struct DayDetailView: View {
             Section {
                 VStack(spacing: 6) {
                     ConditionIcon(condition: day.condition)
-                        .font(.system(size: 44))
+                        .font(.system(size: 52))
                     Text("\(WeatherFormat.temperature(day.high)) / \(WeatherFormat.temperature(day.low))")
-                        .font(.system(size: 40, weight: .thin))
+                        .font(.system(size: 56, weight: .thin, design: .rounded))
                     Text(day.summary ?? day.condition.description)
                         .font(.title3)
                     if let hi = day.feelsLikeHigh, let lo = day.feelsLikeLow {
@@ -117,9 +134,12 @@ struct DayDetailView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)
             }
+            .listRowBackground(Color.clear)
             Section {
                 DetailRow(title: "Precipitation", value: chanceText(day.precipitationProbability, day.precipitationKind),
                           systemImage: day.precipitationKind.symbolName)
@@ -136,6 +156,7 @@ struct DayDetailView: View {
                 DetailRow(title: "Sunset", value: day.sunset.map { TimeText.time($0, timeZone) },
                           systemImage: "sunset")
             }
+            .glassRow()
             if let location {
                 Section {
                     NavigationLink {
@@ -144,9 +165,10 @@ struct DayDetailView: View {
                         Label("Compare models", systemImage: "chart.bar.xaxis")
                     }
                 }
+                .glassRow()
             }
             if !hours.isEmpty {
-                Section("Hour by hour") {
+                Section {
                     ForEach(hours) { hour in
                         NavigationLink {
                             HourDetailView(hour: hour, timeZone: timeZone)
@@ -159,12 +181,17 @@ struct DayDetailView: View {
                                 PrecipChance(probability: hour.precipitationProbability, kind: hour.precipitationKind)
                                 Spacer()
                                 Text(WeatherFormat.temperature(hour.temperature))
+                                    .fontWeight(.semibold)
                             }
                         }
                     }
+                } header: {
+                    SkySectionHeader(title: "Hour by hour", systemImage: "clock")
                 }
+                .glassRow()
             }
         }
+        .skyBackground(day.condition, isDay: true)
         .navigationTitle(day.date.formatted(Date.FormatStyle(timeZone: timeZone).weekday(.wide).month().day()))
         .navigationBarTitleDisplayMode(.inline)
     }

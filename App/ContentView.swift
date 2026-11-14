@@ -26,6 +26,9 @@ struct ContentView: View {
                 switch model.state {
                 case .loading:
                     ProgressView("Getting your weather…")
+                        .tint(.white)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 case .failed(let message):
                     ContentUnavailableView {
                         Label("Couldn't load weather", systemImage: "exclamationmark.triangle")
@@ -33,6 +36,7 @@ struct ContentView: View {
                         Text(message)
                     } actions: {
                         Button("Try again") { Task { await model.refresh() } }
+                            .buttonStyle(.borderedProminent)
                     }
                 case .loaded(let forecast):
                     ForecastList(forecast: forecast,
@@ -44,9 +48,14 @@ struct ContentView: View {
                         .id([temperatureUnit, windUnit, precipitationUnit, pressureUnit, distanceUnit, clock,
                              mainTemperature, String(hourlyCount), String(showDetails)].joined(separator: "-"))
                         .refreshable { await reload() }
+                        .transition(.opacity)
                 }
             }
+            .animation(.easeInOut(duration: 0.5), value: stateKey)
+            .skyBackground(sky.condition, isDay: sky.isDay)
+            .tint(.white)
             .navigationTitle("Khan Weather")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { showingSettings = true } label: {
@@ -87,6 +96,20 @@ struct ContentView: View {
         }
     }
 
+    /// The sky to draw: the current conditions once loaded, a soft day sky before that.
+    private var sky: (condition: WeatherCondition, isDay: Bool) {
+        if case .loaded(let f) = model.state { return (f.current.condition, f.current.isDay) }
+        return (.partlyCloudy, true)
+    }
+
+    private var stateKey: String {
+        switch model.state {
+        case .loading: return "loading"
+        case .failed: return "failed"
+        case .loaded: return "loaded"
+        }
+    }
+
     private func reload() async {
         model.onCurrentLocation = { AlertNotifier.rememberCurrentLocation($0) }
         await model.refresh(place: places.selected)
@@ -115,6 +138,9 @@ private struct ForecastList: View {
         "Sources: " + Credits.shortNames(forecast: forecast, alerts: alerts).joined(separator: ", ")
     }
 
+    private var weekLow: Double { forecast.daily.map(\.low).min() ?? 0 }
+    private var weekHigh: Double { forecast.daily.map(\.high).max() ?? 0 }
+
     var body: some View {
         List {
             if usingFallbackLocation {
@@ -123,6 +149,7 @@ private struct ForecastList: View {
                           systemImage: "location.slash")
                         .font(.footnote)
                 }
+                .glassRow()
             }
 
             if !alerts.isEmpty {
@@ -133,15 +160,81 @@ private struct ForecastList: View {
 
             Section {
                 CurrentConditionsView(current: forecast.current, placeName: placeName, isSavedPlace: isSavedPlace,
-                                      observation: forecast.observation, timeZone: forecast.timeZone)
-                if showDetails {
-                    TodayDetailsView(forecast: forecast)
-                }
-                if let nowcast = forecast.nowcast() {
+                                      observation: forecast.observation, timeZone: forecast.timeZone,
+                                      today: forecast.day())
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            }
+
+            if let nowcast = forecast.nowcast() {
+                Section {
                     Label(nowcast.text, systemImage: nowcast.kind == .rain ? "umbrella.fill" : "snowflake")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(nowcast.kind == .rain ? Color.blue : Color.cyan)
+                        .font(.subheadline.weight(.semibold))
+                        .symbolRenderingMode(.multicolor)
                 }
+                .glassRow()
+            }
+
+            Section {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 4) {
+                        ForEach(Array(forecast.upcomingHours(count: hourlyCount).enumerated()), id: \.element.id) { index, hour in
+                            NavigationLink {
+                                HourDetailView(hour: hour, timeZone: forecast.timeZone)
+                            } label: {
+                                VStack(spacing: 8) {
+                                    Text(index == 0 ? "Now" : TimeText.hour(hour.time, forecast.timeZone))
+                                        .font(.caption.weight(index == 0 ? .bold : .medium))
+                                        .foregroundStyle(index == 0 ? HierarchicalShapeStyle.primary : HierarchicalShapeStyle.secondary)
+                                    ConditionIcon(condition: hour.condition, isDay: hour.isDay)
+                                        .font(.title3)
+                                        .frame(height: 26)
+                                    Text(WeatherFormat.temperature(hour.temperature))
+                                        .font(.body.weight(.semibold))
+                                    PrecipChance(probability: hour.precipitationProbability,
+                                                 kind: hour.precipitationKind, font: .caption2.weight(.semibold))
+                                        .frame(minHeight: 14)
+                                }
+                                .frame(minWidth: 50)
+                                .padding(.vertical, 8)
+                                .background(index == 0 ? Color.white.opacity(0.12) : .clear,
+                                            in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+                // A new forecast starts the row back at "now" instead of keeping an old scroll position.
+                .id(forecast.fetchedAt)
+            } header: {
+                SkySectionHeader(title: "Next \(hourlyCount) hours", systemImage: "clock")
+            }
+            .glassRow()
+
+            Section {
+                ForEach(Array(forecast.daily.enumerated()), id: \.element.id) { index, day in
+                    NavigationLink {
+                        DayDetailView(day: day, hours: forecast.hours(on: day), timeZone: forecast.timeZone,
+                                      location: forecast.location)
+                    } label: {
+                        DailyRow(day: day, isToday: index == 0, timeZone: forecast.timeZone,
+                                 weekLow: weekLow, weekHigh: weekHigh,
+                                 current: index == 0 ? forecast.current.temperature : nil)
+                    }
+                }
+            } header: {
+                SkySectionHeader(title: "\(forecast.daily.count)-day forecast", systemImage: "calendar")
+            }
+            .glassRow()
+
+            if showDetails {
+                Section {
+                    TodayDetailsView(forecast: forecast)
+                } header: {
+                    SkySectionHeader(title: "Today", systemImage: "sun.horizon")
+                }
+                .glassRow()
             }
 
             if Self.radarCovers(forecast.location) {
@@ -150,65 +243,10 @@ private struct ForecastList: View {
                         RadarMapView(center: forecast.location)
                     } label: {
                         Label("Radar map", systemImage: "dot.radiowaves.left.and.right")
+                            .font(.body.weight(.medium))
                     }
                 }
-            }
-
-            Section("Next \(hourlyCount) hours") {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 18) {
-                        ForEach(forecast.upcomingHours(count: hourlyCount)) { hour in
-                            NavigationLink {
-                                HourDetailView(hour: hour, timeZone: forecast.timeZone)
-                            } label: {
-                                VStack(spacing: 6) {
-                                    Text(TimeText.hour(hour.time, forecast.timeZone))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    ConditionIcon(condition: hour.condition, isDay: hour.isDay)
-                                        .frame(height: 22)
-                                    Text(WeatherFormat.temperature(hour.temperature))
-                                        .font(.headline)
-                                    PrecipChance(probability: hour.precipitationProbability,
-                                                 kind: hour.precipitationKind, font: .caption2)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-                // A new forecast starts the row back at "now" instead of keeping an old scroll position.
-                .id(forecast.fetchedAt)
-            }
-
-            Section("\(forecast.daily.count)-day forecast") {
-                ForEach(forecast.daily) { day in
-                    NavigationLink {
-                        DayDetailView(day: day, hours: forecast.hours(on: day), timeZone: forecast.timeZone,
-                                      location: forecast.location)
-                    } label: {
-                    HStack {
-                        Text(day.date, format: Date.FormatStyle(timeZone: forecast.timeZone).weekday(.abbreviated))
-                            .frame(width: 48, alignment: .leading)
-                        ConditionIcon(condition: day.condition)
-                            .frame(width: 32)
-                        VStack(alignment: .leading, spacing: 0) {
-                            PrecipChance(probability: day.precipitationProbability, kind: day.precipitationKind)
-                            if let totals = WeatherFormat.precipitationTotals(rainMm: day.rainSum, snowCm: day.snowfallSum) {
-                                Text(totals)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        Spacer()
-                        Text(WeatherFormat.temperature(day.low))
-                            .foregroundStyle(.secondary)
-                        Text(WeatherFormat.temperature(day.high))
-                            .frame(width: 44, alignment: .trailing)
-                    }
-                    }
-                }
+                .glassRow()
             }
 
             Section {
@@ -224,7 +262,52 @@ private struct ForecastList: View {
                     }
                 }
             }
+            .glassRow()
         }
+        .listSectionSpacing(14)
+    }
+}
+
+/// One day in the 10-day list: weekday, icon, chance of rain or snow, and the low-to-high bar.
+private struct DailyRow: View {
+    let day: DailyForecast
+    let isToday: Bool
+    let timeZone: TimeZone
+    let weekLow: Double
+    let weekHigh: Double
+    var current: Double?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(isToday ? "Today" : day.date.formatted(Date.FormatStyle(timeZone: timeZone).weekday(.abbreviated)))
+                    .font(.body.weight(.semibold))
+                if let totals = WeatherFormat.precipitationTotals(rainMm: day.rainSum, snowCm: day.snowfallSum) {
+                    Text(totals)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                }
+            }
+            .frame(width: 62, alignment: .leading)
+            VStack(spacing: 1) {
+                ConditionIcon(condition: day.condition)
+                    .font(.title3)
+                PrecipChance(probability: day.precipitationProbability, kind: day.precipitationKind,
+                             font: .caption2.weight(.semibold), showsIcon: false)
+            }
+            .frame(width: 36)
+            Text(WeatherFormat.temperature(day.low))
+                .font(.body.weight(.medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 36, alignment: .trailing)
+            TemperatureRangeBar(low: day.low, high: day.high, weekLow: weekLow, weekHigh: weekHigh, current: current)
+            Text(WeatherFormat.temperature(day.high))
+                .font(.body.weight(.semibold))
+                .frame(width: 36, alignment: .leading)
+        }
+        .padding(.vertical, 2)
     }
 }
 
@@ -234,23 +317,31 @@ struct CurrentConditionsView: View {
     var isSavedPlace = false
     var observation: Observation?
     var timeZone: TimeZone = .current
+    var today: DailyForecast? = nil
     @AppStorage(DisplaySettings.mainTemperatureKey) private var mainTemperature = MainTemperature.actual.rawValue
 
     private var feelsFirst: Bool { mainTemperature == MainTemperature.feelsLike.rawValue }
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             if let placeName {
                 Label(placeName, systemImage: isSavedPlace ? "mappin" : "location.fill")
-                    .font(.headline)
+                    .font(.title2.weight(.semibold))
                     .labelStyle(.titleAndIcon)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
-            ConditionIcon(condition: current.condition, isDay: current.isDay)
-                .font(.system(size: 56))
             Text(WeatherFormat.temperature(feelsFirst ? current.feelsLike : current.temperature))
-                .font(.system(size: 64, weight: .thin))
-            Text(observation?.conditionText ?? current.condition.description)
-                .font(.title3)
+                .font(.system(size: 96, weight: .thin, design: .rounded))
+                .contentTransition(.numericText())
+                .padding(.vertical, -6)
+            HStack(spacing: 8) {
+                ConditionIcon(condition: current.condition, isDay: current.isDay)
+                    .font(.title)
+                    .symbolEffect(.bounce, value: current.time)
+                Text(observation?.conditionText ?? current.condition.description)
+                    .font(.title3.weight(.medium))
+            }
             Group {
                 if feelsFirst {
                     Text("\(WeatherFormat.feelsLikeLabel(current.feelsLikeKind)). Actual \(WeatherFormat.temperature(current.temperature))")
@@ -258,35 +349,41 @@ struct CurrentConditionsView: View {
                     Text("\(WeatherFormat.feelsLikeLabel(current.feelsLikeKind)) \(WeatherFormat.temperature(current.feelsLike))")
                 }
             }
-            .foregroundStyle(.secondary)
+            .font(.headline)
+            if let today {
+                Text("H:\(WeatherFormat.temperature(today.high))   L:\(WeatherFormat.temperature(today.low))")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+            }
             HStack(spacing: 20) {
                 if let humidity = current.humidity {
-                    Label(WeatherFormat.percent(humidity), systemImage: "humidity")
+                    Label(WeatherFormat.percent(humidity), systemImage: "humidity.fill")
                 }
                 if let wind = current.windSpeed {
                     Label(WeatherFormat.wind(wind), systemImage: "wind")
                 }
             }
-            .font(.subheadline)
+            .font(.subheadline.weight(.medium))
             .foregroundStyle(.secondary)
-            if let observation, observation.isLocal {
-                Text(Self.localCaption(observation, from: placeName, timeZone: timeZone))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            } else if let observation {
-                Text("Sky from \(observation.stationName)\(Self.distance(observation, from: placeName)). Temperature is the forecast for your spot.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            } else {
-                Text("Model estimate (no nearby station)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            .padding(.top, 2)
+            Group {
+                if let observation, observation.isLocal {
+                    Text(Self.localCaption(observation, from: placeName, timeZone: timeZone))
+                } else if let observation {
+                    Text("Sky from \(observation.stationName)\(Self.distance(observation, from: placeName)). Temperature is the forecast for your spot.")
+                } else {
+                    Text("Model estimate (no nearby station)")
+                }
             }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .padding(.top, 2)
         }
+        .foregroundStyle(.white)
+        .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
+        .padding(.vertical, 12)
     }
 
     /// ", 13 km from Oakville": the distance is to the forecast spot, not to the town in the station's name.
@@ -323,7 +420,7 @@ struct TodayDetailsView: View {
         func add(_ title: String, _ value: String?, _ image: String) {
             if let value { list.append(Tile(title: title, value: value, systemImage: image)) }
         }
-        add("UV index", WeatherFormat.uvLevel(hour?.uvIndex), "sun.max")
+        add("UV index", WeatherFormat.uvLevel(hour?.uvIndex), "sun.max.fill")
         add("Pressure", WeatherFormat.pressure(now.pressure), "gauge.with.dots.needle.33percent")
         add("Visibility", hour?.visibility.flatMap { WeatherFormat.distance($0 / 1000) }, "eye")
         add("Dew point", hour?.dewPoint.map { WeatherFormat.temperature($0) }, "thermometer.medium")
@@ -332,8 +429,8 @@ struct TodayDetailsView: View {
             if let dir = WeatherFormat.compass(now.windDirection) { text = "\(dir), \(text)" }
             add("Gusts", text, "wind")
         }
-        add("Sunrise", day?.sunrise.map { TimeText.time($0, tz) }, "sunrise")
-        add("Sunset", day?.sunset.map { TimeText.time($0, tz) }, "sunset")
+        add("Sunrise", day?.sunrise.map { TimeText.time($0, tz) }, "sunrise.fill")
+        add("Sunset", day?.sunset.map { TimeText.time($0, tz) }, "sunset.fill")
         if let rain = day?.rainSum, let snow = day?.snowfallSum {
             add("Today's total", WeatherFormat.precipitationTotals(rainMm: rain, snowCm: snow), "drop")
         }
@@ -341,16 +438,18 @@ struct TodayDetailsView: View {
     }
 
     var body: some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
             ForEach(tiles) { tile in
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
                     Label(tile.title, systemImage: tile.systemImage)
-                        .font(.caption)
+                        .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                     Text(tile.value)
-                        .font(.subheadline.weight(.medium))
+                        .font(.body.weight(.semibold))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .accessibilityElement(children: .combine)
             }
         }
