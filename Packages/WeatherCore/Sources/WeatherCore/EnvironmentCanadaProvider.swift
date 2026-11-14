@@ -299,8 +299,8 @@ public struct EnvironmentCanadaProvider: ObservationProvider {
 }
 
 public extension Forecast {
-    /// Replaces the model's "now" with a station observation where the station has data.
-    /// Hourly and daily forecasts are left alone.
+    /// Replaces the model's "now" with a station observation where the station has data, and
+    /// eases the next few forecast hours toward it (see `nudged(toward:at:)`).
     func applying(_ observation: Observation?) -> Forecast {
         guard let o = observation else { return self }
         var copy = self
@@ -337,6 +337,28 @@ public extension Forecast {
         c.condition = o.condition ?? c.condition
         c.time = o.observedAt
         copy.current = c
+        copy.hourly = nudged(toward: o.temperature, at: o.observedAt)
         return copy
+    }
+
+    /// How long a station reading keeps pulling the forecast toward it.
+    static let nudgeHours: Double = 6
+
+    /// The hourly forecast shifted by the gap between a reading and the forecast for that time,
+    /// fully at the reading and fading to nothing `nudgeHours` later, so the curve starts where
+    /// the station is instead of jumping from it.
+    func nudged(toward observed: Double, at time: Date) -> [HourlyForecast] {
+        guard let base = upcomingHours(from: time, count: 1).first else { return hourly }
+        let gap = observed - base.temperature
+        return hourly.map { hour in
+            let hoursAhead = hour.time.timeIntervalSince(time) / 3600
+            guard hoursAhead > -1 else { return hour }
+            let share = max(0, 1 - max(hoursAhead, 0) / Self.nudgeHours)
+            guard share > 0 else { return hour }
+            var h = hour
+            h.temperature += gap * share
+            h.feelsLike = h.feelsLike.map { $0 + gap * share }
+            return h
+        }
     }
 }

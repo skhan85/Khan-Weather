@@ -14,7 +14,11 @@ final class ModelComparisonTests: XCTestCase {
           "weather_code_icon_seamless":[3,61],"temperature_2m_max_icon_seamless":[3.1,6.4],"temperature_2m_min_icon_seamless":[-0.2,1.1]}}
         """#
         let days = try ModelComparisonProvider.parse(Data(json.utf8))
-        XCTAssertEqual(days.count, 9, "ECMWF's missing second day is dropped")
+        XCTAssertEqual(days.filter { $0.model != .blend }.count, 9, "ECMWF's missing second day is dropped")
+        let blend = days.filter { $0.model == .blend }
+        XCTAssertEqual(blend.count, 2)
+        // Day 1 (short range): GEM 1.5, ECMWF 1.5, ICON 1, GFS 0.5.
+        XCTAssertEqual(blend[0].high!, (2.9 * 1.5 + 3.5 * 1.5 + 3.1 * 1 + 4.0 * 0.5) / 4.5, accuracy: 0.001)
         let gemDay2 = try XCTUnwrap(days.first { $0.model == .canada && $0.date.timeIntervalSince1970 == 1794632400 })
         XCTAssertEqual(gemDay2.high, 5.5)
         XCTAssertEqual(gemDay2.rainMm, 6)
@@ -31,11 +35,11 @@ final class ModelComparisonTests: XCTestCase {
                                                      httpVersion: nil, headerFields: nil)!)
         })
         let days = try await provider.days(at: .fallback)
-        XCTAssertEqual(days.map(\.model), [.canada])
+        XCTAssertEqual(days.map(\.model), [.canada, .blend])
     }
 
-    func testCanadaUsesGEMForTemperatures() {
-        XCTAssertEqual(WeatherModel.usedForTemperatures(at: Coordinate(latitude: 43.52, longitude: -79.88)), .canada)
+    func testNorthAmericaUsesBlend() {
+        XCTAssertEqual(WeatherModel.usedForTemperatures(at: Coordinate(latitude: 43.52, longitude: -79.88)), .blend)
         XCTAssertEqual(WeatherModel.usedForTemperatures(at: Coordinate(latitude: 51.5, longitude: -0.12)), .bestMatch)
     }
 }

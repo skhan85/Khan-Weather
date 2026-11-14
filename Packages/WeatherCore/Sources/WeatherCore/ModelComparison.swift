@@ -5,6 +5,8 @@ import FoundationNetworking
 
 /// The same day from several weather models, side by side, so you can see how sure the forecast is.
 public enum WeatherModel: String, CaseIterable, Sendable {
+    /// Khan Weather's own weighted average (ModelBlend); worked out here, not asked of Open-Meteo.
+    case blend = "khan_blend"
     case bestMatch = "best_match"
     case canada = "gem_seamless"
     case canadaHighRes = "gem_hrdps_continental"
@@ -16,6 +18,7 @@ public enum WeatherModel: String, CaseIterable, Sendable {
 
     public var name: String {
         switch self {
+        case .blend: return "Khan Weather blend"
         case .bestMatch: return "Open-Meteo best match"
         case .canada: return "Environment Canada (GEM)"
         case .canadaHighRes: return "Environment Canada high-res (HRDPS)"
@@ -29,8 +32,11 @@ public enum WeatherModel: String, CaseIterable, Sendable {
 
     /// The model Khan Weather's own temperatures come from at this spot.
     public static func usedForTemperatures(at coordinate: Coordinate) -> WeatherModel {
-        OpenMeteoProvider.mightUseCanadianModel(coordinate) ? .canada : .bestMatch
+        OpenMeteoProvider.usesBlend(coordinate) ? .blend : .bestMatch
     }
+
+    /// The models asked of Open-Meteo for the comparison.
+    public static let requested: [WeatherModel] = allCases.filter { $0 != .blend }
 }
 
 public struct ModelDay: Equatable, Sendable, Identifiable {
@@ -55,7 +61,7 @@ public struct ModelComparisonProvider: Sendable {
 
     public func days(at coordinate: Coordinate, forecastDays: Int = 10) async throws -> [ModelDay] {
         do {
-            return try await days(at: coordinate, models: WeatherModel.allCases, forecastDays: forecastDays)
+            return try await days(at: coordinate, models: WeatherModel.requested, forecastDays: forecastDays)
         } catch {
             return try await days(at: coordinate, models: Self.core, forecastDays: forecastDays)
         }
@@ -77,7 +83,7 @@ public struct ModelComparisonProvider: Sendable {
     }
 
     /// With several models, Open-Meteo suffixes each field: "temperature_2m_max_gem_seamless".
-    static func parse(_ data: Data, models: [WeatherModel] = WeatherModel.allCases) throws -> [ModelDay] {
+    static func parse(_ data: Data, models: [WeatherModel] = WeatherModel.requested) throws -> [ModelDay] {
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let daily = root["daily"] as? [String: Any],
               let times = daily["time"] as? [NSNumber] else { throw ForecastError.missingData("daily") }
@@ -99,6 +105,24 @@ public struct ModelComparisonProvider: Sendable {
                                     rainMm: OpenMeteoProvider.sum(at(rain), at(showers)), snowCm: at(snow)))
             }
         }
-        return out
+        return out + blendRows(out)
+    }
+
+    /// One "Khan Weather blend" row per day, weighted the same way as the app's temperatures.
+    static func blendRows(_ days: [ModelDay]) -> [ModelDay] {
+        let dates = Array(Set(days.map(\.date))).sorted()
+        return dates.enumerated().compactMap { index, date in
+            let sameDay = days.filter { $0.date == date && ModelBlend.members.contains($0.model) }
+            let lead = Double(index) * 24 + 12
+            func blend(_ value: (ModelDay) -> Double?) -> Double? {
+                ModelBlend.blend(Dictionary(sameDay.compactMap { d in value(d).map { (d.model, $0) } },
+                                            uniquingKeysWith: { a, _ in a }), leadHours: lead)
+            }
+            guard let high = blend(\.high), let low = blend(\.low) else { return nil }
+            let condition = days.first { $0.date == date && $0.model == .bestMatch }?.condition
+                ?? sameDay.first?.condition ?? .unknown
+            return ModelDay(model: .blend, date: date, high: high, low: low, condition: condition,
+                            rainMm: blend(\.rainMm), snowCm: blend(\.snowCm))
+        }
     }
 }

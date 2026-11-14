@@ -70,7 +70,7 @@ struct ModelComparisonView: View {
                 } header: {
                     SkySectionHeader(title: "Low and high by model", systemImage: "chart.bar.xaxis")
                 } footer: {
-                    Text("Khan Weather's temperatures come from \(usedModel.name). High-res models only reach a day or two ahead, so they drop out for later days. Models via Open-Meteo.com (CC BY 4.0).")
+                    Text(footer)
                         .foregroundStyle(.white.opacity(0.8))
                 }
                 .glassRow()
@@ -82,6 +82,13 @@ struct ModelComparisonView: View {
         .skyTitle("Compare models")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
+    }
+
+    private var footer: String {
+        let source = usedModel == .blend
+            ? "Khan Weather's temperatures are a weighted blend: the high-res Canadian and US models count most for the next two days, then the European model leads. The first hours are also eased toward nearby station readings."
+            : "Khan Weather's temperatures here come from \(usedModel.name)."
+        return source + " High-res models only reach a day or two ahead. Models via Open-Meteo.com (CC BY 4.0)."
     }
 
     /// "Models agree within 2°" or "Models disagree: highs from 3° to 9°".
@@ -99,8 +106,10 @@ struct ModelComparisonView: View {
         do {
             var calendar = Calendar(identifier: .gregorian)
             calendar.timeZone = timeZone
-            rows = try await ModelComparisonProvider().days(at: location)
+            let sameDay = try await ModelComparisonProvider().days(at: location)
                 .filter { calendar.isDate($0.date, inSameDayAs: day.date) }
+            let used = usedModel
+            rows = sameDay.filter { $0.model == used } + sameDay.filter { $0.model != used }
             failed = rows.isEmpty
         } catch {
             failed = true
