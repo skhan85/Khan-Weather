@@ -26,12 +26,73 @@ public struct OpenMeteoProvider: ForecastProvider {
     }
 
     public func forecast(for coordinate: Coordinate) async throws -> Forecast {
+        // In and near Canada, temperatures come from Environment Canada's model (GEM), which
+        // Open-Meteo's default blend doesn't use there. Everything else stays on the default.
+        async let canadian = Self.mightUseCanadianModel(coordinate) ? canadianTemperatures(for: coordinate) : nil
         let request = URLRequest(url: url(for: coordinate), timeoutInterval: 20)
         let (data, response) = try await loader(request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw ForecastError.httpStatus(http.statusCode)
         }
-        return try Self.parse(data, fetchedAt: Date())
+        let forecast = try Self.parse(data, fetchedAt: Date())
+        guard let temps = await canadian else { return forecast }
+        return forecast.applying(temps)
+    }
+
+    static func mightUseCanadianModel(_ c: Coordinate) -> Bool {
+        (41.5...84).contains(c.latitude) && (-141.5...(-52)).contains(c.longitude)
+    }
+
+    /// Hourly and daily temperatures from GEM. nil if the request fails, so the default stays.
+    func canadianTemperatures(for coordinate: Coordinate) async -> ModelTemperatures? {
+        let request = URLRequest(url: canadianURL(for: coordinate), timeoutInterval: 15)
+        guard let (data, response) = try? await loader(request) else { return nil }
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { return nil }
+        return try? Self.parseTemperatures(data)
+    }
+
+    func canadianURL(for coordinate: Coordinate) -> URL {
+        let c = coordinate.rounded
+        var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "latitude", value: String(c.latitude)),
+            URLQueryItem(name: "longitude", value: String(c.longitude)),
+            URLQueryItem(name: "hourly", value: "temperature_2m,apparent_temperature"),
+            URLQueryItem(name: "daily", value: "temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min"),
+            URLQueryItem(name: "models", value: "gem_seamless"),
+            URLQueryItem(name: "timezone", value: "auto"),
+            URLQueryItem(name: "timeformat", value: "unixtime"),
+            URLQueryItem(name: "forecast_days", value: String(forecastDays)),
+        ]
+        return components.url!
+    }
+
+    /// Temperatures from one model, keyed by time, to lay over the default forecast.
+    struct ModelTemperatures {
+        var hourly: [Int: (temperature: Double, feelsLike: Double?)] = [:]
+        var daily: [Int: (high: Double, low: Double, feelsLikeHigh: Double?, feelsLikeLow: Double?)] = [:]
+    }
+
+    static func parseTemperatures(_ data: Data) throws -> ModelTemperatures {
+        struct Wire: Decodable {
+            let hourly: Hourly?
+            let daily: Daily?
+        }
+        let r = try JSONDecoder().decode(Wire.self, from: data)
+        var temps = ModelTemperatures()
+        if let h = r.hourly {
+            for (i, time) in h.time.enumerated() {
+                guard let t = h.temperature.value(at: i) else { continue }
+                temps.hourly[time] = (t, h.apparentTemperature.value(at: i))
+            }
+        }
+        if let d = r.daily {
+            for (i, time) in d.time.enumerated() {
+                guard let high = d.temperatureMax.value(at: i), let low = d.temperatureMin.value(at: i) else { continue }
+                temps.daily[time] = (high, low, d.apparentTemperatureMax.value(at: i), d.apparentTemperatureMin.value(at: i))
+            }
+        }
+        return temps
     }
 
     static let currentFields = [
@@ -303,6 +364,32 @@ public struct OpenMeteoProvider: ForecastProvider {
             case showersSum = "showers_sum"
             case snowfallSum = "snowfall_sum"
         }
+    }
+}
+
+extension Forecast {
+    /// Swaps in another model's temperatures wherever it has them for the same hour or day.
+    func applying(_ temps: OpenMeteoProvider.ModelTemperatures) -> Forecast {
+        var copy = self
+        copy.hourly = hourly.map { hour in
+            var h = hour
+            if let t = temps.hourly[Int(hour.time.timeIntervalSince1970)] {
+                h.temperature = t.temperature
+                h.feelsLike = t.feelsLike ?? h.feelsLike
+            }
+            return h
+        }
+        copy.daily = daily.map { day in
+            var d = day
+            if let t = temps.daily[Int(day.date.timeIntervalSince1970)] {
+                d.high = t.high
+                d.low = t.low
+                d.feelsLikeHigh = t.feelsLikeHigh ?? d.feelsLikeHigh
+                d.feelsLikeLow = t.feelsLikeLow ?? d.feelsLikeLow
+            }
+            return d
+        }
+        return copy
     }
 }
 
