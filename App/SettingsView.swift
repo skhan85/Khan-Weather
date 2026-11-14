@@ -16,6 +16,8 @@ struct SettingsView: View {
     @AppStorage(DisplaySettings.showDetailsKey) private var showDetails = true
     @AppStorage(AlertNotifier.enabledKey) private var alertNotifications = false
     @AppStorage(AlertNotifier.advisoriesKey) private var alertAdvisories = false
+    @AppStorage(AlertNotifier.rainKey) private var rainNotifications = false
+    @AppStorage(DisplaySettings.showAirQualityKey) private var showAirQuality = true
     @State private var notificationsDenied = false
 
     var body: some View {
@@ -58,13 +60,22 @@ struct SettingsView: View {
                     if alertNotifications {
                         Toggle("Include advisories and statements", isOn: $alertAdvisories)
                     }
+                    Toggle("Rain or snow starting soon", isOn: $rainNotifications)
+                        .onChange(of: rainNotifications) { _, on in
+                            guard on else { return }
+                            Task {
+                                let allowed = await AlertNotifier.requestPermission()
+                                notificationsDenied = !allowed
+                                if allowed { AlertNotifier.schedule() } else { rainNotifications = false }
+                            }
+                        }
                 } header: {
                     Text("Notifications")
                 } footer: {
                     if notificationsDenied {
                         Text("Notifications are turned off for Khan Weather. Turn them on in the iPhone Settings app, under Notifications.")
                     } else {
-                        Text("Warnings and watches from Environment Canada, the US National Weather Service and Germany's DWD, for your location and saved places. iOS decides when the app may check, usually every 15 to 60 minutes and less often in Low Power Mode, so treat these as a heads-up, not an emergency alarm.")
+                        Text("Warnings and watches from Environment Canada, the US National Weather Service and Germany's DWD, for your location and saved places. Rain and snow heads-ups are for your location, at most one per wet spell. iOS decides when the app may check, usually every 15 to 60 minutes and less often in Low Power Mode, so treat these as a heads-up, not an emergency alarm.")
                     }
                 }
                 Section {
@@ -76,6 +87,7 @@ struct SettingsView: View {
                         Text("48 hours").tag(48)
                     }
                     Toggle("Today's details", isOn: $showDetails)
+                    Toggle("Air quality and pollen", isOn: $showAirQuality)
                 } header: {
                     Text("Main screen")
                 } footer: {
@@ -94,7 +106,7 @@ struct SettingsView: View {
                 }
                 Section("About") {
                     LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
-                    Link("Forecast: Open-Meteo.com (CC BY 4.0)", destination: URL(string: "https://open-meteo.com/")!)
+                    Link("Forecast and air quality: Open-Meteo.com (CC BY 4.0)", destination: URL(string: "https://open-meteo.com/")!)
                     Link("Canada: Environment and Climate Change Canada", destination: URL(string: "https://weather.gc.ca/")!)
                     Link("US: National Weather Service", destination: URL(string: "https://www.weather.gov/")!)
                     Link("Germany: Deutscher Wetterdienst via Bright Sky", destination: URL(string: "https://brightsky.dev/")!)
@@ -122,5 +134,6 @@ struct SettingsView: View {
         mainTemperature = MainTemperature.actual.rawValue
         hourlyCount = 24
         showDetails = true
+        showAirQuality = true
     }
 }

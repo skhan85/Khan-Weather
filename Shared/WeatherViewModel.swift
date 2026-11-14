@@ -18,6 +18,8 @@ final class WeatherViewModel: ObservableObject {
 
     /// Active alerts covering the forecast spot, most serious first.
     @Published private(set) var alerts: [WeatherAlert] = []
+    /// Air quality and pollen at the forecast spot; nil if the service didn't answer.
+    @Published private(set) var airQuality: AirQuality?
 
     let provider: ForecastProvider
     let observations: ObservationProvider
@@ -46,6 +48,7 @@ final class WeatherViewModel: ObservableObject {
         if lastPlaceID != .some(place?.id) {
             state = .loading
             alerts = []
+            airQuality = nil
             lastPlaceID = .some(place?.id)
         }
         let target: Coordinate
@@ -63,12 +66,14 @@ final class WeatherViewModel: ObservableObject {
         async let observed = try? observations.observation(near: target)
         async let activeAlerts = try? alertProvider.alerts(near: target)
         async let radarNow = try? ECCCRadarProvider().now(at: target)
+        async let air = try? AirQualityProvider().airQuality(at: target)
         do {
             let forecast = try await provider.forecast(for: target).applying(await observed ?? nil)
                 .applyingRadar(await radarNow)
             placeName = await name ?? (usingFallbackLocation ? "Toronto" : nil)
             // If the alert service didn't answer, keep the last list for this place rather than hide a warning.
             if let fresh = await activeAlerts { alerts = fresh }
+            if let fresh = await air { airQuality = fresh }
             state = .loaded(forecast)
         } catch {
             // Keep showing the last good forecast if we have one.
