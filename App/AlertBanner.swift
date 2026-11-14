@@ -25,8 +25,9 @@ struct AlertBanner: View {
         } label: {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: icon)
-                    .font(.title3)
-                    .foregroundStyle(colour)
+                    .font(.title2)
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.black.opacity(0.75), colour)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(alert.title)
                         .font(.headline)
@@ -38,7 +39,13 @@ struct AlertBanner: View {
                 }
             }
         }
-        .listRowBackground(colour.opacity(0.18))
+        .listRowBackground(
+            ZStack {
+                Rectangle().fill(.ultraThinMaterial)
+                LinearGradient(colors: [colour.opacity(0.55), colour.opacity(0.25)],
+                               startPoint: .leading, endPoint: .trailing)
+            }
+        )
     }
 
     private var subtitle: String? {

@@ -82,3 +82,82 @@ jobs:
         with:
           name: build-log
           path: build.log
+
+  # Pull requests only: run the app in the iOS Simulator and save screenshots,
+  # so design changes can be checked without a Mac.
+  screenshots:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build for the simulator
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project KhanWeather.xcodeproj \
+            -scheme KhanWeather \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath simbuild \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee sim-build.log | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" sim-build.log
+
+      - name: Take screenshots
+        run: |
+          set -x
+          APP=simbuild/Build/Products/Debug-iphonesimulator/KhanWeather.app
+          BUNDLE=com.skhan85.KhanWeather
+          mkdir -p shots
+          xcrun simctl list devices available
+          shoot() {
+            local name="$1" label="$2"
+            local udid
+            udid=$(xcrun simctl list devices available -j | python3 -c "
+          import json,sys
+          d=json.load(sys.stdin)['devices']
+          for rt,devs in sorted(d.items(), reverse=True):
+              if 'iOS' not in rt: continue
+              for x in devs:
+                  if x['name']=='$name': print(x['udid']); sys.exit()
+          ")
+            [ -n "$udid" ] || { echo "No simulator named $name"; return 0; }
+            xcrun simctl boot "$udid" || true
+            xcrun simctl bootstatus "$udid" -b
+            xcrun simctl status_bar "$udid" override --time 9:41 --batteryLevel 100 --cellularBars 4 || true
+            xcrun simctl install "$udid" "$APP"
+            xcrun simctl privacy "$udid" grant location "$BUNDLE" || true
+            xcrun simctl location "$udid" set 43.5183,-79.8774 || true
+            xcrun simctl launch "$udid" "$BUNDLE"
+            sleep 30
+            xcrun simctl io "$udid" screenshot "shots/${label}-main.png"
+            xcrun simctl ui "$udid" appearance dark
+            sleep 3
+            xcrun simctl io "$udid" screenshot "shots/${label}-main-dark-mode.png"
+            xcrun simctl ui "$udid" appearance light
+            xcrun simctl terminate "$udid" "$BUNDLE" || true
+            xcrun simctl launch "$udid" "$BUNDLE" -designPreview
+            sleep 8
+            xcrun simctl io "$udid" screenshot "shots/${label}-design-preview.png"
+            xcrun simctl shutdown "$udid" || true
+          }
+          shoot "iPhone 16 Pro" iphone
+          shoot "iPad Pro 13-inch (M4)" ipad
+          ls -l shots
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: shots
+          retention-days: 14
