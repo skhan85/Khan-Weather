@@ -108,6 +108,39 @@ final class OpenMeteoProviderTests: XCTestCase {
         XCTAssertEqual(forecast.source, "Open-Meteo")
     }
 
+    func testCanadaUsesEnvironmentCanadaTemperatures() async throws {
+        let gem = """
+        {
+          "hourly": { "time": [1762952400, 1762956000], "temperature_2m": [-5.0, null], "apparent_temperature": [-9.0, null] },
+          "daily": { "time": [1762923600], "temperature_2m_max": [0.5], "temperature_2m_min": [-6.0],
+                     "apparent_temperature_max": [-4.0], "apparent_temperature_min": [-12.0] }
+        }
+        """.data(using: .utf8)!
+        let provider = OpenMeteoProvider(loader: { request in
+            let isGEM = request.url!.query!.contains("models=gem_seamless")
+            return (isGEM ? gem : Self.sample,
+                    HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        })
+        let forecast = try await provider.forecast(for: .fallback)
+        XCTAssertEqual(forecast.hourly[0].temperature, -5.0)
+        XCTAssertEqual(forecast.hourly[0].feelsLike, -9.0)
+        XCTAssertEqual(forecast.hourly[1].temperature, -2.4, "keeps the default where GEM has no value")
+        XCTAssertEqual(forecast.daily[0].high, 0.5)
+        XCTAssertEqual(forecast.daily[0].low, -6.0)
+        XCTAssertEqual(forecast.daily[1].high, 4.0)
+    }
+
+    func testCanadianModelFailureKeepsDefault() async throws {
+        let provider = OpenMeteoProvider(loader: { request in
+            let isGEM = request.url!.query!.contains("models=gem_seamless")
+            return (Self.sample, HTTPURLResponse(url: request.url!, statusCode: isGEM ? 500 : 200,
+                                                 httpVersion: nil, headerFields: nil)!)
+        })
+        let forecast = try await provider.forecast(for: .fallback)
+        XCTAssertEqual(forecast.hourly[0].temperature, -2.0)
+        XCTAssertFalse(OpenMeteoProvider.mightUseCanadianModel(Coordinate(latitude: 51.5, longitude: -0.12)))
+    }
+
     func testWMOCodes() {
         XCTAssertEqual(WeatherCondition(wmoCode: 0), .clear)
         XCTAssertEqual(WeatherCondition(wmoCode: 95), .thunderstorm)
