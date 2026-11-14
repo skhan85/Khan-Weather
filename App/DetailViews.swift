@@ -83,11 +83,11 @@ struct HourDetailView: View {
                         .font(.title3)
                     if let feels = hour.feelsLike {
                         Text("Feels like \(WeatherFormat.temperature(feels))")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.white.opacity(0.88))
                     }
                 }
                 .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
+                .shadow(color: .black.opacity(0.35), radius: 4, y: 1)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)
             }
@@ -132,11 +132,11 @@ struct DayDetailView: View {
                         .font(.title3)
                     if let hi = day.feelsLikeHigh, let lo = day.feelsLikeLow {
                         Text("Feels like \(WeatherFormat.temperature(hi)) / \(WeatherFormat.temperature(lo))")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.white.opacity(0.88))
                     }
                 }
                 .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
+                .shadow(color: .black.opacity(0.35), radius: 4, y: 1)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)
             }

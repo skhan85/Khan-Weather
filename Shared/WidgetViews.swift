@@ -124,19 +124,19 @@ struct KhanWeatherWidgetView: View {
                 .minimumScaleFactor(0.8)
             if let alert = entry.alert {
                 Label(alert, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption2.weight(.semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(Color(red: 1, green: 0.78, blue: 0.3))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             } else {
                 Text("H:\(temp(entry.high))  L:\(temp(entry.low))")
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.secondary)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.9))
             }
         }
         .foregroundStyle(.white)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .shadow(color: .black.opacity(0.15), radius: 3, y: 1)
+        .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
     }
 
     private var hourly: some View {
@@ -144,8 +144,8 @@ struct KhanWeatherWidgetView: View {
             ForEach(entry.hours.prefix(5)) { hour in
                 VStack(spacing: 6) {
                     Text(hour.time, format: Date.FormatStyle(timeZone: entry.timeZone).hour())
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.secondary)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.88))
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                     ConditionIcon(condition: hour.condition, isDay: hour.isDay)

@@ -175,7 +175,13 @@ struct TemperatureRangeBar: View {
 extension View {
     /// Translucent "glass" row background used on the sky screens.
     func glassRow() -> some View {
-        listRowBackground(Rectangle().fill(.ultraThinMaterial))
+        // A dark tint over the blur keeps white text readable even on the bright clear-day sky.
+        listRowBackground(
+            ZStack {
+                Rectangle().fill(.ultraThinMaterial)
+                Rectangle().fill(Color.black.opacity(0.22))
+            }
+        )
     }
 
     /// The sky behind a list, with dark-style (white) text on top.
@@ -208,8 +214,9 @@ struct SkySectionHeader: View {
 
     var body: some View {
         Label(title, systemImage: systemImage)
-            .font(.footnote.weight(.semibold))
-            .foregroundStyle(.white.opacity(0.8))
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.white.opacity(0.92))
+            .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
             .textCase(nil)
     }
 }
