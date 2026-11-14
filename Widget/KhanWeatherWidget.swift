@@ -44,6 +44,16 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
         return Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(30 * 60)))
     }
 
+    /// The next 6 hours, with the first showing the same "now" as the app.
+    private static func hoursStartingNow(_ forecast: Forecast) -> [HourlyForecast] {
+        var hours = forecast.upcomingHours(count: 6)
+        if !hours.isEmpty {
+            hours[0].temperature = forecast.current.temperature
+            hours[0].condition = forecast.current.condition
+        }
+        return hours
+    }
+
     private func loadEntry() async -> WeatherEntry {
         // Widgets can't show a permission prompt; they use the last location iOS knows,
         // which works once the app has been granted location access (NSWidgetWantsLocation).
@@ -61,7 +71,8 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
             return WeatherEntry(date: Date(), current: forecast.current, high: today?.high, low: today?.low,
                                 placeName: await place, error: nil, nowcast: forecast.nowcast()?.shortText,
                                 alert: await active?.first?.title,
-                                hours: forecast.upcomingHours(count: 5), timeZone: forecast.timeZone)
+                                hours: Self.hoursStartingNow(forecast), days: Array(forecast.daily.prefix(5)),
+                                timeZone: forecast.timeZone)
         } catch {
             return WeatherEntry(date: Date(), current: nil, high: nil, low: nil, placeName: await place,
                                 error: error.localizedDescription)
@@ -89,6 +100,6 @@ struct KhanWeatherWidget: Widget {
         }
         .configurationDisplayName("Current weather")
         .description("Temperature, the next few hours, today's high and low, and weather alerts where you are.")
-        .supportedFamilies([.systemSmall, .systemMedium, .accessoryInline, .accessoryCircular, .accessoryRectangular])
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .accessoryInline, .accessoryCircular, .accessoryRectangular])
     }
 }
