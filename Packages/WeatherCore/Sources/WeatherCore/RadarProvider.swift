@@ -149,6 +149,7 @@ public extension Forecast {
             var copy = self
             copy.current.condition = .overcast
             copy.observation?.conditionText = nil
+            copy.skySource = "radar over this spot (dry)"
             return copy
         }
         // A light rain echo over dry rain gauges next door is rain aloft that isn't reaching the
@@ -160,6 +161,7 @@ public extension Forecast {
         copy.current.condition = condition
         copy.observation?.conditionText = radar.description
         copy.radar = radar
+        copy.skySource = "radar over this spot"
         return copy
     }
 }

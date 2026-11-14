@@ -208,6 +208,9 @@ public struct Forecast: Equatable, Codable, Sendable {
     public var minutely: [PrecipitationSlot]
     /// Set when the radar changed "now" (rain or snow falling here).
     public var radar: RadarNow?
+    /// Where "now"'s sky (rain, snow, cloud) came from, for the caption: "radar over this spot",
+    /// "Toronto Pearson, 25 km away" or "the forecast". nil means the forecast.
+    public var skySource: String?
 
     public init(location: Coordinate, timeZoneIdentifier: String, current: CurrentConditions,
                 hourly: [HourlyForecast], daily: [DailyForecast], source: String, fetchedAt: Date,

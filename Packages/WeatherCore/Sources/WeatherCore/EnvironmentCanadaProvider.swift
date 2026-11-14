@@ -315,10 +315,22 @@ public extension Forecast {
     /// Replaces the model's "now" with a station observation where the station has data, and
     /// eases the next few forecast hours toward it (see `nudged(toward:at:)`).
     func applying(_ observation: Observation?) -> Forecast {
-        guard let o = observation else { return self }
+        guard var o = observation else { return self }
         var copy = self
         var c = current
+        // Rain reported by a station far away (Pearson, 25 km from Milton) says nothing about
+        // whether it's raining here: drop it and keep the forecast's sky, which the radar can still
+        // turn wet below. Cloud from far away is harmless and kept.
+        if !o.skyIsLocal, o.condition?.isPrecipitation == true || o.condition == .thunderstorm {
+            o.condition = nil
+            o.conditionText = nil
+        }
         copy.observation = o
+        if o.condition != nil {
+            let name = o.skyStationName ?? o.stationName
+            let km = o.skyStationName == nil ? o.distanceKm : o.skyDistanceKm
+            copy.skySource = name + (WeatherFormat.distance(km).map { ", \($0) away" } ?? "")
+        }
         // A home station far from both its neighbours' official reading and the model is more
         // likely sitting in the sun than right; keep only its sky.
         let implausible = o.dataProvider == "NETATMO" && abs(o.temperature - current.temperature) > 5

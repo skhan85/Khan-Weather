@@ -190,6 +190,7 @@ private struct ForecastList: View {
             Section {
                 CurrentConditionsView(current: forecast.current, placeName: placeName, isSavedPlace: isSavedPlace,
                                       observation: forecast.observation, timeZone: forecast.timeZone,
+                                      skySource: forecast.skySource,
                                       today: forecast.day(), outlook: Outlook.text(forecast),
                                       wear: WhatToWear.tip(current: forecast.current,
                                                            upcoming: Array(forecast.upcomingHours(count: 13).dropFirst()),
@@ -381,6 +382,8 @@ struct CurrentConditionsView: View {
     var isSavedPlace = false
     var observation: Observation?
     var timeZone: TimeZone = .current
+    /// Where the sky (rain, cloud) came from; nil means the forecast.
+    var skySource: String? = nil
     var today: DailyForecast? = nil
     /// "Cooling to 1° by 11 PM."
     var outlook: String? = nil
@@ -466,9 +469,10 @@ struct CurrentConditionsView: View {
             }
             Group {
                 if let observation, observation.isLocal {
-                    Text(Self.localCaption(observation, from: placeName, timeZone: timeZone))
-                } else if let observation {
-                    Text("Sky from \(observation.stationName)\(Self.distance(observation, from: placeName)). Temperature is the forecast for your spot.")
+                    Text(Self.localCaption(observation, from: placeName, timeZone: timeZone)
+                         + " Sky from \(skySource ?? "the forecast").")
+                } else if observation != nil {
+                    Text("Sky from \(skySource ?? "the forecast"). Temperature is the forecast for your spot.")
                 } else {
                     Text("Model estimate (no nearby station)")
                 }
