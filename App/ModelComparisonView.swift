@@ -75,6 +75,18 @@ struct ModelComparisonView: View {
                 }
                 .glassRow()
             }
+            Section {
+                NavigationLink {
+                    AccuracyView()
+                } label: {
+                    Label {
+                        Text("Which model has been most accurate?").font(.subheadline.weight(.semibold))
+                    } icon: {
+                        Image(systemName: "target").foregroundStyle(Brand.gold)
+                    }
+                }
+            }
+            .glassRow()
         }
         .foregroundStyle(.white)
         .skyBackground(day.condition, isDay: true)

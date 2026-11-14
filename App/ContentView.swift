@@ -190,7 +190,10 @@ private struct ForecastList: View {
             Section {
                 CurrentConditionsView(current: forecast.current, placeName: placeName, isSavedPlace: isSavedPlace,
                                       observation: forecast.observation, timeZone: forecast.timeZone,
-                                      today: forecast.day(), outlook: Outlook.text(forecast))
+                                      today: forecast.day(), outlook: Outlook.text(forecast),
+                                      wear: WhatToWear.tip(current: forecast.current,
+                                                           upcoming: Array(forecast.upcomingHours(count: 13).dropFirst()),
+                                                           hourText: { TimeText.hour($0, forecast.timeZone) }))
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
@@ -267,6 +270,11 @@ private struct ForecastList: View {
             .glassRow()
         }
         .listSectionSpacing(14)
+        .task(id: forecast.fetchedAt) {
+            // Keep score of the models for where the user actually is, not saved places.
+            guard !isSavedPlace, !usingFallbackLocation else { return }
+            await AccuracyTracker.update(location: forecast.location, timeZone: forecast.timeZone)
+        }
         .fontDesign(.rounded)
     }
 }
@@ -364,6 +372,8 @@ struct CurrentConditionsView: View {
     var today: DailyForecast? = nil
     /// "Cooling to 1° by 11 PM."
     var outlook: String? = nil
+    /// "Warm jacket, and an umbrella from 1 PM."
+    var wear: String? = nil
     @AppStorage(DisplaySettings.mainTemperatureKey) private var mainTemperature = MainTemperature.actual.rawValue
 
     private var feelsFirst: Bool { mainTemperature == MainTemperature.feelsLike.rawValue }
@@ -420,6 +430,14 @@ struct CurrentConditionsView: View {
                         RoundedRectangle(cornerRadius: 2).fill(Brand.gold).frame(width: 4).padding(.vertical, 6)
                     }
             }
+            if let wear {
+                        Label {
+                            Text(wear).font(.subheadline.weight(.semibold))
+                        } icon: {
+                            Image(systemName: "tshirt.fill").foregroundStyle(Brand.gold)
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     if let today {
