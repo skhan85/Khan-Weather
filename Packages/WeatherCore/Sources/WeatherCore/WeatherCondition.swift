@@ -97,8 +97,30 @@ public enum WeatherFormat {
     public static func feelsLikeLabel(_ kind: FeelsLikeKind) -> String {
         switch kind {
         case .apparent: return "Feels like"
-        case .humidex: return "Humidex"
-        case .windChill: return "Wind chill"
+        // Wind chill and humidex are both shown as plain "Feels like" (Saad, 2026-11-15).
+        case .apparent, .humidex, .windChill: return "Feels like"
         }
+    }
+
+    /// "CR-27 Campbellville" -> "Campbellville": drops the road or network code some stations
+    /// carry in front of the place name.
+    public static func plainStationName(_ name: String) -> String {
+        let trimmed = name.replacingOccurrences(of: #"^[A-Z]{1,4}-?\d+[A-Z]?\s+"#, with: "", options: .regularExpression)
+        return trimmed.isEmpty ? name : trimmed
+    }
+
+    /// "3 home weather stations about 3 km away" or "Toronto Pearson, 25 km away": where a
+    /// reading came from, in plain words.
+    public static func readingSource(_ o: Observation) -> String {
+        let place: String
+        if o.dataProvider == "NETATMO" {
+            let n = Int(o.stationName.prefix(while: \.isNumber)) ?? 1
+            place = n > 1 ? "\(n) home weather stations" : "a home weather station"
+        } else {
+            place = plainStationName(o.stationName) + ","
+        }
+        guard let km = o.distanceKm else { return place.trimmingCharacters(in: [","]) }
+        if km < 1 { return place.trimmingCharacters(in: [","]) + " under 1 km away" }
+        return place + " about " + (distance(km.rounded()) ?? "") + " away"
     }
 }

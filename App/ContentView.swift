@@ -469,7 +469,7 @@ struct CurrentConditionsView: View {
             }
             Group {
                 if let observation, observation.isLocal {
-                    Text(Self.localCaption(observation, from: placeName, timeZone: timeZone)
+                    Text(Self.localCaption(observation, timeZone: timeZone)
                          + " Sky from \(skySource ?? "the forecast").")
                 } else if observation != nil {
                     Text("Sky from \(skySource ?? "the forecast"). Temperature is the forecast for your spot.")
@@ -494,17 +494,9 @@ struct CurrentConditionsView: View {
         .padding(.horizontal, 16)
     }
 
-    /// ", 13 km from Oakville": the distance is to the forecast spot, not to the town in the station's name.
-    static func distance(_ o: Observation, from place: String?) -> String {
-        guard let text = WeatherFormat.distance(o.distanceKm) else { return "" }
-        return ", \(text) from \(place ?? "you")"
-    }
-
-    static func localCaption(_ o: Observation, from place: String? = nil, timeZone: TimeZone) -> String {
-        let time = TimeText.time(o.observedAt, timeZone)
-        var text = "Observed \(time) at \(o.stationName)\(distance(o, from: place))"
-        text += "."
-        return text
+    /// "Temperature from 3 home weather stations about 3 km away, 4:55 am."
+    static func localCaption(_ o: Observation, timeZone: TimeZone) -> String {
+        "Temperature from \(WeatherFormat.readingSource(o)), \(TimeText.time(o.observedAt, timeZone))."
     }
 }
 

@@ -60,6 +60,17 @@ final class NetatmoRelayTests: XCTestCase {
         XCTAssertEqual(after.smoothed(after: nil).temperature, 5.8)
     }
 
+    func testPlainSourceWords() {
+        var home = Observation(stationName: "3 Netatmo stations in Milton", observedAt: now, temperature: 2, distanceKm: 2.9)
+        home.dataProvider = "NETATMO"
+        XCTAssertEqual(WeatherFormat.readingSource(home), "3 home weather stations about 3 km away")
+        let official = Observation(stationName: "Toronto Pearson", observedAt: now, temperature: 2, distanceKm: 25.2)
+        XCTAssertEqual(WeatherFormat.readingSource(official), "Toronto Pearson, about 25 km away")
+        XCTAssertEqual(WeatherFormat.plainStationName("CR-27 Campbellville"), "Campbellville")
+        XCTAssertEqual(WeatherFormat.plainStationName("Burlington Lift Bridge"), "Burlington Lift Bridge")
+        XCTAssertEqual(WeatherFormat.feelsLikeLabel(.windChill), "Feels like")
+    }
+
     func testNothingNearby() throws {
         let far = Coordinate(latitude: 45, longitude: -75)
         XCTAssertNil(try NetatmoRelayProvider.parse(Data(sample.utf8), near: far, now: now, radiusKm: 5, maxAge: 3600))
