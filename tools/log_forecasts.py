@@ -61,12 +61,32 @@ def pirate_weather(key):
                        for r in rows]}
 
 
+def netatmo():
+    """Every Netatmo station within 8 km of Milton as [km, °C, minutes old], nearest first, so
+    their bias against Environment Canada and the models can be measured later."""
+    import math
+    d = get(f"https://raspberrypi.tailf30d3.ts.net/v1/netatmo?lat={LAT}&lon={LON}")
+    now = dt.datetime.now(dt.timezone.utc).timestamp()
+    rows = []
+    for s in d.get("stations", []):
+        if s.get("temperature") is None or s.get("observed") is None:
+            continue
+        p = math.pi / 180
+        a = (math.sin((s["lat"] - LAT) * p / 2) ** 2
+             + math.cos(LAT * p) * math.cos(s["lat"] * p) * math.sin((s["lon"] - LON) * p / 2) ** 2)
+        km = 2 * 6371 * math.asin(math.sqrt(a))
+        if km <= 8:
+            rows.append([round(km, 2), s["temperature"], round((now - s["observed"]) / 60)])
+    return {"netatmo": sorted(rows)}
+
+
 def main(path):
     snap = {"fetched": int(dt.datetime.now(dt.timezone.utc).timestamp()), "sources": {}, "errors": {}}
     jobs = [("open-meteo", open_meteo, None),
-            ("pirate", pirate_weather, os.environ.get("PIRATE_WEATHER_KEY"))]
+            ("pirate", pirate_weather, os.environ.get("PIRATE_WEATHER_KEY")),
+            ("netatmo", netatmo, None)]
     for name, fn, key in jobs:
-        if fn is not open_meteo and not key:
+        if fn is pirate_weather and not key:
             snap["errors"][name] = "no API key"
             continue
         try:

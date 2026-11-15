@@ -1,12 +1,12 @@
 name: Forecast log
 
-# Every 3 hours, saves the next 120 hours of forecasts for Milton from Open-Meteo's models
-# and Pirate Weather to forecast-log.jsonl on the forecast-log branch, so they can
+# Every hour (GitHub runs schedules loosely), saves the next 120 hours of forecasts for Milton from Open-Meteo's models
+# and Pirate Weather, plus every Netatmo station near Milton, to forecast-log.jsonl on the forecast-log branch, so they can
 # be scored against Environment Canada observations later (tools/score_forecast_log.py).
 
 on:
   schedule:
-    - cron: "41 */3 * * *"
+    - cron: "41 * * * *"
   workflow_dispatch:
 
 permissions:
