@@ -231,4 +231,24 @@ final class EnvironmentCanadaProviderTests: XCTestCase {
         let mild = Observation(stationName: "X", observedAt: now, temperature: 12, windSpeed: 30, distanceKm: 5)
         XCTAssertEqual(forecast.applying(mild).current.feelsLike, 12)
     }
+
+    func testSunHeatedHomeStationsAreSetAsideByDay() throws {
+        var forecast = try OpenMeteoProvider.parse(OpenMeteoProviderTests.sample, fetchedAt: now)
+        forecast.current.temperature = 6
+        forecast.current.isDay = true
+        var home = Observation(stationName: "3 Netatmo stations in Milton", observedAt: now, temperature: 8.4, distanceKm: 0.3)
+        home.dataProvider = "NETATMO"
+        home.stationTemperatures = [6.3, 8.4, 12.7, 7.0, 19.2]
+        // 12.7 and 19.2 are more than 2.5° above the forecast: the middle of 6.3, 8.4 and 7.0.
+        XCTAssertEqual(forecast.applying(home).current.temperature, 7.0, accuracy: 0.01)
+
+        // Every station in the sun: the forecast stands.
+        home.stationTemperatures = [11, 12, 13]
+        XCTAssertEqual(forecast.applying(home).current.temperature, 6)
+
+        // At night the stations are used as they are.
+        forecast.current.isDay = false
+        home.stationTemperatures = [6.3, 8.4, 12.7]
+        XCTAssertEqual(forecast.applying(home).current.temperature, 8.4)
+    }
 }
