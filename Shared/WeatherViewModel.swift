@@ -36,6 +36,13 @@ final class WeatherViewModel: ObservableObject {
         self.location = location ?? LocationManager()
     }
 
+    /// The last station reading shown, by spot (rounded to ~1 km), to steady the next one.
+    private var lastObservation: [String: Observation] = [:]
+
+    private static func spotKey(_ c: Coordinate) -> String {
+        String(format: "%.2f,%.2f", c.latitude, c.longitude)
+    }
+
     /// Called with each real current-location fix (the app uses it for background alert checks).
     var onCurrentLocation: ((Coordinate) -> Void)?
 
@@ -131,9 +138,12 @@ final class WeatherViewModel: ObservableObject {
                 self.airQuality = fresh
             }
             group.addTask { @MainActor in
-                let observed = await observedTask.value ?? nil
+                let fresh = await observedTask.value ?? nil
                 let radar = await radarTask.value ?? nil
                 guard gen == self.generation else { return }
+                let spot = Self.spotKey(target)
+                let observed = fresh?.smoothed(after: self.lastObservation[spot])
+                if let observed { self.lastObservation[spot] = observed }
                 self.state = .loaded(base.applying(observed).applyingRadar(radar))
             }
         }
