@@ -17,6 +17,7 @@ enum AlertNotifier {
     private static let lastRainKey = "lastRainNotification"
     private static let lastLocationKey = "lastCurrentLocation"
     private static let notifiedKey = "notifiedAlertIDs"
+    static let lastBackgroundCheckKey = "lastBackgroundCheck"
 
     private static var defaults: UserDefaults { .standard }
     static var isEnabled: Bool { defaults.bool(forKey: enabledKey) }
@@ -35,6 +36,30 @@ enum AlertNotifier {
 
     static func requestPermission() async -> Bool {
         (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+    }
+
+    /// When iOS last let the app check in the background, for the status rows in Settings.
+    static var lastBackgroundCheck: Date? { defaults.object(forKey: lastBackgroundCheckKey) as? Date }
+
+    /// The app was installed again (sideloading does this often) and iOS forgot the permission,
+    /// but the switches are still on: ask again so they mean something.
+    static func ensurePermission() async {
+        guard isEnabled || rainEnabled || frostEnabled else { return }
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        if settings.authorizationStatus == .notDetermined { _ = await requestPermission() }
+        schedule()
+    }
+
+    /// A notification right now, so the person can see banners and sounds work.
+    static func sendTest() async {
+        _ = await requestPermission()
+        let content = UNMutableNotificationContent()
+        content.title = "Khan Weather test"
+        content.body = "Notifications from Khan Weather reach this phone."
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: "test-\(Int(Date().timeIntervalSince1970))", content: content,
+                                            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 3, repeats: false))
+        try? await UNUserNotificationCenter.current().add(request)
     }
 
     // MARK: Places
@@ -88,6 +113,7 @@ enum AlertNotifier {
 
     /// Everything a background wake should do.
     static func checkAll() async {
+        defaults.set(Date(), forKey: lastBackgroundCheckKey)
         async let alerts: Void = check()
         async let rain: Void = checkForecast()
         _ = await (alerts, rain)
@@ -167,5 +193,16 @@ enum AlertNotifier {
     static func markRainSeen(_ nowcast: Nowcast?) {
         guard let nowcast, case .starting = nowcast.change else { return }
         defaults.set(Date(), forKey: lastRainKey)
+    }
+}
+
+/// Without a delegate iOS hides notifications while the app is open, which made the test
+/// notification look broken.
+final class NotificationPresenter: NSObject, UNUserNotificationCenterDelegate {
+    static let shared = NotificationPresenter()
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async
+        -> UNNotificationPresentationOptions {
+        [.banner, .list, .sound]
     }
 }

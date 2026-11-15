@@ -1,4 +1,6 @@
 import SwiftUI
+import UIKit
+import UserNotifications
 import WeatherCore
 
 /// Units and display choices. Stored in UserDefaults; the views read them when they draw.
@@ -20,6 +22,9 @@ struct SettingsView: View {
     @AppStorage(AlertNotifier.frostKey) private var frostNotifications = false
     @AppStorage(DisplaySettings.showAirQualityKey) private var showAirQuality = true
     @State private var notificationsDenied = false
+    @State private var permissionText = "Checking…"
+    @State private var permissionOK = true
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -89,6 +94,24 @@ struct SettingsView: View {
                     }
                 }
                 Section {
+                    statusRow("Notifications allowed", permissionText, ok: permissionOK)
+                    statusRow("Background App Refresh", backgroundRefreshText, ok: UIApplication.shared.backgroundRefreshStatus == .available)
+                    if ProcessInfo.processInfo.isLowPowerModeEnabled {
+                        statusRow("Low Power Mode", "On (pauses checks)", ok: false)
+                    }
+                    statusRow("Last background check", lastCheckText, ok: AlertNotifier.lastBackgroundCheck.map { -$0.timeIntervalSinceNow < 6 * 3600 } ?? false)
+                    Button("Send a test notification") { Task { await AlertNotifier.sendTest(); await refreshPermission() } }
+                    if !permissionOK || UIApplication.shared.backgroundRefreshStatus != .available {
+                        Button("Open iPhone Settings for Khan Weather") {
+                            if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                        }
+                    }
+                } header: {
+                    Text("Notification status")
+                } footer: {
+                    Text("The app can only check for alerts when iOS wakes it, and iOS wakes sideloaded apps rarely. For dependable alerts, also use the ntfy app (see the README).")
+                }
+                Section {
                     Picker("Big number shows", selection: $mainTemperature) {
                         ForEach(MainTemperature.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
                     }
@@ -125,6 +148,10 @@ struct SettingsView: View {
                     Link("Personal weather stations: Netatmo", destination: URL(string: "https://weathermap.netatmo.com/")!)
                 }
             }
+            .task { await refreshPermission() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { Task { await refreshPermission() } }
+            }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -132,6 +159,46 @@ struct SettingsView: View {
             }
         }
         .preferredColorScheme(Appearance(rawValue: appearance)?.colorScheme)
+    }
+
+    private func statusRow(_ label: String, _ value: String, ok: Bool) -> some View {
+        LabeledContent(label) {
+            Label(value, systemImage: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .foregroundStyle(ok ? .green : .orange)
+        }
+    }
+
+    private var backgroundRefreshText: String {
+        switch UIApplication.shared.backgroundRefreshStatus {
+        case .available: return "On"
+        case .denied: return "Off"
+        case .restricted: return "Restricted"
+        @unknown default: return "Unknown"
+        }
+    }
+
+    private var lastCheckText: String {
+        guard let last = AlertNotifier.lastBackgroundCheck else { return "Never yet" }
+        return last.formatted(.relative(presentation: .named))
+    }
+
+    private func refreshPermission() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        switch settings.authorizationStatus {
+        case .authorized, .provisional, .ephemeral:
+            let banners = settings.alertSetting == .enabled || settings.lockScreenSetting == .enabled || settings.notificationCenterSetting == .enabled
+            permissionText = banners ? "Yes" : "Yes, but hidden"
+            permissionOK = banners
+        case .denied:
+            permissionText = "No"
+            permissionOK = false
+        case .notDetermined:
+            permissionText = "Not asked yet"
+            permissionOK = false
+        @unknown default:
+            permissionText = "Unknown"
+            permissionOK = false
+        }
     }
 
     private func reset() {
