@@ -58,3 +58,15 @@ jobs:
           elif [ -n "$ISSUE" ]; then
             gh issue close "$ISSUE" --comment "Sources agree again. $RUN"
           fi
+
+  # Temporary: GitHub's Mac runners can't open a connection to api.open-meteo.com. Try Linux.
+  linux-probe:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          curl -sS -o /dev/null -m 30 -w "open-meteo %{http_code} in %{time_total}s\n" "https://api.open-meteo.com/v1/forecast?latitude=43.513&longitude=-79.882&current=temperature_2m" || echo "open-meteo FAILED"
+          swift --version || echo "no swift"
+      - run: swift run --package-path Packages/WeatherCore NowCheck
