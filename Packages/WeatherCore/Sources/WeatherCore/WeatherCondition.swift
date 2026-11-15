@@ -96,7 +96,6 @@ public enum WeatherFormat {
 
     public static func feelsLikeLabel(_ kind: FeelsLikeKind) -> String {
         switch kind {
-        case .apparent: return "Feels like"
         // Wind chill and humidex are both shown as plain "Feels like" (Saad, 2026-11-15).
         case .apparent, .humidex, .windChill: return "Feels like"
         }

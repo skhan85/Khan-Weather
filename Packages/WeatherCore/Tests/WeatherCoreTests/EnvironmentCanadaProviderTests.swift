@@ -239,8 +239,8 @@ final class EnvironmentCanadaProviderTests: XCTestCase {
         var home = Observation(stationName: "3 Netatmo stations in Milton", observedAt: now, temperature: 8.4, distanceKm: 0.3)
         home.dataProvider = "NETATMO"
         home.stationTemperatures = [6.3, 8.4, 12.7, 7.0, 19.2]
-        // 8.4, 12.7 and 19.2 are more than 2.5° above the forecast: 6.3 and 7.0 remain.
-        XCTAssertEqual(forecast.applying(home).current.temperature, 6.65, accuracy: 0.06)
+        // 12.7 and 19.2 are more than 2.5° above the forecast: the middle of 6.3, 8.4 and 7.0.
+        XCTAssertEqual(forecast.applying(home).current.temperature, 7.0, accuracy: 0.01)
 
         // Every station in the sun: the forecast stands.
         home.stationTemperatures = [11, 12, 13]
