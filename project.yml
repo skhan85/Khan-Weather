@@ -43,6 +43,7 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         NSLocationWhenInUseUsageDescription: Khan Weather uses your location to show the forecast and alerts where you are.
+        NSLocationAlwaysAndWhenInUseUsageDescription: With Always, iOS wakes Khan Weather when you move or arrive somewhere, so it can check for weather alerts and rain where you are and notify you.
         UIBackgroundModes: [fetch]
         BGTaskSchedulerPermittedIdentifiers: [com.skhan85.KhanWeather.alerts]
     settings:
