@@ -6,9 +6,9 @@ forecast was fetched and, per source, the next 120 hours of temperature (°C), p
 (mm/h) and precipitation probability (%). tools/score_forecast_log.py later scores the
 snapshots against Environment Canada observations by lead time.
 
-Sources: Open-Meteo (each model the app blends, so the blend can be rebuilt offline),
-Pirate Weather (PIRATE_WEATHER_KEY) and Tomorrow.io (TOMORROW_IO_KEY). A source whose key is
-missing or whose request fails is recorded with its error and skipped.
+Sources: Open-Meteo (each model the app blends, so the blend can be rebuilt offline) and
+Pirate Weather (PIRATE_WEATHER_KEY). A source whose key is missing or whose request fails is
+recorded with its error and skipped.
 """
 import datetime as dt
 import json
@@ -61,24 +61,10 @@ def pirate_weather(key):
                        for r in rows]}
 
 
-def tomorrow_io(key):
-    q = urllib.parse.urlencode({"location": f"{LAT},{LON}", "timesteps": "1h", "units": "metric", "apikey": key})
-    rows = get("https://api.tomorrow.io/v4/weather/forecast?" + q)["timelines"]["hourly"][:HOURS]
-    out = []
-    for r in rows:
-        v = r["values"]
-        t = dt.datetime.fromisoformat(r["time"].replace("Z", "+00:00")).timestamp()
-        rate = sum(v.get(k) or 0 for k in ("rainIntensity", "sleetIntensity", "freezingRainIntensity")) \
-            + (v.get("snowIntensity") or 0) / 10   # snow is reported as cm/h of snow; ~10:1 to water
-        out.append([hour_key(t), v.get("temperature"), round(rate, 2), v.get("precipitationProbability")])
-    return {"tomorrow": out}
-
-
 def main(path):
     snap = {"fetched": int(dt.datetime.now(dt.timezone.utc).timestamp()), "sources": {}, "errors": {}}
     jobs = [("open-meteo", open_meteo, None),
-            ("pirate", pirate_weather, os.environ.get("PIRATE_WEATHER_KEY")),
-            ("tomorrow", tomorrow_io, os.environ.get("TOMORROW_IO_KEY"))]
+            ("pirate", pirate_weather, os.environ.get("PIRATE_WEATHER_KEY"))]
     for name, fn, key in jobs:
         if fn is not open_meteo and not key:
             snap["errors"][name] = "no API key"

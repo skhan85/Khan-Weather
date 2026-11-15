@@ -1,7 +1,7 @@
 name: Forecast log
 
-# Every 3 hours, saves the next 120 hours of forecasts for Milton from Open-Meteo's models,
-# Pirate Weather and Tomorrow.io to forecast-log.jsonl on the forecast-log branch, so they can
+# Every 3 hours, saves the next 120 hours of forecasts for Milton from Open-Meteo's models
+# and Pirate Weather to forecast-log.jsonl on the forecast-log branch, so they can
 # be scored against Environment Canada observations later (tools/score_forecast_log.py).
 
 on:
@@ -36,7 +36,6 @@ jobs:
       - name: Fetch forecasts
         env:
           PIRATE_WEATHER_KEY: ${{ secrets.PIRATE_WEATHER_KEY }}
-          TOMORROW_IO_KEY: ${{ secrets.TOMORROW_IO_KEY }}
         run: python3 tools/log_forecasts.py log/forecast-log.jsonl
       - name: Save
         run: |
