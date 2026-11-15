@@ -24,6 +24,8 @@ struct SettingsView: View {
     @State private var notificationsDenied = false
     @State private var permissionText = "Checking…"
     @State private var permissionOK = true
+    @State private var testSending = false
+    @State private var testMessage: String?
     @State private var locationAuthorization = BackgroundLocation.shared.authorization
     @Environment(\.scenePhase) private var scenePhase
 
@@ -102,7 +104,27 @@ struct SettingsView: View {
                     }
                     statusRow("Location access", locationText, ok: locationAlways)
                     statusRow("Last background check", lastCheckText, ok: AlertNotifier.lastBackgroundCheck.map { -$0.timeIntervalSinceNow < 6 * 3600 } ?? false)
-                    Button("Send a test notification") { Task { await AlertNotifier.sendTest(); await refreshPermission() } }
+                    Button(testSending ? "Sending…" : "Send a test notification") {
+                        testSending = true
+                        testMessage = "Sent. It arrives in \(Int(AlertNotifier.testDelay)) seconds; you can lock the phone to watch for it."
+                        Task {
+                            let result = await AlertNotifier.sendTest()
+                            await refreshPermission()
+                            testSending = false
+                            switch result {
+                            case .delivered:
+                                testMessage = "iOS delivered the test notification. If no banner or sound came, a Focus such as Sleep or Do Not Disturb is holding it: swipe down for Notification Center, and add Khan Weather to the Focus's allowed apps in Settings > Focus."
+                            case .notDelivered:
+                                testMessage = "iOS didn't deliver the test notification. Check Settings > Notifications > Khan Weather and make sure Allow Notifications is on."
+                            case .failed(let error):
+                                testMessage = "iOS refused the notification: \(error)"
+                            }
+                        }
+                    }
+                    .disabled(testSending)
+                    if let testMessage {
+                        Text(testMessage).font(.footnote).foregroundStyle(.secondary)
+                    }
                     if !locationAlways && locationAuthorization != .denied {
                         Button("Allow location Always") { BackgroundLocation.shared.requestAlways() }
                     }

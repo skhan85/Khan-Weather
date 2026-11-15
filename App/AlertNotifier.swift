@@ -53,16 +53,33 @@ enum AlertNotifier {
         schedule()
     }
 
-    /// A notification right now, so the person can see banners and sounds work.
-    static func sendTest() async {
+    /// What happened to the test notification, for the line under the button.
+    enum TestResult: Equatable {
+        case delivered, notDelivered, failed(String)
+    }
+
+    static let testDelay: TimeInterval = 5
+
+    /// A notification in a few seconds (time to lock the phone and watch for it), then whether iOS
+    /// actually delivered it. Delivered but not seen means a Focus or the notification style hid it.
+    static func sendTest() async -> TestResult {
         _ = await requestPermission()
+        let center = UNUserNotificationCenter.current()
+        let id = "test-\(Int(Date().timeIntervalSince1970))"
         let content = UNMutableNotificationContent()
         content.title = "Khan Weather test"
         content.body = "Notifications from Khan Weather reach this phone."
         content.sound = .default
-        let request = UNNotificationRequest(identifier: "test-\(Int(Date().timeIntervalSince1970))", content: content,
-                                            trigger: UNTimeIntervalNotificationTrigger(timeInterval: 3, repeats: false))
-        try? await UNUserNotificationCenter.current().add(request)
+        let request = UNNotificationRequest(identifier: id, content: content,
+                                            trigger: UNTimeIntervalNotificationTrigger(timeInterval: testDelay, repeats: false))
+        do {
+            try await center.add(request)
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+        try? await Task.sleep(nanoseconds: UInt64((testDelay + 2) * 1_000_000_000))
+        let delivered = await center.deliveredNotifications().contains { $0.request.identifier == id }
+        return delivered ? .delivered : .notDelivered
     }
 
     // MARK: Places
