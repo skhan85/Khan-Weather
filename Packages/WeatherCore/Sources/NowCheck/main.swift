@@ -7,13 +7,21 @@ import WeatherCore
 
 let milton = Coordinate(latitude: 43.513, longitude: -79.882)
 
+/// Up to three tries, since a CI runner's first request to a service sometimes times out.
 func attempt<T>(_ f: () async throws -> T?) async -> (T?, String?) {
-    do { return (try await f(), nil) } catch { return (nil, "\(error)") }
+    var lastError = "no data"
+    for n in 1...3 {
+        do { if let v = try await f() { return (v, nil) }; lastError = "no data" }
+        catch { lastError = (error as NSError).localizedDescription }
+        if n < 3 { try? await Task.sleep(nanoseconds: 5_000_000_000) }
+    }
+    return (nil, lastError)
 }
 
 let (base, forecastError) = await attempt { try await OpenMeteoProvider().forecast(for: milton) }
 guard let base else {
-    print("MISMATCH: forecast unavailable (\(forecastError ?? "nil"))")
+    // An outage isn't a wrong reading, so it doesn't open an issue.
+    print("SKIPPED: forecast unavailable after 3 tries (\(forecastError ?? "nil"))")
     exit(0)
 }
 let (observation, obsError) = await attempt { try await HyperlocalObservationProvider().observation(near: milton) }
