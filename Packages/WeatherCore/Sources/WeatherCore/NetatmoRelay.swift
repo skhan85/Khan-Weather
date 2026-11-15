@@ -128,9 +128,20 @@ public struct HyperlocalObservationProvider: ObservationProvider {
     static let officialLimit: Double = 3
 
     static func merge(official base: Observation?, netatmo local: Observation) -> Observation {
+        var local = local
         if let base, base.isLocal, abs(base.temperature - local.temperature) > officialLimit,
            base.observedAt.timeIntervalSince(local.observedAt) > -3600 {
-            return base
+            // Usually one or two of the nearest stations are in the sun (15 Nov, 4 pm: 7.1, 9.4,
+            // 9.9, 9.5 and 16.4° while Campbellville read 6°). Keep the ones that agree with the
+            // official station rather than dropping every home station; if none do, it wins.
+            let agreeing = (local.stationTemperatures ?? []).filter { abs($0 - base.temperature) <= officialLimit }
+            guard !agreeing.isEmpty else { return base }
+            let v = Array(agreeing.prefix(3)).sorted()
+            let mid = v.count % 2 == 1 ? v[v.count / 2] : (v[v.count / 2 - 1] + v[v.count / 2]) / 2
+            local.temperature = (mid * 10).rounded() / 10
+            local.stationTemperatures = agreeing
+            let place = local.stationName.range(of: " in ").map { String(local.stationName[$0.lowerBound...]) } ?? ""
+            local.stationName = (v.count == 1 ? "Netatmo station" : "\(v.count) Netatmo stations") + place
         }
         var merged = local
         merged.condition = base?.condition

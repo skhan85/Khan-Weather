@@ -97,6 +97,20 @@ final class NetatmoRelayTests: XCTestCase {
         XCTAssertEqual(HyperlocalObservationProvider.merge(official: official, netatmo: close).temperature, 4)
     }
 
+    func testSunnyStationsAreDroppedButShadedOnesKeptNextToAnOfficialStation() {
+        // 15 Nov, 4:09 pm: Campbellville 6°, nearest home stations 7.1, 9.4, 9.9, 9.5, 16.4°.
+        let official = Observation(stationName: "CR-27 Campbellville", observedAt: now, temperature: 6, distanceKm: 8)
+        var local = Observation(stationName: "3 Netatmo stations in Milton", observedAt: now, temperature: 9.4, distanceKm: 0.24)
+        local.dataProvider = "NETATMO"
+        local.stationTemperatures = [7.1, 16.4, 9.4, 9.9, 9.5]
+        let merged = HyperlocalObservationProvider.merge(official: official, netatmo: local)
+        XCTAssertEqual(merged.dataProvider, "NETATMO")
+        XCTAssertEqual(merged.temperature, 7.1)
+        XCTAssertEqual(merged.stationName, "Netatmo station in Milton")
+        local.stationTemperatures = [16.4, 9.9]
+        XCTAssertEqual(HyperlocalObservationProvider.merge(official: official, netatmo: local).stationName, "CR-27 Campbellville")
+    }
+
     func testDryGaugesNextDoorOverruleDistantRain() throws {
         // Nov 14, 12:18: "Light Rain" from Pearson, 25 km away, while it was dry in Milton.
         let json = #"""
