@@ -93,6 +93,7 @@ public struct NetatmoRelayProvider: ObservationProvider {
                             windSpeed: wind?.wind_strength, windDirection: wind?.wind_angle,
                             distanceKm: first.1)
         o.dataProvider = "NETATMO"
+        o.stationTemperatures = fresh.prefix(5).compactMap { $0.0.temperature }
         let gauges = within.compactMap(\.0.rain_60min)
         if !gauges.isEmpty {
             o.rainGauges = gauges.count

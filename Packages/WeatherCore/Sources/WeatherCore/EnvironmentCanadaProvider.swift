@@ -36,6 +36,9 @@ public struct Observation: Equatable, Codable, Sendable {
     }
     public var rainGauges: Int?
     public var rainLastHourMm: Double?
+    /// Home stations only: each nearby station's reading, nearest first, so a sun-heated one can
+    /// be set aside against the forecast (see `Forecast.applying(_:)`).
+    public var stationTemperatures: [Double]?
 
     /// Local gauges report and none caught a drop in the last hour.
     public var gaugesSayDry: Bool { (rainGauges ?? 0) > 0 && (rainLastHourMm ?? 1) == 0 }
@@ -334,7 +337,18 @@ public extension Forecast {
         }
         // A home station far from both its neighbours' official reading and the model is more
         // likely sitting in the sun than right; keep only its sky.
-        let implausible = o.dataProvider == "NETATMO" && abs(o.temperature - current.temperature) > 5
+        // In daylight a home sensor in the sun can read 5-13° high (seen in Milton, 15 Nov at 11 am:
+        // 6.3, 7.0, 8.4, 12.7 and 19.2° side by side). Sunshine only ever warms them, so by day
+        // stations more than a little above the forecast are dropped and the rest decide.
+        if o.dataProvider == "NETATMO", current.isDay, let temps = o.stationTemperatures, !temps.isEmpty {
+            let shaded = temps.filter { $0 <= current.temperature + Self.sunWarmLimit }
+            if let mid = Self.median(Array(shaded.prefix(3))) {
+                o.temperature = (mid * 10).rounded() / 10
+            } else {
+                o.temperature = .infinity   // every station sun-heated: fall back to the forecast below
+            }
+        }
+        let implausible = o.dataProvider == "NETATMO" && !(abs(o.temperature - current.temperature) <= 5)
         guard o.isLocal, !implausible else {
             // A distant station (a lakeshore pier, an airport across town) can't speak for the
             // user's temperature or wind, but it does tell us whether it's raining.
@@ -406,6 +420,15 @@ public extension Forecast {
         guard span > 0 else { return a.temperature }
         let f = min(1, max(0, time.timeIntervalSince(a.time) / span))
         return a.temperature + (b.temperature - a.temperature) * f
+    }
+
+    /// By day, home stations more than this above the forecast are taken to be in the sun.
+    static let sunWarmLimit: Double = 2.5
+
+    static func median(_ values: [Double]) -> Double? {
+        guard !values.isEmpty else { return nil }
+        let v = values.sorted()
+        return v.count % 2 == 1 ? v[v.count / 2] : (v[v.count / 2 - 1] + v[v.count / 2]) / 2
     }
 
     /// How long a station reading keeps pulling the forecast toward it.
