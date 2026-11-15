@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import WeatherCore
 
 // Hourly real-data check (.github/workflows/now-check.yml): runs the app's own "now" pipeline for
@@ -40,6 +43,27 @@ if let o = observation {
 print("- Radar over Milton: " + (radar.map { "rain \(f($0.rainMmPerHour)) mm/h, snow \(f($0.snowCmPerHour)) cm/h at \($0.time)" }
                                  ?? "unavailable (\(radarError ?? "no recent frame"))"))
 print("- Model now: \(f(base.current.temperature))°C, \(base.current.condition.description), \(f(base.current.precipitation)) mm")
+
+let fmt = DateFormatter()
+fmt.dateFormat = "HH:mm"
+fmt.timeZone = base.timeZone
+print("- Hourly as shown: " + shown.hoursStartingNow(count: 5).map { "\(fmt.string(from: $0.time)) \(f($0.temperature))" }.joined(separator: ", "))
+print("- Hourly from models: " + base.upcomingHours(count: 5).map { "\(fmt.string(from: $0.time)) \(f($0.temperature))" }.joined(separator: ", "))
+
+// Every Netatmo station near Milton, so a jump in "now" can be traced to one station.
+struct Stations: Decodable { let stations: [NetatmoStation] }
+var relay = URLComponents(url: NetatmoRelayProvider.defaultBaseURL, resolvingAgainstBaseURL: false)!
+relay.queryItems = [URLQueryItem(name: "lat", value: String(milton.latitude)), URLQueryItem(name: "lon", value: String(milton.longitude))]
+if let (data, _) = try? await defaultLoader(URLRequest(url: relay.url!, timeoutInterval: 15)),
+   let list = try? JSONDecoder().decode(Stations.self, from: data) {
+    let near = list.stations.map { s -> (NetatmoStation, Double) in
+        (s, EnvironmentCanadaProvider.distanceKm(milton, Coordinate(latitude: s.lat, longitude: s.lon)))
+    }.filter { $0.1 <= 8 }.sorted { $0.1 < $1.1 }
+    print("- Netatmo within 8 km (\(near.count)): " + near.prefix(10).map { s, d in
+        let age = s.observed.map { Int(Date().timeIntervalSince1970 - $0) / 60 }
+        return "\(f(d)) km \(f(s.temperature))° (\(age.map { "\($0) min" } ?? "?") old)"
+    }.joined(separator: "; "))
+}
 
 var problems: [String] = []
 if shown.current.condition.isPrecipitation, let r = radar, !r.isPrecipitating {

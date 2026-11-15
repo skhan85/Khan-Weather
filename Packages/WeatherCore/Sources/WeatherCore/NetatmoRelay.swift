@@ -47,6 +47,9 @@ public struct NetatmoRelayProvider: ObservationProvider {
         return try Self.parse(data, near: coordinate, now: Date(), radiusKm: radiusKm, maxAge: maxAge)
     }
 
+    /// How far out to look for stations to make up three when fewer are within the radius.
+    static let fillRadiusKm: Double = 8
+
     /// Degrees from the neighbourhood median beyond which a station is ignored.
     static let outlierLimit: Double = 2.5
 
@@ -54,13 +57,19 @@ public struct NetatmoRelayProvider: ObservationProvider {
     /// or by a dryer vent can't skew "now".
     static func parse(_ data: Data, near c: Coordinate, now: Date, radiusKm: Double, maxAge: TimeInterval) throws -> Observation? {
         struct R: Decodable { let stations: [NetatmoStation] }
-        let fresh = try JSONDecoder().decode(R.self, from: data).stations.compactMap { s -> (NetatmoStation, Double, Date)? in
+        let all = try JSONDecoder().decode(R.self, from: data).stations.compactMap { s -> (NetatmoStation, Double, Date)? in
             guard s.temperature != nil, let t = s.observed else { return nil }
             let time = Date(timeIntervalSince1970: t)
             let d = EnvironmentCanadaProvider.distanceKm(c, Coordinate(latitude: s.lat, longitude: s.lon))
-            guard d <= radiusKm, now.timeIntervalSince(time) < maxAge else { return nil }
+            guard d <= max(radiusKm, Self.fillRadiusKm), now.timeIntervalSince(time) < maxAge else { return nil }
             return (s, d, time)
         }.sorted { $0.1 < $1.1 }
+        // Stations within the radius count; with fewer than three, the next nearest out to
+        // `fillRadiusKm` make up three, since the middle of three is far steadier than the
+        // average of two.
+        let within = all.filter { $0.1 <= radiusKm }
+        guard !within.isEmpty else { return nil }
+        let fresh = within.count >= 3 ? within : Array(all.prefix(3))
         func median(_ values: [Double]) -> Double? {
             guard !values.isEmpty else { return nil }
             let v = values.sorted()
@@ -84,7 +93,7 @@ public struct NetatmoRelayProvider: ObservationProvider {
                             windSpeed: wind?.wind_strength, windDirection: wind?.wind_angle,
                             distanceKm: first.1)
         o.dataProvider = "NETATMO"
-        let gauges = fresh.compactMap(\.0.rain_60min)
+        let gauges = within.compactMap(\.0.rain_60min)
         if !gauges.isEmpty {
             o.rainGauges = gauges.count
             o.rainLastHourMm = gauges.max()
@@ -134,4 +143,24 @@ public struct HyperlocalObservationProvider: ObservationProvider {
         }
         return merged
     }
+}
+
+public extension Observation {
+    /// Home stations report every ~10 minutes and wobble by a few tenths, so with only one or two
+    /// of them the rounded "now" can flip 5° → 6° → 5° between refreshes. Averages this reading
+    /// with the previous one for the same spot when that one is recent and close; a real change
+    /// still comes through, at half speed for one refresh. Official stations are left alone.
+    func smoothed(after previous: Observation?, now: Date = Date()) -> Observation {
+        guard let previous, dataProvider == "NETATMO", previous.dataProvider == "NETATMO",
+              now.timeIntervalSince(previous.observedAt) < Self.smoothingWindow,
+              abs(temperature - previous.temperature) < Self.smoothingLimit else { return self }
+        var o = self
+        o.temperature = ((temperature + previous.temperature) / 2 * 10).rounded() / 10
+        return o
+    }
+
+    /// Readings older than this aren't averaged in.
+    static let smoothingWindow: TimeInterval = 45 * 60
+    /// A bigger change than this is taken as real (a front, or a different set of stations).
+    static let smoothingLimit: Double = 1.5
 }

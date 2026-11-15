@@ -26,6 +26,40 @@ final class NetatmoRelayTests: XCTestCase {
         XCTAssertEqual(o.distanceKm ?? 0, 0.27, accuracy: 0.1)
     }
 
+    func testTwoNearbyStationsAreMadeUpToThreeFromFurtherOut() throws {
+        let json = #"""
+        {"stations":[
+          {"lat":43.513,"lon":-79.86,"city":"Milton","temperature":5.0,"observed":1794580700},
+          {"lat":43.513,"lon":-79.85,"city":"Milton","temperature":6.0,"observed":1794580700},
+          {"lat":43.513,"lon":-79.80,"city":"Milton","temperature":5.2,"observed":1794580700},
+          {"lat":43.513,"lon":-79.70,"city":"Mississauga","temperature":9.0,"observed":1794580700}
+        ]}
+        """#
+        let o = try XCTUnwrap(NetatmoRelayProvider.parse(Data(json.utf8), near: milton, now: now, radiusKm: 5, maxAge: 3600))
+        // 1.8 km and 2.6 km inside the radius, 6.6 km makes three; 14.6 km is too far. Middle of 5.0, 5.2, 6.0.
+        XCTAssertEqual(o.temperature, 5.2)
+        XCTAssertEqual(o.stationName, "3 Netatmo stations in Milton")
+    }
+
+    func testOnlyFarStationsCountForNothing() throws {
+        let json = #"{"stations":[{"lat":43.513,"lon":-79.80,"temperature":5.2,"observed":1794580700}]}"#
+        XCTAssertNil(try NetatmoRelayProvider.parse(Data(json.utf8), near: milton, now: now, radiusKm: 5, maxAge: 3600))
+    }
+
+    func testSmoothingAveragesARecentCloseReading() {
+        var before = Observation(stationName: "2 Netatmo stations", observedAt: now, temperature: 5.4)
+        before.dataProvider = "NETATMO"
+        var after = Observation(stationName: "2 Netatmo stations", observedAt: now.addingTimeInterval(1200), temperature: 5.8)
+        after.dataProvider = "NETATMO"
+        XCTAssertEqual(after.smoothed(after: before, now: now.addingTimeInterval(1260)).temperature, 5.6)
+        // A big change is real and comes straight through, and so does anything after a long gap.
+        var jump = after
+        jump.temperature = 8
+        XCTAssertEqual(jump.smoothed(after: before, now: now.addingTimeInterval(1260)).temperature, 8)
+        XCTAssertEqual(after.smoothed(after: before, now: now.addingTimeInterval(3600)).temperature, 5.8)
+        XCTAssertEqual(after.smoothed(after: nil).temperature, 5.8)
+    }
+
     func testNothingNearby() throws {
         let far = Coordinate(latitude: 45, longitude: -75)
         XCTAssertNil(try NetatmoRelayProvider.parse(Data(sample.utf8), near: far, now: now, radiusKm: 5, maxAge: 3600))

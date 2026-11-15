@@ -301,7 +301,7 @@ public struct EnvironmentCanadaProvider: ObservationProvider {
         return Coordinate(latitude: lat, longitude: lon)
     }
 
-    static func distanceKm(_ a: Coordinate, _ b: Coordinate) -> Double {
+    public static func distanceKm(_ a: Coordinate, _ b: Coordinate) -> Double {
         let r = 6371.0
         let dLat = (b.latitude - a.latitude) * .pi / 180
         let dLon = (b.longitude - a.longitude) * .pi / 180
@@ -394,6 +394,19 @@ public extension Forecast {
         }
     }
 
+    /// The hourly forecast's temperature at `time`, read between the two hours around it, so a
+    /// reading at 11:15 is compared with the forecast for 11:15 and not with 11:00.
+    func forecastTemperature(at time: Date) -> Double? {
+        guard let i = hourly.lastIndex(where: { $0.time <= time }) else { return hourly.first?.temperature }
+        let a = hourly[i]
+        guard i + 1 < hourly.count else { return a.temperature }
+        let b = hourly[i + 1]
+        let span = b.time.timeIntervalSince(a.time)
+        guard span > 0 else { return a.temperature }
+        let f = min(1, max(0, time.timeIntervalSince(a.time) / span))
+        return a.temperature + (b.temperature - a.temperature) * f
+    }
+
     /// How long a station reading keeps pulling the forecast toward it.
     static let nudgeHours: Double = 6
 
@@ -401,8 +414,8 @@ public extension Forecast {
     /// fully at the reading and fading to nothing `nudgeHours` later, so the curve starts where
     /// the station is instead of jumping from it.
     func nudged(toward observed: Double, at time: Date) -> [HourlyForecast] {
-        guard let base = upcomingHours(from: time, count: 1).first else { return hourly }
-        let gap = observed - base.temperature
+        guard let base = forecastTemperature(at: time) else { return hourly }
+        let gap = observed - base
         return hourly.map { hour in
             let hoursAhead = hour.time.timeIntervalSince(time) / 3600
             guard hoursAhead > -1 else { return hour }
