@@ -65,4 +65,16 @@ final class DetailTests: XCTestCase {
         // 1762923600 is local midnight on 2025-11-12 in Toronto; both hours fall on that date.
         XCTAssertEqual(f.hours(on: d).count, 2)
     }
+
+    func testOneHourRoundingBlipIsFlattened() {
+        let t0 = Date(timeIntervalSince1970: 1794744000)
+        func hour(_ i: Int, _ t: Double) -> HourlyForecast {
+            HourlyForecast(time: t0.addingTimeInterval(Double(i) * 3600), temperature: t, feelsLike: t - 3,
+                           condition: .overcast)
+        }
+        let hours = [hour(0, 6.3), hour(1, 6.5), hour(2, 6.4), hour(3, 6.4), hour(4, 8.0), hour(5, 6.4)]
+        let shown = Forecast.withoutRoundingBlips(hours, unit: .celsius).map { Int($0.temperature.rounded()) }
+        // 6.5 between 6.3 and 6.4 is flattened; the 8.0 is a real change and stays.
+        XCTAssertEqual(shown, [6, 6, 6, 6, 8, 6])
+    }
 }

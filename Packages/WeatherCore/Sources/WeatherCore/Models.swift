@@ -247,7 +247,27 @@ public struct Forecast: Equatable, Codable, Sendable {
         hours[0].windSpeed = c.windSpeed ?? hours[0].windSpeed
         hours[0].windDirection = c.windDirection ?? hours[0].windDirection
         hours[0].windGusts = c.windGusts ?? hours[0].windGusts
-        return hours
+        return Self.withoutRoundingBlips(hours)
+    }
+
+    /// A flat 6.4°, 6.5°, 6.4° reads "6°, 7°, 6°": one hour pops up or down only because it sits
+    /// on the other side of a rounding line. When an hour's rounded value differs from two
+    /// neighbours that agree, and the hour itself is within half a degree of them, it takes their
+    /// average, which rounds the same as they do. Real one-hour changes are bigger and stay.
+    static func withoutRoundingBlips(_ hours: [HourlyForecast],
+                                     unit: TemperatureUnit = UnitSettings.current.temperature) -> [HourlyForecast] {
+        guard hours.count >= 3 else { return hours }
+        var out = hours
+        for i in 1..<(hours.count - 1) {
+            let a = unit.convert(hours[i - 1].temperature), b = unit.convert(hours[i].temperature)
+            let c = unit.convert(hours[i + 1].temperature)
+            guard a.rounded() == c.rounded(), b.rounded() != a.rounded(), abs(b - (a + c) / 2) < 0.6 else { continue }
+            let fixed = (hours[i - 1].temperature + hours[i + 1].temperature) / 2
+            let shift = fixed - hours[i].temperature
+            out[i].temperature = fixed
+            out[i].feelsLike = out[i].feelsLike.map { $0 + shift }
+        }
+        return out
     }
 
     /// The forecast hour that contains `date`, for values the "now" request doesn't carry
