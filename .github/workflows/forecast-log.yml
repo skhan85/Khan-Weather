@@ -1,0 +1,46 @@
+name: Forecast log
+
+# Every 3 hours, saves the next 120 hours of forecasts for Milton from Open-Meteo's models,
+# Pirate Weather and Tomorrow.io to forecast-log.jsonl on the forecast-log branch, so they can
+# be scored against Environment Canada observations later (tools/score_forecast_log.py).
+
+on:
+  schedule:
+    - cron: "41 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: forecast-log
+  cancel-in-progress: false
+
+jobs:
+  log:
+    # Linux: GitHub's Mac runners can't open a connection to api.open-meteo.com.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out the log branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git fetch --depth=1 origin forecast-log; then
+            git worktree add log origin/forecast-log
+            git -C log switch -c forecast-log
+          else
+            git worktree add --orphan -b forecast-log log
+          fi
+      - name: Fetch forecasts
+        env:
+          PIRATE_WEATHER_KEY: ${{ secrets.PIRATE_WEATHER_KEY }}
+          TOMORROW_IO_KEY: ${{ secrets.TOMORROW_IO_KEY }}
+        run: python3 tools/log_forecasts.py log/forecast-log.jsonl
+      - name: Save
+        run: |
+          cd log
+          git add forecast-log.jsonl
+          git commit -q -m "Forecast snapshot $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push origin forecast-log
