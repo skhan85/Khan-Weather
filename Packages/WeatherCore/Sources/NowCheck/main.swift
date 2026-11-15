@@ -7,7 +7,7 @@ import WeatherCore
 
 let milton = Coordinate(latitude: 43.513, longitude: -79.882)
 
-async func attempt<T>(_ f: () async throws -> T?) async -> (T?, String?) {
+func attempt<T>(_ f: () async throws -> T?) async -> (T?, String?) {
     do { return (try await f(), nil) } catch { return (nil, "\(error)") }
 }
 
