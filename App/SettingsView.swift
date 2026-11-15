@@ -24,6 +24,7 @@ struct SettingsView: View {
     @State private var notificationsDenied = false
     @State private var permissionText = "Checking…"
     @State private var permissionOK = true
+    @State private var locationAuthorization = BackgroundLocation.shared.authorization
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -60,7 +61,7 @@ struct SettingsView: View {
                             Task {
                                 let allowed = await AlertNotifier.requestPermission()
                                 notificationsDenied = !allowed
-                                if allowed { AlertNotifier.schedule() } else { alertNotifications = false }
+                                if allowed { AlertNotifier.schedule(); BackgroundLocation.shared.start() } else { alertNotifications = false }
                             }
                         }
                     if alertNotifications {
@@ -72,7 +73,7 @@ struct SettingsView: View {
                             Task {
                                 let allowed = await AlertNotifier.requestPermission()
                                 notificationsDenied = !allowed
-                                if allowed { AlertNotifier.schedule() } else { rainNotifications = false }
+                                if allowed { AlertNotifier.schedule(); BackgroundLocation.shared.start() } else { rainNotifications = false }
                             }
                         }
                     Toggle("Frost tonight", isOn: $frostNotifications)
@@ -81,7 +82,7 @@ struct SettingsView: View {
                             Task {
                                 let allowed = await AlertNotifier.requestPermission()
                                 notificationsDenied = !allowed
-                                if allowed { AlertNotifier.schedule() } else { frostNotifications = false }
+                                if allowed { AlertNotifier.schedule(); BackgroundLocation.shared.start() } else { frostNotifications = false }
                             }
                         }
                 } header: {
@@ -90,7 +91,7 @@ struct SettingsView: View {
                     if notificationsDenied {
                         Text("Notifications are turned off for Khan Weather. Turn them on in the iPhone Settings app, under Notifications.")
                     } else {
-                        Text("Warnings and watches from Environment Canada, the US National Weather Service and Germany's DWD, for your location and saved places. Rain, snow and frost heads-ups are for your location and only fire when most forecast models agree; rain at most once per wet spell, frost once an afternoon. iOS decides when the app may check, usually every 15 to 60 minutes and less often in Low Power Mode, so treat these as a heads-up, not an emergency alarm.")
+                        Text("Warnings and watches from Environment Canada, the US National Weather Service and Germany's DWD, for your location and saved places. Rain, snow and frost heads-ups are for your location and only fire when most forecast models agree; rain at most once per wet spell, frost once an afternoon. Without true push (not available on a free Apple ID), these depend on iOS waking the app, so treat them as a heads-up, not an emergency alarm. The home screen widget sends its own alert notifications; change that under Edit Widget.")
                     }
                 }
                 Section {
@@ -99,9 +100,13 @@ struct SettingsView: View {
                     if ProcessInfo.processInfo.isLowPowerModeEnabled {
                         statusRow("Low Power Mode", "On (pauses checks)", ok: false)
                     }
+                    statusRow("Location access", locationText, ok: locationAlways)
                     statusRow("Last background check", lastCheckText, ok: AlertNotifier.lastBackgroundCheck.map { -$0.timeIntervalSinceNow < 6 * 3600 } ?? false)
                     Button("Send a test notification") { Task { await AlertNotifier.sendTest(); await refreshPermission() } }
-                    if !permissionOK || UIApplication.shared.backgroundRefreshStatus != .available {
+                    if !locationAlways && locationAuthorization != .denied {
+                        Button("Allow location Always") { BackgroundLocation.shared.requestAlways() }
+                    }
+                    if !permissionOK || !locationAlways || UIApplication.shared.backgroundRefreshStatus != .available {
                         Button("Open iPhone Settings for Khan Weather") {
                             if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
                         }
@@ -109,7 +114,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Notification status")
                 } footer: {
-                    Text("The app can only check for alerts when iOS wakes it, and iOS wakes sideloaded apps rarely. For dependable alerts, also use the ntfy app (see the README).")
+                    Text("Khan Weather checks when iOS wakes it: Background App Refresh, and with location set to Always, whenever you move about 500 m or arrive somewhere. The home screen widget also checks for alerts each time it refreshes. Rain and frost heads-ups are scheduled ahead whenever the app runs. Swiping the app away in the app switcher stops all of this until you open it again.")
                 }
                 Section {
                     Picker("Big number shows", selection: $mainTemperature) {
@@ -152,6 +157,9 @@ struct SettingsView: View {
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { Task { await refreshPermission() } }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .locationAuthorizationChanged)) { _ in
+                locationAuthorization = BackgroundLocation.shared.authorization
+            }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -179,7 +187,21 @@ struct SettingsView: View {
 
     private var lastCheckText: String {
         guard let last = AlertNotifier.lastBackgroundCheck else { return "Never yet" }
-        return last.formatted(.relative(presentation: .named))
+        let when = last.formatted(.relative(presentation: .named))
+        return AlertNotifier.lastBackgroundReason.map { "\(when), \($0)" } ?? when
+    }
+
+    private var locationAlways: Bool { locationAuthorization == .authorizedAlways }
+
+    private var locationText: String {
+        switch locationAuthorization {
+        case .authorizedAlways: return "Always"
+        case .authorizedWhenInUse: return "While Using"
+        case .denied: return "Off"
+        case .restricted: return "Restricted"
+        case .notDetermined: return "Not asked yet"
+        @unknown default: return "Unknown"
+        }
     }
 
     private func refreshPermission() async {

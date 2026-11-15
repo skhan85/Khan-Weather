@@ -18,6 +18,7 @@ enum AlertNotifier {
     private static let lastLocationKey = "lastCurrentLocation"
     private static let notifiedKey = "notifiedAlertIDs"
     static let lastBackgroundCheckKey = "lastBackgroundCheck"
+    static let lastBackgroundReasonKey = "lastBackgroundReason"
 
     private static var defaults: UserDefaults { .standard }
     static var isEnabled: Bool { defaults.bool(forKey: enabledKey) }
@@ -40,6 +41,8 @@ enum AlertNotifier {
 
     /// When iOS last let the app check in the background, for the status rows in Settings.
     static var lastBackgroundCheck: Date? { defaults.object(forKey: lastBackgroundCheckKey) as? Date }
+    static var lastBackgroundReason: String? { defaults.string(forKey: lastBackgroundReasonKey) }
+    static var anyEnabled: Bool { isEnabled || rainEnabled || frostEnabled }
 
     /// The app was installed again (sideloading does this often) and iOS forgot the permission,
     /// but the switches are still on: ask again so they mean something.
@@ -112,8 +115,9 @@ enum AlertNotifier {
     }
 
     /// Everything a background wake should do.
-    static func checkAll() async {
+    static func checkAll(reason: String = "background refresh") async {
         defaults.set(Date(), forKey: lastBackgroundCheckKey)
+        defaults.set(reason, forKey: lastBackgroundReasonKey)
         async let alerts: Void = check()
         async let rain: Void = checkForecast()
         _ = await (alerts, rain)
@@ -140,53 +144,123 @@ enum AlertNotifier {
         content.body = String(firstParagraph.trimmingCharacters(in: .whitespacesAndNewlines).prefix(240))
         content.sound = .default
         content.threadIdentifier = place
-        let request = UNNotificationRequest(identifier: a.id, content: content, trigger: nil)
-        try? await UNUserNotificationCenter.current().add(request)
+        let center = UNUserNotificationCenter.current()
+        // The widget may have posted this one already (it checks alerts too, with the same id).
+        if await center.deliveredNotifications().contains(where: { $0.request.identifier == a.id }) { return }
+        try? await center.add(UNNotificationRequest(identifier: a.id, content: content, trigger: nil))
     }
 
-    // MARK: Rain and snow starting soon
+    // MARK: Rain, snow and frost heads-ups
 
-    /// Looks at the next two hours at the last known location and posts a heads-up when rain
-    /// or snow is about to start. One per wet spell.
-    /// One forecast fetch for the rain and frost heads-ups at the last known location.
-    static func checkForecast(provider: OpenMeteoProvider = OpenMeteoProvider()) async {
+    private static let scheduledRainKey = "scheduledRainNotification"
+    private static let scheduledFrostKey = "scheduledFrostNotification"
+    private static let rainAheadID = "rain-ahead"
+    private static let frostAheadID = "frost-ahead"
+
+    /// One forecast fetch for the rain and frost heads-ups at the last known location. Besides
+    /// posting what's due now, it schedules what's coming (rain later today, frost tonight) as
+    /// timed notifications, because iOS may not wake the app again before then. Every run
+    /// replaces those with the newest forecast. `foreground` skips the "starting now" rain post,
+    /// since the app shows that line on screen.
+    static func checkForecast(provider: OpenMeteoProvider = OpenMeteoProvider(), foreground: Bool = false) async {
+        let center = UNUserNotificationCenter.current()
         guard rainEnabled || frostEnabled, let here = lastLocation,
-              let forecast = try? await provider.forecast(for: here) else { return }
-        if rainEnabled { await checkRain(forecast) }
+              let forecast = try? await provider.forecast(for: here) else {
+            if !rainEnabled { center.removePendingNotificationRequests(withIdentifiers: [rainAheadID]) }
+            if !frostEnabled { center.removePendingNotificationRequests(withIdentifiers: [frostAheadID]) }
+            return
+        }
+        settleScheduled()
+        if rainEnabled { await checkRain(forecast, foreground: foreground) }
+        else { center.removePendingNotificationRequests(withIdentifiers: [rainAheadID]) }
         if frostEnabled { await checkFrost(forecast) }
+        else { center.removePendingNotificationRequests(withIdentifiers: [frostAheadID]) }
     }
 
-    private static func checkRain(_ forecast: Forecast) async {
+    /// A scheduled heads-up whose time has passed has been shown: count it as sent. One still in the
+    /// future is dropped here and planned again from the newer forecast.
+    private static func settleScheduled(now: Date = Date()) {
+        if let at = defaults.object(forKey: scheduledRainKey) as? Date {
+            if at <= now { defaults.set(at, forKey: lastRainKey) }
+            defaults.removeObject(forKey: scheduledRainKey)
+        }
+        if let a = defaults.array(forKey: scheduledFrostKey), a.count == 2,
+           let at = a[0] as? Date, let day = a[1] as? String {
+            if at <= now { defaults.set(day, forKey: lastFrostDayKey) }
+            defaults.removeObject(forKey: scheduledFrostKey)
+        }
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [rainAheadID, frostAheadID])
+    }
+
+    private static func checkRain(_ forecast: Forecast, foreground: Bool, now: Date = Date()) async {
         let last = defaults.object(forKey: lastRainKey) as? Date
-        guard let nowcast = RainHeadsUp.shouldNotify(forecast.nowcast(), lastNotified: last),
-              // Only when most models also see it, so one model's stray shower doesn't buzz the phone.
-              ModelAgreement.wetAgrees(forecast.hourly) else { return }
-        defaults.set(Date(), forKey: lastRainKey)
+        if let last, now.timeIntervalSince(last) < RainHeadsUp.quietPeriod { return }
+        let nowcast = forecast.nowcast(at: now)
+
+        // Starting within the hour: say so now (unless the app is open and already shows it).
+        if let soon = RainHeadsUp.shouldNotify(nowcast, lastNotified: last, now: now),
+           ModelAgreement.wetAgrees(forecast.hourly, now: now) {
+            guard !foreground else { return }
+            defaults.set(now, forKey: lastRainKey)
+            let content = UNMutableNotificationContent()
+            content.title = soon.kind == .snow ? "Snow on the way" : "Rain on the way"
+            content.body = RainHeadsUp.body(soon, at: now, timeZone: forecast.timeZone)
+            content.sound = .default
+            content.threadIdentifier = "rain"
+            try? await UNUserNotificationCenter.current().add(
+                UNNotificationRequest(identifier: "rain-\(Int(now.timeIntervalSince1970))", content: content, trigger: nil))
+            return
+        }
+
+        // Later: the 15-minute nowcast (next 2 hours) first, then the hourly forecast up to 6 hours.
+        var start: Date?
+        var snow = false
+        if let nowcast, case .starting(let minutes) = nowcast.change {
+            start = now.addingTimeInterval(Double(minutes) * 60)
+            snow = nowcast.kind == .snow
+        } else if let hour = RainHeadsUp.upcomingWetHour(forecast.hourly, now: now, from: 3600) {
+            start = hour.time
+            snow = hour.snow
+        }
+        guard let start else { return }
+        let fireAt = start.addingTimeInterval(-20 * 60)
+        guard fireAt > now.addingTimeInterval(60) else { return }
+        let f = DateFormatter()
+        f.timeZone = forecast.timeZone
+        f.timeStyle = .short
+        f.dateStyle = .none
         let content = UNMutableNotificationContent()
-        content.title = nowcast.kind == .snow ? "Snow on the way" : "Rain on the way"
-        content.body = RainHeadsUp.body(nowcast, timeZone: forecast.timeZone)
+        content.title = snow ? "Snow on the way" : "Rain on the way"
+        content.body = "\(snow ? "Snow" : "Rain") expected to start around \(f.string(from: start)). Open the app for the latest."
         content.sound = .default
         content.threadIdentifier = "rain"
-        let request = UNNotificationRequest(identifier: "rain-\(Int(Date().timeIntervalSince1970))", content: content, trigger: nil)
-        try? await UNUserNotificationCenter.current().add(request)
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: fireAt.timeIntervalSince(now), repeats: false)
+        try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: rainAheadID, content: content, trigger: trigger))
+        defaults.set(fireAt, forKey: scheduledRainKey)
     }
 
-    /// "Frost likely tonight", once a day, in the afternoon or evening, when most models agree.
+    /// "Frost likely tonight", once a day, delivered in the afternoon or evening, when most models agree.
+    /// Found in the morning, it's scheduled for 2 PM.
     private static func checkFrost(_ forecast: Forecast, now: Date = Date()) async {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = forecast.timeZone
         let hour = calendar.component(.hour, from: now)
         let today = AccuracyLog.dayString(now, timeZone: forecast.timeZone)
-        guard (14...22).contains(hour), defaults.string(forKey: lastFrostDayKey) != today,
+        guard hour <= 22, defaults.string(forKey: lastFrostDayKey) != today,
               let frost = ModelAgreement.frost(forecast, now: now) else { return }
-        defaults.set(today, forKey: lastFrostDayKey)
         let content = UNMutableNotificationContent()
         content.title = "Frost likely tonight"
         content.body = "\(frost.agreeing) of \(frost.total) forecast models drop to \(WeatherFormat.temperature(0)) or below by about \(TimeText.hour(frost.time, forecast.timeZone)). Cover plants and watch for icy spots."
         content.sound = .default
         content.threadIdentifier = "frost"
-        let request = UNNotificationRequest(identifier: "frost-\(today)", content: content, trigger: nil)
-        try? await UNUserNotificationCenter.current().add(request)
+        if hour >= 14 {
+            defaults.set(today, forKey: lastFrostDayKey)
+            try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "frost-\(today)", content: content, trigger: nil))
+        } else if let at = calendar.date(bySettingHour: 14, minute: 0, second: 0, of: now), at > now {
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: at.timeIntervalSince(now), repeats: false)
+            try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: frostAheadID, content: content, trigger: trigger))
+            defaults.set([at, today], forKey: scheduledFrostKey)
+        }
     }
 
     /// Opening the app shows the same "rain starting" line, so don't repeat it as a notification.

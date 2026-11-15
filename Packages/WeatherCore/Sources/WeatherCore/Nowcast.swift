@@ -129,6 +129,27 @@ public enum RainHeadsUp {
         return nowcast
     }
 
+    /// The first hour, between `from` and `within` hours ahead, when rain or snow is forecast and most
+    /// models agree (at least 60 %, or no model counts to go on), as long as it isn't wet now.
+    /// Lets the app schedule a heads-up ahead of time, since iOS may not wake it again before then.
+    public static func upcomingWetHour(_ hourly: [HourlyForecast], now: Date = Date(),
+                                       from: TimeInterval = 0, within hours: Int = 6) -> (time: Date, snow: Bool)? {
+        func wet(_ h: HourlyForecast) -> Bool {
+            let amount = (h.precipitation ?? 0) >= 0.3 || (h.rain ?? 0) >= 0.3 || (h.snowfall ?? 0) >= 0.3
+            guard amount else { return false }
+            if let n = h.modelCount, n > 0, let w = h.modelsWet { return Double(w) / Double(n) >= 0.6 }
+            return (h.precipitationProbability ?? 100) >= 60
+        }
+        let sorted = hourly.sorted { $0.time < $1.time }
+        // Already wet this hour: nothing is "starting".
+        if let current = sorted.last(where: { $0.time <= now }), current.time.addingTimeInterval(3600) > now, wet(current) {
+            return nil
+        }
+        let end = now.addingTimeInterval(Double(hours) * 3600)
+        guard let h = sorted.first(where: { $0.time > now.addingTimeInterval(from) && $0.time <= end && wet($0) }) else { return nil }
+        return (h.time, (h.snowfall ?? 0) > 0 && (h.rain ?? 0) < 0.3)
+    }
+
     /// "Rain starting in about 25 min" plus the time, e.g. "around 3:40 PM".
     public static func body(_ nowcast: Nowcast, at now: Date = Date(), timeZone: TimeZone) -> String {
         guard case .starting(let minutes) = nowcast.change else { return nowcast.text + "." }
