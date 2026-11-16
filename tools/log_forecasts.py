@@ -6,9 +6,10 @@ forecast was fetched and, per source, the next 120 hours of temperature (°C), p
 (mm/h) and precipitation probability (%). tools/score_forecast_log.py later scores the
 snapshots against Environment Canada observations by lead time.
 
-Sources: Open-Meteo (each model the app blends, so the blend can be rebuilt offline) and
-Pirate Weather (PIRATE_WEATHER_KEY). A source whose key is missing or whose request fails is
-recorded with its error and skipped.
+Sources: Open-Meteo (each model the app blends, so the blend can be rebuilt offline), Pirate
+Weather (PIRATE_WEATHER_KEY) and Google's Weather API (GOOGLE_WEATHER_KEY; 5 calls a run, about
+3,600 a month, inside Google's 10,000 free calls). A source whose key is missing or whose request
+fails is recorded with its error and skipped.
 """
 import datetime as dt
 import json
@@ -61,6 +62,24 @@ def pirate_weather(key):
                        for r in rows]}
 
 
+def google(key):
+    rows, token = [], None
+    while len(rows) < HOURS:
+        q = {"key": key, "location.latitude": LAT, "location.longitude": LON, "hours": HOURS, "pageSize": 24}
+        if token:
+            q["pageToken"] = token
+        d = get("https://weather.googleapis.com/v1/forecast/hours:lookup?" + urllib.parse.urlencode(q))
+        for h in d.get("forecastHours", []):
+            start = dt.datetime.fromisoformat(h["interval"]["startTime"].replace("Z", "+00:00"))
+            p = h.get("precipitation") or {}
+            rows.append([hour_key(start.timestamp()), (h.get("temperature") or {}).get("degrees"),
+                         (p.get("qpf") or {}).get("quantity"), (p.get("probability") or {}).get("percent")])
+        token = d.get("nextPageToken")
+        if not token:
+            break
+    return {"google": rows[:HOURS]}
+
+
 def netatmo():
     """Every Netatmo station within 8 km of Milton as [km, °C, minutes old], nearest first, so
     their bias against Environment Canada and the models can be measured later."""
@@ -84,9 +103,10 @@ def main(path):
     snap = {"fetched": int(dt.datetime.now(dt.timezone.utc).timestamp()), "sources": {}, "errors": {}}
     jobs = [("open-meteo", open_meteo, None),
             ("pirate", pirate_weather, os.environ.get("PIRATE_WEATHER_KEY")),
+            ("google", google, os.environ.get("GOOGLE_WEATHER_KEY")),
             ("netatmo", netatmo, None)]
     for name, fn, key in jobs:
-        if fn is pirate_weather and not key:
+        if fn in (pirate_weather, google) and not key:
             snap["errors"][name] = "no API key"
             continue
         try:
