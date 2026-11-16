@@ -13,22 +13,30 @@ def km(lat, lon):
 POS = re.compile(r"(\d{2})(\d{2}\.\d{2})([NS]).(\d{3})(\d{2}\.\d{2})([EW])")
 TEMP = re.compile(r"t(-?\d{2,3})")
 seen = {}
-s = socket.create_connection(("rotate.aprs2.net", 14580), timeout=30)
-s.sendall(f"user N0CALL pass -1 vers khan-weather-probe 0.1 filter r/{LAT}/{LON}/{KM}\r\n".encode())
-s.settimeout(30)
 buf, end = b"", time.time() + SECONDS
+s = None
 while time.time() < end:
+    if s is None:
+        try:
+            s = socket.create_connection(("rotate.aprs2.net", 14580), timeout=30)
+            s.sendall(f"user KHANWX pass -1 vers KhanWeatherProbe 0.2 filter r/{LAT}/{LON}/{KM}\r\n".encode())
+            s.settimeout(30)
+        except OSError as e:
+            print("connect failed:", e); s = None; time.sleep(10); continue
     try:
         d = s.recv(4096)
     except socket.timeout:
         continue
     if not d:
-        break
+        print("server closed the connection; reconnecting"); s = None; time.sleep(5); continue
     buf += d
     *lines, buf = buf.split(b"\n")
     for raw in lines:
         line = raw.decode(errors="replace").strip()
-        if line.startswith("#") or ":" not in line:
+        if line.startswith("#"):
+            print(line)
+            continue
+        if ":" not in line:
             continue
         call, body = line.split(">", 1)[0], line.split(":", 1)[1]
         m = POS.search(body)
