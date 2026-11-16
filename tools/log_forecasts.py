@@ -65,7 +65,7 @@ def pirate_weather(key):
 def google(key):
     rows, token = [], None
     while len(rows) < HOURS:
-        q = {"key": key, "location.latitude": LAT, "location.longitude": LON, "hours": HOURS, "pageSize": 24}
+        q = {"key": key.strip(), "location.latitude": LAT, "location.longitude": LON, "hours": HOURS, "pageSize": 24}
         if token:
             q["pageToken"] = token
         d = get("https://weather.googleapis.com/v1/forecast/hours:lookup?" + urllib.parse.urlencode(q))
@@ -113,9 +113,16 @@ def main(path):
             snap["sources"].update(fn(key) if key else fn())
         except Exception as e:  # keep logging the others
             msg = str(e)
+            if hasattr(e, "read"):  # HTTP error: keep the service's own reason
+                try:
+                    msg += " " + " ".join(e.read().decode(errors="replace").split())[:400]
+                except Exception:
+                    pass
+            if key:
+                msg = msg.replace(key.strip(), "***")
             if key:
                 msg = msg.replace(key, "***")
-            snap["errors"][name] = msg[:300]
+            snap["errors"][name] = msg[:500]
     with open(path, "a") as f:
         f.write(json.dumps(snap, separators=(",", ":")) + "\n")
     print(f"logged {len(snap['sources'])} sources; errors: {snap['errors'] or 'none'}")
