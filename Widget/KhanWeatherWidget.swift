@@ -134,8 +134,10 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
             await WidgetAlertNotifier.notify(found, placeName: await place, setting: notify)
         }
         do {
-            let forecast = try await provider.forecast(for: coordinate).applying(await observed)
-                .applyingRadar(await radarNow)
+           let obs = await observed
+            let forecast = try await provider.forecast(for: coordinate, observedTemperature: obs?.temperature)
+                .applying(obs)
+            .applyingRadar(await radarNow)
             let today = forecast.daily.first
             return WeatherEntry(date: Date(), current: forecast.current, high: today?.high, low: today?.low,
                                 placeName: await place, error: nil, nowcast: forecast.nowcast()?.shortText,
