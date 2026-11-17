@@ -92,6 +92,7 @@ public struct NetatmoRelayProvider: ObservationProvider {
                             humidity: median(nearest.compactMap { $0.0.humidity }),
                             windSpeed: wind?.wind_strength, windDirection: wind?.wind_angle,
                             distanceKm: first.1)
+           o.windGusts = wind?.gust_strength
         o.dataProvider = "NETATMO"
         o.stationTemperatures = fresh.prefix(5).compactMap { $0.0.temperature }
         let gauges = within.compactMap(\.0.rain_60min)
@@ -152,6 +153,7 @@ public struct HyperlocalObservationProvider: ObservationProvider {
         if merged.windSpeed == nil, let base, base.isLocal {
             merged.windSpeed = base.windSpeed
             merged.windDirection = base.windDirection
+            merged.windGusts = merged.windGusts ?? base.windGusts
         }
         return merged
     }
