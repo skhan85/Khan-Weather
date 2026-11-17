@@ -303,13 +303,13 @@ struct KhanWeatherWidgetView: View {
                             .foregroundStyle(index == 0 ? Brand.gold : .white)
                             .frame(width: 42, alignment: .leading)
                         IconBadge(condition: day.condition, size: 22)
+                        Text(temp(day.high))
+                            .font(.caption.weight(.bold))
+                            .frame(width: 30, alignment: .trailing)
+                        TemperatureRangeBar(low: day.low, high: day.high, weekLow: weekLow, weekHigh: weekHigh)
                         Text(temp(day.low))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.white.opacity(0.85))
-                            .frame(width: 30, alignment: .trailing)
-                        TemperatureRangeBar(low: day.low, high: day.high, weekLow: weekLow, weekHigh: weekHigh)
-                        Text(temp(day.high))
-                            .font(.caption.weight(.bold))
                             .frame(width: 30, alignment: .leading)
                     }
                 }
