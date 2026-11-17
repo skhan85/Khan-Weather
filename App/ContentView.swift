@@ -363,13 +363,13 @@ private struct DailyRow: View {
                              font: .caption2.weight(.semibold), showsIcon: false)
             }
             .frame(width: 40)
+            Text(WeatherFormat.temperature(day.high))
+                .font(.body.weight(.semibold))
+                .frame(width: 36, alignment: .trailing)
+            TemperatureRangeBar(low: day.low, high: day.high, weekLow: weekLow, weekHigh: weekHigh, current: current)
             Text(WeatherFormat.temperature(day.low))
                 .font(.body.weight(.medium))
                 .foregroundStyle(.white.opacity(0.82))
-                .frame(width: 36, alignment: .trailing)
-            TemperatureRangeBar(low: day.low, high: day.high, weekLow: weekLow, weekHigh: weekHigh, current: current)
-            Text(WeatherFormat.temperature(day.high))
-                .font(.body.weight(.semibold))
                 .frame(width: 36, alignment: .leading)
         }
         .padding(.vertical, 2)
