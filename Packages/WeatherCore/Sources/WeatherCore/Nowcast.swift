@@ -71,11 +71,28 @@ public extension Forecast {
     /// What precipitation is doing over the next two hours, or nil when it stays dry
     /// (or the 15-minute data is missing or stale).
     func nowcast(at now: Date = Date()) -> Nowcast? {
-        let slots = minutely
+         var slots = minutely
             .filter { $0.time.addingTimeInterval(900) > now && $0.time < now.addingTimeInterval(Self.nowcastWindow) }
             .sorted { $0.time < $1.time }
         // The first slot must cover "now", otherwise the data is old and we'd be guessing.
-        guard let first = slots.first, first.time <= now else { return nil }
+        guard !slots.isEmpty, slots[0].time <= now else { return nil }
+
+        // Bridge live PWS rain gauges and radar directly into the current 15-minute slot.
+        if observation?.gaugesSayDry == true && radar?.isPrecipitating != true {
+            slots[0] = PrecipitationSlot(time: slots[0].time, precipitation: 0, rain: 0, snowfall: 0)
+            } else if (radar?.isPrecipitating == true || (observation?.rainLastHourMm ?? 0) >= 0.2), !slots[0].isWet {
+            let hourlyRate = max(radar?.rainMmPerHour ?? 0, observation?.rainLastHourMm ?? 0)
+            let slotAmount = max(PrecipitationSlot.wetThreshold, hourlyRate / 4.0)
+            let isSnow = current.temperature <= 0
+            slots[0] = PrecipitationSlot(
+               time: slots[0].time,
+               precipitation: slotAmount,
+               rain: isSnow ? 0 : slotAmount,
+               snowfall: isSnow ? slotAmount : 0
+            )
+        }
+
+        let first = slots[0]
 
         if first.isWet {
             let run = slots.prefix { $0.isWet }
