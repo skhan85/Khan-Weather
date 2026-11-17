@@ -127,15 +127,15 @@ enum TemperatureColor {
         return Color(red: c.0, green: c.1, blue: c.2)
     }
 
-    /// A left-to-right gradient covering `low...high`.
+    /// A left-to-right gradient covering `high...low` (high on the left, low on the right).
     static func gradient(low: Double, high: Double) -> LinearGradient {
         let steps = 4
-        let colors = (0...steps).map { color(low + (high - low) * Double($0) / Double(steps)) }
+        let colors = (0...steps).map { color(high - (high - low) * Double($0) / Double(steps)) }
         return LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing)
     }
 }
 
-/// A day's low-to-high span drawn against the whole week's range, like a thermometer lying down.
+/// A day's high-to-low span drawn against the whole week's range (high on the left, low on the right).
 struct TemperatureRangeBar: View {
     let low: Double
     let high: Double
@@ -148,8 +148,8 @@ struct TemperatureRangeBar: View {
         GeometryReader { geo in
             let span = max(weekHigh - weekLow, 1)
             let w = geo.size.width
-            let start = (low - weekLow) / span * w
-            let end = (high - weekLow) / span * w
+            let start = (weekHigh - high) / span * w
+            let end = (weekHigh - low) / span * w
             let barWidth = max(end - start, geo.size.height)
             ZStack(alignment: .leading) {
                 Capsule().fill(.white.opacity(0.18))
@@ -158,7 +158,7 @@ struct TemperatureRangeBar: View {
                     .frame(width: barWidth)
                     .offset(x: min(start, w - barWidth))
                 if let current {
-                    let x = min(max((current - weekLow) / span * w, 0), w)
+                    let x = min(max((weekHigh - current) / span * w, 0), w)
                     Circle()
                         .fill(.white)
                         .overlay(Circle().stroke(.black.opacity(0.35), lineWidth: 1.5))
