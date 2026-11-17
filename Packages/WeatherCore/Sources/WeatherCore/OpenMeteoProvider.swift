@@ -26,9 +26,15 @@ public struct OpenMeteoProvider: ForecastProvider {
     }
 
     public func forecast(for coordinate: Coordinate) async throws -> Forecast {
+        try await forecast(for: coordinate, observedTemperature: nil)
+    }
+
+    public func forecast(for coordinate: Coordinate, observedTemperature: Double?) async throws -> Forecast {
         // In North America, temperatures are a weighted blend of several models (see ModelBlend).
         // Everything else stays on Open-Meteo's default.
-        async let blended = Self.usesBlend(coordinate) ? blendedTemperatures(for: coordinate) : nil
+        async let blended = Self.usesBlend(coordinate)
+            ? blendedTemperatures(for: coordinate, observedTemperature: observedTemperature)
+            : nil
         let request = URLRequest(url: url(for: coordinate), timeoutInterval: 20)
         let (data, response) = try await loader(request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
@@ -45,11 +51,13 @@ public struct OpenMeteoProvider: ForecastProvider {
     }
 
     /// Blended hourly temperatures. nil if the request fails, so the default stays.
-    func blendedTemperatures(for coordinate: Coordinate, now: Date = Date()) async -> ModelTemperatures? {
+    func blendedTemperatures(for coordinate: Coordinate,
+                             observedTemperature: Double? = nil,
+                             now: Date = Date()) async -> ModelTemperatures? {
         let request = URLRequest(url: blendURL(for: coordinate), timeoutInterval: 15)
         guard let (data, response) = try? await loader(request) else { return nil }
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { return nil }
-        return try? Self.parseBlend(data, now: now)
+        return try? Self.parseBlend(data, observedTemperature: observedTemperature, now: now)
     }
 
     func blendURL(for coordinate: Coordinate) -> URL {
@@ -82,7 +90,9 @@ public struct OpenMeteoProvider: ForecastProvider {
     }
 
     /// With several models, Open-Meteo suffixes each field: "temperature_2m_gem_seamless".
-    static func parseBlend(_ data: Data, now: Date) throws -> ModelTemperatures {
+    static func parseBlend(_ data: Data,
+                           observedTemperature: Double? = nil,
+                           now: Date) throws -> ModelTemperatures {
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let hourly = root["hourly"] as? [String: Any],
               let times = hourly["time"] as? [NSNumber] else { throw ForecastError.missingData("hourly") }
@@ -92,17 +102,33 @@ public struct OpenMeteoProvider: ForecastProvider {
         let temps = Dictionary(uniqueKeysWithValues: ModelBlend.members.map { ($0, series("temperature_2m", $0)) })
         let feels = Dictionary(uniqueKeysWithValues: ModelBlend.members.map { ($0, series("apparent_temperature", $0)) })
         let precip = Dictionary(uniqueKeysWithValues: ModelBlend.members.map { ($0, series("precipitation", $0)) })
+
+        let nowEpoch = now.timeIntervalSince1970
+        let currentIndex = times.enumerated().min(by: {
+            abs($0.element.doubleValue - nowEpoch) < abs($1.element.doubleValue - nowEpoch)
+        })?.offset
+        let currentModelTemps: [WeatherModel: Double]? = currentIndex.map { idx in
+            temps.compactMapValues { idx < $0.count ? $0[idx] : nil }
+        }
+
         var out = ModelTemperatures()
         for (i, t) in times.enumerated() {
-            let lead = (t.doubleValue - now.timeIntervalSince1970) / 3600
+            let lead = (t.doubleValue - nowEpoch) / 3600
             func at(_ s: [WeatherModel: [Double?]]) -> [WeatherModel: Double] {
                 s.compactMapValues { i < $0.count ? $0[i] : nil }
             }
             let hourTemps = at(temps)
-            guard let temp = ModelBlend.blend(hourTemps, leadHours: lead) else { continue }
+            guard let temp = ModelBlend.blend(hourTemps,
+                                              leadHours: lead,
+                                              observedTemperature: observedTemperature,
+                                              currentModelTemps: currentModelTemps) else { continue }
             let values = Array(hourTemps.values)
             let wet = at(precip).filter { hourTemps[$0.key] != nil && $0.value >= 0.2 }.count
-            out.hourly[t.intValue] = .init(temperature: temp, feelsLike: ModelBlend.blend(at(feels), leadHours: lead),
+            out.hourly[t.intValue] = .init(temperature: temp,
+                                           feelsLike: ModelBlend.blend(at(feels),
+                                                                       leadHours: lead,
+                                                                       observedTemperature: observedTemperature,
+                                                                       currentModelTemps: currentModelTemps),
                                            low: values.min()!, high: values.max()!, count: values.count,
                                            wet: wet, freezing: values.filter { $0 <= 0 }.count)
         }
