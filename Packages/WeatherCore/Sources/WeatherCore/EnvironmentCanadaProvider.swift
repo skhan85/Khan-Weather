@@ -14,6 +14,7 @@ public struct Observation: Equatable, Codable, Sendable {
     public var humidity: Double?
     public var windSpeed: Double?
     public var windDirection: Double?
+    public var windGusts: Double?
     /// Nil when the station reported no sky condition, or one we don't recognise.
     public var condition: WeatherCondition?
     public var conditionText: String?
@@ -45,7 +46,7 @@ public struct Observation: Equatable, Codable, Sendable {
 
     public init(stationName: String, observedAt: Date, temperature: Double, feelsLike: Double? = nil,
                 feelsLikeKind: FeelsLikeKind? = nil, humidity: Double? = nil, windSpeed: Double? = nil,
-                windDirection: Double? = nil, condition: WeatherCondition? = nil, conditionText: String? = nil,
+                windDirection: Double? = nil, windGusts: Double? = nil, condition: WeatherCondition? = nil, conditionText: String? = nil,
                 distanceKm: Double? = nil) {
         self.stationName = stationName
         self.observedAt = observedAt
@@ -55,6 +56,7 @@ public struct Observation: Equatable, Codable, Sendable {
         self.humidity = humidity
         self.windSpeed = windSpeed
         self.windDirection = windDirection
+        self.windGusts = windGusts
         self.condition = condition
         self.conditionText = conditionText
         self.distanceKm = distanceKm
@@ -215,6 +217,7 @@ public struct EnvironmentCanadaProvider: ObservationProvider {
             humidity: number(current["relativeHumidity"]),
             windSpeed: windSpeed,
             windDirection: number(wind?["bearing"]),
+            windGusts: number(wind?["gust"]),
             condition: text.flatMap(condition(fromText:)),
             conditionText: (text?.isEmpty ?? true) ? nil : text
         )
@@ -373,11 +376,13 @@ public extension Forecast {
         }
         c.humidity = o.humidity ?? c.humidity
         c.windSpeed = o.windSpeed ?? c.windSpeed
+        c.windGusts = o.windGusts ?? c.windGusts
         c.windDirection = o.windDirection ?? c.windDirection
+        if let rain = o.rainLastHourMm { c.precipitation = rain }
         c.condition = o.condition ?? c.condition
         c.time = o.observedAt
         copy.current = c
-        copy.hourly = nudged(toward: o.temperature, at: o.observedAt)
+        copy.hourly = nudged(toward: o)
         copy.daily = copy.dailyIncluding(c, at: o.observedAt)
         return copy.dryIfGaugesSay(o)
     }
@@ -409,17 +414,37 @@ public extension Forecast {
         }
     }
 
+    /// Linearly interpolates a numeric hourly field at `time`.
+    private func forecastValue(at time: Date, _ extract: (HourlyForecast) -> Double?) -> Double? {
+        guard let i = hourly.lastIndex(where: { $0.time <= time }) else { return hourly.first.flatMap(extract) }
+        let a = hourly[i]
+        guard let va = extract(a) else { return nil }
+        guard i + 1 < hourly.count, let vb = extract(hourly[i + 1]) else { return va }
+        let span = hourly[i + 1].time.timeIntervalSince(a.time)
+        guard span > 0 else { return va }
+        let f = min(1, max(0, time.timeIntervalSince(a.time) / span))
+        return va + (vb - va) * f
+    }
+
     /// The hourly forecast's temperature at `time`, read between the two hours around it, so a
     /// reading at 11:15 is compared with the forecast for 11:15 and not with 11:00.
     func forecastTemperature(at time: Date) -> Double? {
-        guard let i = hourly.lastIndex(where: { $0.time <= time }) else { return hourly.first?.temperature }
-        let a = hourly[i]
-        guard i + 1 < hourly.count else { return a.temperature }
-        let b = hourly[i + 1]
-        let span = b.time.timeIntervalSince(a.time)
-        guard span > 0 else { return a.temperature }
-        let f = min(1, max(0, time.timeIntervalSince(a.time) / span))
-        return a.temperature + (b.temperature - a.temperature) * f
+        forecastValue(at: time) { $0.temperature }
+    }
+
+    /// Magnus dew point (°C) from temperature (°C) and relative humidity (%).
+    private static func dewPoint(temperature t: Double, humidity rh: Double) -> Double {
+        let clampedRH = min(100, max(1, rh))
+        let a = 17.625, b = 243.04
+        let gamma = log(clampedRH / 100.0) + (a * t) / (b + t)
+        return min(t, (b * gamma) / (a - gamma))
+    }
+
+    /// Relative humidity (%) from temperature (°C) and dew point (°C).
+    private static func relativeHumidity(temperature t: Double, dewPoint td: Double) -> Double {
+        let a = 17.625, b = 243.04
+        let rh = 100.0 * exp((a * td) / (b + td) - (a * t) / (b + t))
+        return min(100, max(0, rh))
     }
 
     /// By day, home stations more than this above the forecast are taken to be in the sun.
@@ -438,18 +463,58 @@ public extension Forecast {
     /// fully at the reading and fading to nothing `nudgeHours` later, so the curve starts where
     /// the station is instead of jumping from it.
     func nudged(toward observed: Double, at time: Date) -> [HourlyForecast] {
-        guard let base = forecastTemperature(at: time) else { return hourly }
-        let gap = observed - base
+        nudged(toward: Observation(stationName: "", observedAt: time, temperature: observed))
+    }
+
+    /// Nudges temperature, feels-like, dew point, humidity, and wind speed over the next
+    /// `nudgeHours` toward `observation` so hourly curves stay physically consistent.
+    func nudged(toward observation: Observation) -> [HourlyForecast] {
+        let time = observation.observedAt
+        guard let baseTemp = forecastTemperature(at: time) else { return hourly }
+        let tempGap = observation.temperature - baseTemp
+
+        let obsHumidity = observation.humidity.map { min(100, max(0, $0)) }
+        let obsDewPoint = obsHumidity.map { Self.dewPoint(temperature: observation.temperature, humidity: $0) }
+        let baseHumidity = forecastValue(at: time) { $0.humidity }
+        let baseDewPoint = forecastValue(at: time) { $0.dewPoint }
+        let humidityGap = (obsHumidity != nil && baseHumidity != nil) ? obsHumidity! - baseHumidity! : nil
+        let dewPointGap = (obsDewPoint != nil && baseDewPoint != nil) ? obsDewPoint! - baseDewPoint! : nil
+
+        let baseWind = forecastValue(at: time) { $0.windSpeed }
+        let windGap = (observation.windSpeed != nil && baseWind != nil) ? observation.windSpeed! - baseWind! : nil
+
+        let baseGusts = forecastValue(at: time) { $0.windGusts }
+        let gustsGap = (observation.windGusts != nil && baseGusts != nil) ? observation.windGusts! - baseGusts! : nil
+
         return hourly.map { hour in
             let hoursAhead = hour.time.timeIntervalSince(time) / 3600
             guard hoursAhead > -1 else { return hour }
             let share = max(0, 1 - max(hoursAhead, 0) / Self.nudgeHours)
             guard share > 0 else { return hour }
             var h = hour
-            h.temperature += gap * share
-            h.feelsLike = h.feelsLike.map { $0 + gap * share }
-            h.modelLow = h.modelLow.map { $0 + gap * share }
-            h.modelHigh = h.modelHigh.map { $0 + gap * share }
+            h.temperature += tempGap * share
+            h.feelsLike = h.feelsLike.map { $0 + tempGap * share }
+            h.modelLow = h.modelLow.map { $0 + tempGap * share }
+            h.modelHigh = h.modelHigh.map { $0 + tempGap * share }
+
+            if let dpGap = dewPointGap, let dp = h.dewPoint {
+                let nudgedDP = min(h.temperature, dp + dpGap * share)
+                h.dewPoint = nudgedDP
+                h.humidity = Self.relativeHumidity(temperature: h.temperature, dewPoint: nudgedDP)
+            } else if let humGap = humidityGap, let hum = h.humidity {
+                let nudgedHum = min(100, max(0, hum + humGap * share))
+                h.humidity = nudgedHum
+                if h.dewPoint != nil {
+                    h.dewPoint = Self.dewPoint(temperature: h.temperature, humidity: nudgedHum)
+                }
+            }
+
+            if let wGap = windGap, let w = h.windSpeed {
+                h.windSpeed = max(0, w + wGap * share)
+            }
+            if let gGap = gustsGap, let g = h.windGusts {
+                h.windGusts = max(h.windSpeed ?? 0, g + gGap * share)
+            }
             return h
         }
     }
