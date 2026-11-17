@@ -106,10 +106,16 @@ final class WeatherViewModel: ObservableObject {
         let radarTask = Task { try? await ECCCRadarProvider().now(at: target) }
         let alertsTask = Task { try? await alertProvider.alerts(near: target) }
         let airTask = Task { try? await AirQualityProvider().airQuality(at: target) }
-
+        let spot = Self.spotKey(target)
+        let recentObservedTemp = lastObservation[spot]?.temperature
+        
         let base: Forecast
         do {
-            base = try await provider.forecast(for: target)
+            if let om = provider as? OpenMeteoProvider {
+                       base = try await om.forecast(for: target, observedTemperature: recentObservedTemp)
+                } else {
+                base = try await provider.forecast(for: target)
+            }
         } catch {
             guard gen == generation else { return }
             // Keep showing the last good forecast if we have one.
@@ -141,7 +147,6 @@ final class WeatherViewModel: ObservableObject {
                 let fresh = await observedTask.value ?? nil
                 let radar = await radarTask.value ?? nil
                 guard gen == self.generation else { return }
-                let spot = Self.spotKey(target)
                 let observed = fresh?.smoothed(after: self.lastObservation[spot])
                 if let observed { self.lastObservation[spot] = observed }
                 self.state = .loaded(base.applying(observed).applyingRadar(radar))
@@ -157,13 +162,19 @@ final class WeatherViewModel: ObservableObject {
             if let snap = cache[place.id], Date().timeIntervalSince(snap.at) < cacheAge / 2 { continue }
             let target = place.coordinate
             let provider = self.provider, observations = self.observations, alertProvider = self.alertProvider
-            async let forecast = try? provider.forecast(for: target)
             async let observed = try? observations.observation(near: target)
             async let radar = try? ECCCRadarProvider().now(at: target)
             async let fetchedAlerts = try? alertProvider.alerts(near: target)
             async let air = try? AirQualityProvider().airQuality(at: target)
-            guard let base = await forecast else { continue }
-            let full = base.applying(await observed ?? nil).applyingRadar(await radar ?? nil)
+           let obs = await observed ?? nil
+            let base: Forecast?
+            if let om = provider as? OpenMeteoProvider {
+                base = try? await om.forecast(for: target, observedTemperature: obs?.temperature)
+                } else {
+                base = try? await provider.forecast(for: target)
+            }
+            guard let base else { continue }
+            let full = base.applying(obs).applyingRadar(await radar ?? nil)
             let snap = Snapshot(forecast: full, name: place.name, alerts: await fetchedAlerts ?? [],
                                 airQuality: await air, at: Date())
             // Don't overwrite a fresher entry from a refresh that ran meanwhile.
