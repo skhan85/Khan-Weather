@@ -25,7 +25,9 @@ public enum ModelBlend {
         [.europeAI: 0.47, .us: 0.23, .uk: 0.125, .europe: 0.075, .germany: 0.07, .canada: 0.03],
         [.europeAI: 0.49, .europe: 0.165, .us: 0.15, .uk: 0.08, .germany: 0.06, .canada: 0.055],
     ]
-
+    /// How many hours ahead a live PWS reading dynamically re-weights the models.
+    static let liveWeightHours: Double = 6
+    
     /// The weight of `model` at `leadHours` from now.
     static func weight(_ model: WeatherModel, leadHours: Double) -> Double {
         let x = min(max((leadHours - 12) / 24, 0), Double(byDay.count - 1))
@@ -35,12 +37,49 @@ public enum ModelBlend {
 
     /// Weighted average of the models that have a value; nil if none do. If only models weighted
     /// zero at this range have a value (say only GEM came back today), their plain average is used.
-    public static func blend(_ values: [WeatherModel: Double], leadHours: Double) -> Double? {
+    /// For lead hours 0...6, when a live PWS temperature and current model temperatures are supplied,
+    /// combines the static `byDay` prior with an inverse-squared-error weight against the PWS.
+    public static func blend(_ values: [WeatherModel: Double],
+                             leadHours: Double,
+                             observedTemperature: Double? = nil,
+                             currentModelTemps: [WeatherModel: Double]? = nil) -> Double? {
         let present = values.filter { members.contains($0.key) }
         guard !present.isEmpty else { return nil }
+
+        let liveShare: Double
+        if observedTemperature != nil, let currentModelTemps, !currentModelTemps.isEmpty,
+           leadHours >= -1, leadHours <= liveWeightHours {
+            liveShare = max(0, min(1, 1 - max(leadHours, 0) / liveWeightHours))
+        } else {
+            liveShare = 0
+        }
+
+        var errorWeights: [WeatherModel: Double] = [:]
+        if liveShare > 0, let obs = observedTemperature, let currentModelTemps {
+            var invTotal = 0.0
+            for model in present.keys {
+                let priorFloor = max(weight(model, leadHours: leadHours), 0.04)
+                if let nowTemp = currentModelTemps[model] {
+                    let err = abs(nowTemp - obs)
+                    let invSq = priorFloor / (err * err + 0.5)
+                    errorWeights[model] = invSq
+                    invTotal += invSq
+                }
+            }
+            if invTotal > 0 {
+                for (m, w) in errorWeights { errorWeights[m] = w / invTotal }
+            }
+        }
+
         var sum = 0.0, total = 0.0
         for (model, value) in present {
-            let w = weight(model, leadHours: leadHours)
+            let prior = weight(model, leadHours: leadHours)
+            let w: Double
+            if liveShare > 0, let dyn = errorWeights[model] {
+                w = prior * (1 - liveShare) + dyn * liveShare
+            } else {
+                w = prior
+            }
             sum += value * w
             total += w
         }
