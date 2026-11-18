@@ -12,18 +12,25 @@ public enum WhatToWear {
         let warmest = feels.max() ?? current.feelsLike
 
         var extras: [String] = []
-        if let wet = window.first(where: isWet) {
-            let item = wet.precipitationKind == .snow ? "boots" : "an umbrella"
+        let wetHours = window.filter(isWet)
+        if let wet = wetHours.first {
+            let hasSnow = wetHours.contains { $0.precipitationKind == .snow || $0.precipitationKind == .mixed }
+            let hasRain = wetHours.contains { $0.precipitationKind == .rain || $0.precipitationKind == .mixed }
+            let item = (hasSnow && hasRain) ? "boots and an umbrella" : (hasSnow ? "boots" : "an umbrella")
             let starting = wet.time <= current.time.addingTimeInterval(45 * 60) ? "" : " from \(hourText(wet.time))"
             extras.append(item + starting)
         }
-        let gusts = window.compactMap(\.windGusts).max() ?? 0
+        let gusts = window.compactMap(\.windGusts).max() ?? current.windGusts ?? 0
         if gusts >= 50 { extras.append("something windproof") }
         let uv = window.compactMap(\.uvIndex).max() ?? 0
         if uv >= 6 { extras.append("sunscreen") }
 
         var line = layer(coldest: coldest, warmest: warmest)
-        if !extras.isEmpty { line += ", and " + extras.joined(separator: ", ") }
+        if extras.count == 1 {
+            line += ", and " + extras[0]
+        } else if extras.count > 1 {
+            line += ", " + extras.dropLast().joined(separator: ", ") + ", and " + extras.last!
+        }
         return line + "."
     }
 
