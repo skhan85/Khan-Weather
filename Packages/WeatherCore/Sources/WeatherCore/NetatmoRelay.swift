@@ -28,7 +28,7 @@ public struct NetatmoRelayProvider: ObservationProvider {
     private let baseURL: URL
     private let loader: HTTPLoader
     /// Stations farther than this don't count as "here".
-    let radiusKm: Double = 5
+    let radiusKm: Double = 8
     let maxAge: TimeInterval = 3600
 
     public init(baseURL: URL = defaultBaseURL, loader: @escaping HTTPLoader = defaultLoader) {
@@ -48,7 +48,7 @@ public struct NetatmoRelayProvider: ObservationProvider {
     }
 
     /// How far out to look for stations to make up three when fewer are within the radius.
-    static let fillRadiusKm: Double = 8
+    static let fillRadiusKm: Double = 12
 
     /// Degrees from the neighbourhood median beyond which a station is ignored.
     static let outlierLimit: Double = 2.5
