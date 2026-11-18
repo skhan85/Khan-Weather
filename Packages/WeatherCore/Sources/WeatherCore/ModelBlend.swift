@@ -83,21 +83,7 @@ public enum ModelBlend {
             sum += value * w
             total += w
         }
-      let blended = total > 0 ? sum / total : present.values.reduce(0, +) / Double(present.count)
-      if liveShare > 0, let obs = observedTemperature, let currentModelTemps {
-          var nowSum = 0.0, nowTotal = 0.0
-          for (model, nowTemp) in currentModelTemps where present[model] != nil {
-              let prior = weight(model, leadHours: 0)
-              let w = errorWeights[model].map { prior * (1 - liveShare) + $0 * liveShare } ?? prior
-              nowSum += nowTemp * w
-              nowTotal += w
-          }
-          if nowTotal > 0 {
-              let modelNow = nowSum / nowTotal
-              let bias = min(4.0, max(-4.0, obs - modelNow))
-              return blended + bias * liveShare
-          }
-      }
-      return blended  
+        if total > 0 { return sum / total }
+        return present.values.reduce(0, +) / Double(present.count)
     }
 }
