@@ -51,6 +51,7 @@ public struct SWOBProvider: ObservationProvider {
             URLQueryItem(name: "datetime", value: f.string(from: now.addingTimeInterval(-maxAge)) + "/.."),
             // Minutely stations would otherwise flood the page with near-identical records.
             URLQueryItem(name: "_is-minutely_obs-value", value: "false"),
+            URLQueryItem(name: "sortby", value: "-obs_date_tm"),
             URLQueryItem(name: "limit", value: "500"),
         ]
         return components.url!
@@ -92,9 +93,14 @@ public struct SWOBProvider: ObservationProvider {
         let wind = firstValue(p, prefixes: ["avg_wnd_spd_10m_pst10mts", "avg_wnd_spd_10m_pst2mts",
                                             "avg_wnd_spd_10m_pst1mt", "avg_wnd_spd"])
             .flatMap { (0...250).contains($0) ? $0 : nil }
+        let gusts = firstValue(p, prefixes: ["max_wnd_spd_10m_pst1hr", "max_wnd_spd_10m_pst10mts",
+                                         "max_wnd_spd_pst1hr", "max_wnd_spd"])
+        .flatMap { (0...300).contains($0) ? $0 : nil }
         let direction = firstValue(p, prefixes: ["avg_wnd_dir_10m_pst10mts", "avg_wnd_dir_10m_pst2mts",
                                                  "avg_wnd_dir_10m_pst1mt", "avg_wnd_dir"])
         let humidity = value(p["rel_hum"]).flatMap { (0...100).contains($0) ? $0 : nil }
+        let rain1h = firstValue(p, prefixes: ["pcpn_amt_pst1hr", "rnfl_amt_pst1hr"])
+            .flatMap { (0...200).contains($0) ? $0 : nil }
 
         var feelsLike: Double?
         var kind: FeelsLikeKind?
@@ -106,7 +112,11 @@ public struct SWOBProvider: ObservationProvider {
 
         var o = Observation(stationName: name, observedAt: observedAt, temperature: t,
                             feelsLike: feelsLike, feelsLikeKind: kind, humidity: humidity,
-                            windSpeed: wind, windDirection: direction)
+                            windSpeed: wind, windDirection: direction, windGusts: gusts)
+        if let rain1h {
+            o.rainGauges = 1
+            o.rainLastHourMm = rain1h
+        }
         o.dataProvider = p["data_pvdr-value"] as? String
         return o
     }
@@ -171,6 +181,8 @@ public struct CanadaObservationProvider: ObservationProvider {
         local.condition = sky.condition
         local.conditionText = sky.conditionText
         local.skyStationName = sky.stationName
+        local.skyDataProvider = sky.dataProvider
+        local.skyDistanceKm = sky.distanceKm
         return local
     }
 }
