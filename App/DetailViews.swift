@@ -272,6 +272,15 @@ struct SourcesView: View {
                     LabeledContent("Station", value: o.stationName)
                     if let d = WeatherFormat.distance(o.distanceKm) { LabeledContent("Distance", value: d) }
                     LabeledContent("Observed", value: o.observedAt.formatted(Date.FormatStyle(time: .shortened, timeZone: forecast.timeZone)))
+                    if let count = o.stationTemperatures?.count, count > 1 {
+                        LabeledContent("PWS sensors", value: "\(count) nearby")
+                    }
+                    if let gauges = o.rainGauges, gauges > 0 {
+                        let rainText = (o.rainLastHourMm ?? 0) > 0
+                            ? String(format: "%.1f mm in last hr (%d gauge%@)", o.rainLastHourMm ?? 0, gauges, gauges == 1 ? "" : "s")
+                        : "Dry (\(gauges) gauge\(gauges == 1 ? "" : "s"))"
+                        LabeledContent("Rain gauges", value: rainText)
+                    }
                     if let sky = o.skyStationName { LabeledContent("Sky from", value: sky) }
                     if let radar = forecast.radar {
                         LabeledContent("Radar scan", value: radar.time.formatted(Date.FormatStyle(time: .shortened, timeZone: forecast.timeZone)))
