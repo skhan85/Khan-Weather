@@ -7,6 +7,7 @@ struct ContentView: View {
     @StateObject private var places = SavedPlacesStore()
     @State private var showingPlaces = false
     @State private var showingSettings = false
+    @State private var lastReload: Date = .distantPast
     // Watched so the forecast redraws when units change in Settings.
     @AppStorage(UnitSettings.temperatureKey) private var temperatureUnit = TemperatureUnit.celsius.rawValue
     @AppStorage(UnitSettings.windKey) private var windUnit = WindUnit.kmh.rawValue
@@ -36,7 +37,7 @@ struct ContentView: View {
                     } description: {
                         Text(message)
                     } actions: {
-                        Button("Try again") { Task { await model.refresh() } }
+                        Button("Try again") { Task { await reload() } }
                             .buttonStyle(.bordered)
                     }
                 case .loaded(let forecast):
@@ -110,7 +111,8 @@ struct ContentView: View {
             Task { await reload() }
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await reload() } }
+            if phase == .active, Date().timeIntervalSince(lastReload) > 120 { 
+                                                                             Task { await reload() } }
         }
     }
 
@@ -129,13 +131,16 @@ struct ContentView: View {
     }
 
     private func reload() async {
+        lastReload = Date()
         model.onCurrentLocation = { AlertNotifier.rememberCurrentLocation($0) }
         await model.refresh(place: places.selected)
         AlertNotifier.markSeen(model.alerts)
-        if places.selected == nil, case .loaded(let f) = model.state { AlertNotifier.markRainSeen(f.nowcast()) }
+        if case .loaded(let f) = model.state {
+            if places.selected == nil { AlertNotifier.markRainSeen(f.nowcast()) }
         WidgetCenter.shared.reloadAllTimelines()
         // Warm up the saved places so the first switch to one is quick.
-        Task { await model.prefetch(places.places) }
+        Task { await model.prefetch(places.places)  }
+             }
     }
 }
 
