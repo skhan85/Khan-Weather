@@ -58,17 +58,17 @@ struct ModelComparisonView: View {
                                 }
                             }
                             Spacer(minLength: 4)
+                            Text(WeatherFormat.temperature(row.high))
+                                .font(.body.weight(.bold))
                             Text(WeatherFormat.temperature(row.low))
                                 .font(.body.weight(.semibold))
                                 .foregroundStyle(.white.opacity(0.7))
-                            Text(WeatherFormat.temperature(row.high))
-                                .font(.body.weight(.bold))
                                 .frame(width: 40, alignment: .trailing)
                         }
                         .fontDesign(.rounded)
                     }
                 } header: {
-                    SkySectionHeader(title: "Low and high by model", systemImage: "chart.bar.xaxis")
+                    SkySectionHeader(title: "High and low by model", systemImage: "chart.bar.xaxis")
                 } footer: {
                     Text(footer)
                         .foregroundStyle(.white.opacity(0.8))
