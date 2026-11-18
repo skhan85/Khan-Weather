@@ -280,10 +280,11 @@ private struct ForecastList: View {
             .glassRow()
         }
         .listSectionSpacing(14)
-        .task(id: forecast.fetchedAt) {
+        .task(id: forecast.observation?.observedAt ?? forecast.fetchedAt) {
             // Keep score of the models for where the user actually is, not saved places.
             guard !isSavedPlace, !usingFallbackLocation else { return }
-            await AccuracyTracker.update(location: forecast.location, timeZone: forecast.timeZone)
+            await AccuracyTracker.update(location: forecast.location, timeZone: forecast.timeZone,
+                                        observation: forecast.observation)
         }
         .fontDesign(.rounded)
     }
