@@ -186,14 +186,14 @@ extension View {
 
     /// The sky behind a list, with dark-style (white) text on top.
     func skyBackground(_ condition: WeatherCondition, isDay: Bool) -> some View {
-        self
+       let sky = Sky(condition: condition, isDay: isDay)
+       return  self
             .scrollContentBackground(.hidden)
             .background { SkyBackground(condition: condition, isDay: isDay).ignoresSafeArea() }
             .environment(\.colorScheme, .dark)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            // Keep the bar see-through even when scrolled; the system's light bar hides the white title.
-            .toolbarBackground(.hidden, for: .navigationBar)
-    }
+            .toolbarBackground(sky.top.opacity(0.92), for: .navigationBar)
+        }
 }
 
 extension View {
