@@ -317,13 +317,17 @@ enum Outlook {
         if let wet = later.first(where: { ($0.precipitationProbability ?? 0) >= 50 }) {
             return "\(wet.precipitationKind.noun.capitalized) likely around \(TimeText.hour(wet.time, tz))."
         }
-        let nowShown = shown(now.temperature)
-        let targetShown = shown(last.temperature)
-        if abs(targetShown - nowShown) >= 2 {
-            // Name the first hour that reaches the temperature it settles at.
-            let reach = later.first(where: { shown($0.temperature) == targetShown }) ?? last
+       let nowShown = shown(now.temperature)
+        let minHour = later.min(by: { $0.temperature < $1.temperature }) ?? last
+        let maxHour = later.max(by: { $0.temperature < $1.temperature }) ?? last
+        let warmDelta = shown(maxHour.temperature) - nowShown
+        let coolDelta = nowShown - shown(minHour.temperature)
+        if max(warmDelta, coolDelta) >= 2 {
+            let peak = warmDelta >= coolDelta ? maxHour : minHour
+            let targetShown = shown(peak.temperature)
+            let reach = later.first(where: { shown($0.temperature) == targetShown }) ?? peak
             let verb = targetShown < nowShown ? "Cooling" : "Warming"
-            return "\(verb) to \(WeatherFormat.temperature(last.temperature)) by \(TimeText.hour(reach.time, tz))."
+            return "\(verb) to \(WeatherFormat.temperature(peak.temperature)) by \(TimeText.hour(reach.time, tz))."
         }
         if last.condition != now.condition && !(isCloudOnly(last.condition) && isCloudOnly(now.condition)) {
             return "\(last.condition.description) by \(TimeText.hour(last.time, tz))."
