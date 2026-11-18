@@ -62,6 +62,22 @@ final class WeatherViewModel: ObservableObject {
     private var cache: [UUID?: Snapshot] = [:]
     /// Older than this, a cached forecast isn't shown while switching.
     private let cacheAge: TimeInterval = 45 * 60
+    private static func diskCacheKey(_ key: UUID?) -> String {
+        "forecastCache-\(key?.uuidString ?? "current")"
+    }
+
+    private static func saveDiskCache(_ forecast: Forecast, for key: UUID?) {
+        if let data = try? JSONEncoder().encode(forecast) {
+            UserDefaults.standard.set(data, forKey: diskCacheKey(key))
+        }
+    }
+
+    private static func loadDiskCache(for key: UUID?, maxAge: TimeInterval = 6 * 3600) -> Forecast? {
+        guard let data = UserDefaults.standard.data(forKey: diskCacheKey(key)),
+              let forecast = try? JSONDecoder().decode(Forecast.self, from: data),
+              Date().timeIntervalSince(forecast.fetchedAt) < maxAge else { return nil }
+        return forecast
+    }
 
     /// Loads the forecast for `place`, or for the current location when it is nil.
     ///
@@ -120,6 +136,10 @@ final class WeatherViewModel: ObservableObject {
             guard gen == generation else { return }
             // Keep showing the last good forecast if we have one.
             if case .loaded = state { return }
+            if let cached = Self.loadDiskCache(for: key) {
+                state = .loaded(cached)
+                return
+            }
             state = .failed(error.localizedDescription)
             return
         }
@@ -154,12 +174,14 @@ final class WeatherViewModel: ObservableObject {
         }
         guard gen == generation, case .loaded(let shown) = state else { return }
         cache[key] = Snapshot(forecast: shown, name: placeName, alerts: alerts, airQuality: airQuality, at: Date())
+        Self.saveDiskCache(shown, for: key)
     }
 
     /// Fetches saved places in the background so the first switch to each one is instant.
     func prefetch(_ places: [SavedPlace]) async {
-        for place in places {
+        for place in places.prefix(3) {
             if let snap = cache[place.id], Date().timeIntervalSince(snap.at) < cacheAge / 2 { continue }
+            try? await Task.sleep(nanoseconds: 600_000_000)
             let target = place.coordinate
             let provider = self.provider, observations = self.observations, alertProvider = self.alertProvider
             async let observed = try? observations.observation(near: target)
