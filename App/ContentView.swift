@@ -454,20 +454,28 @@ struct CurrentConditionsView: View {
                         }
                         .fixedSize(horizontal: false, vertical: true)
                     }
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    if let today {
-                        FactChip(text: "\(WeatherFormat.temperature(today.high)) / \(WeatherFormat.temperature(today.low))",
-                                 systemImage: "thermometer.medium")
-                    }
-                    if let humidity = current.humidity {
-                        FactChip(text: WeatherFormat.percent(humidity), systemImage: "humidity.fill")
-                    }
-                    if let wind = current.windSpeed {
-                        FactChip(text: WeatherFormat.wind(wind), systemImage: "wind")
-                    }
+            HStack(alignment: .center, spacing: 8) {
+                if let today {
+                   FactChip(text: "\(WeatherFormat.temperature(today.high)) / \(WeatherFormat.temperature(today.low))",
+                             systemImage: "thermometer.medium")
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .frame(maxWidth: .infinity)
+                }
+                if let humidity = current.humidity {
+                    FactChip(text: WeatherFormat.percent(humidity), systemImage: "humidity.fill")
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .frame(maxWidth: .infinity)
+                }
+                if let wind = current.windSpeed {
+                    FactChip(text: WeatherFormat.wind(wind), systemImage: "wind")
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .frame(maxWidth: .infinity)
                 }
             }
+            .frame(maxWidth: .infinity)     
             Group {
                 if let observation, observation.isLocal {
                     Text(Self.localCaption(observation, timeZone: timeZone)
