@@ -65,12 +65,12 @@ public enum AQICategory: Int, Codable, Sendable, Comparable {
     /// One line of advice.
     public var advice: String {
         switch self {
-        case .good: return "Air is clean. A good time to be outside."
-        case .moderate: return "Fine for most people. If you're very sensitive, take it easier outdoors."
-        case .sensitive: return "People with asthma, heart or lung conditions, kids and older adults should cut back on long outdoor exertion."
-        case .unhealthy: return "Everyone should cut back on long or heavy outdoor exertion."
-        case .veryUnhealthy: return "Avoid long or heavy outdoor exertion. Sensitive people should stay indoors."
-        case .hazardous: return "Stay indoors and keep windows closed."
+        case .good: return "Air quality is clean and ideal for outdoor activities."
+        case .moderate: return "Acceptable for most people; unusually sensitive individuals should consider limiting prolonged outdoor exertion."
+        case .sensitive: return "Sensitive groups (asthma, heart or lung conditions, children, and older adults) should reduce prolonged outdoor exertion."
+        case .unhealthy: return "Everyone should limit prolonged or heavy outdoor exertion."
+        case .veryUnhealthy: return "Avoid prolonged or heavy outdoor exertion; sensitive groups should remain indoors."
+        case .hazardous: return "Stay indoors with windows closed and avoid all outdoor exertion."
         }
     }
 
