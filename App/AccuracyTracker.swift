@@ -2,11 +2,21 @@ import SwiftUI
 import WeatherCore
 
 /// Writes down tomorrow's forecast from each model, and later checks it against what
-/// Environment Canada's nearest climate station recorded. Runs for the current location only.
+/// Environment Canada's nearest climate station (or local PWS/SWOB readings) recorded.
+/// Runs for the current location only.
 enum AccuracyTracker {
     private static let logKey = "accuracyLog"
     private static let lastRunKey = "accuracyLastRun"
+    private static let localObsKey = "accuracyLocalObserved"
     private static let defaults = UserDefaults.standard
+
+    struct LocalDayRange: Codable {
+        var day: String
+        var high: Double
+        var low: Double
+        var station: String
+        var samples: Int
+    }
 
     static var log: AccuracyLog {
         get {
@@ -17,8 +27,36 @@ enum AccuracyTracker {
         set { defaults.set(try? JSONEncoder().encode(newValue), forKey: logKey) }
     }
 
+    private static var localRanges: [String: LocalDayRange] {
+        get {
+            guard let data = defaults.data(forKey: localObsKey),
+                  let dict = try? JSONDecoder().decode([String: LocalDayRange].self, from: data) else { return [:] }
+            return dict
+        }
+        set { defaults.set(try? JSONEncoder().encode(newValue), forKey: localObsKey) }
+    }
+
     @MainActor
-    static func update(location: Coordinate, timeZone: TimeZone, now: Date = Date()) async {
+    static func recordObservation(_ obs: Observation?, timeZone: TimeZone, now: Date = Date()) {
+        guard let obs, obs.isLocal else { return }
+        let today = AccuracyLog.dayString(now, timeZone: timeZone)
+        var ranges = localRanges
+        if var existing = ranges[today] {
+            existing.high = max(existing.high, obs.temperature)
+            existing.low = min(existing.low, obs.temperature)
+            existing.station = obs.stationName
+            existing.samples += 1
+            ranges[today] = existing
+        } else {
+            ranges[today] = LocalDayRange(day: today, high: obs.temperature, low: obs.temperature,
+                                          station: obs.stationName, samples: 1)
+        }
+        localRanges = ranges
+    }
+
+    @MainActor
+    static func update(location: Coordinate, timeZone: TimeZone, observation: Observation? = nil, now: Date = Date()) async {
+        recordObservation(observation, timeZone: timeZone, now: now)
         if let last = defaults.object(forKey: lastRunKey) as? Date, now.timeIntervalSince(last) < 3 * 3600 { return }
         defaults.set(now, forKey: lastRunKey)
         var log = self.log
@@ -36,10 +74,14 @@ enum AccuracyTracker {
             if !highs.isEmpty { log.record(AccuracyLog.Forecast(day: tomorrow, highs: highs, lows: lows)) }
         }
 
-        // Climate stations post a day's record the next morning or so; try the three oldest open days.
+        // Climate stations post a day's record the next morning or so; try the three oldest open days,
+        // falling back to local PWS/SWOB min/max if at least 4 readings were captured that day.
+        let ranges = localRanges
         for day in log.unscoredDays(before: today).suffix(3) {
             if let seen = try? await ClimateDailyProvider().observed(day: day, near: location) {
                 log.record(seen)
+            } else if let local = ranges[day], local.samples >= 4 {
+                log.record(AccuracyLog.Observed(day: day, high: local.high, low: local.low, station: local.station))
             }
         }
         self.log = log
