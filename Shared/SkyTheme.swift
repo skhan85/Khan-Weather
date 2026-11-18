@@ -253,14 +253,18 @@ struct FactChip: View {
     let systemImage: String
 
     var body: some View {
-        Label {
+        HStack(spacing: 5) {
+            Image(systemName: systemImage)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Brand.gold)
             Text(text)
-        } icon: {
-            Image(systemName: systemImage).foregroundStyle(Brand.gold)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .fixedSize(horizontal: true, vertical: false)
         }
-        .font(.subheadline.weight(.semibold))
         .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .frame(height: 32)
         .background(Capsule().fill(.white.opacity(0.14)))
     }
 }
