@@ -66,8 +66,8 @@ struct AirQualityView: View {
             }
 
             Text(air.hasPollenData
-                 ? "US AQI and pollen from Open-Meteo (Copernicus CAMS). Pollutants in µg/m³."
-                 : "US AQI from Open-Meteo (Copernicus CAMS). Pollutants in µg/m³. Pollen forecasts cover Europe only.")
+                 ? "US AQI and pollen via Open-Meteo (Copernicus CAMS), in µg/m³."
+                 : "US AQI via Open-Meteo (Copernicus CAMS) ,in µg/m³. Regional pollen data is currently available in Europe.")
                 .font(.caption2)
                 .foregroundStyle(.white.opacity(0.7))
         }
