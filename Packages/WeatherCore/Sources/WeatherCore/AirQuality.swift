@@ -62,15 +62,14 @@ public enum AQICategory: Int, Codable, Sendable, Comparable {
         }
     }
 
-    /// One line of advice.
-    public var advice: String {
+    /// Environment Canada AQHI health messages.
+        public var advice: String {
         switch self {
-        case .good: return "Air quality is clean and ideal for outdoor activities."
-        case .moderate: return "Acceptable for most people; unusually sensitive individuals should consider limiting prolonged outdoor exertion."
-        case .sensitive: return "Sensitive groups (asthma, heart or lung conditions, children, and older adults) should reduce prolonged outdoor exertion."
-        case .unhealthy: return "Everyone should limit prolonged or heavy outdoor exertion."
-        case .veryUnhealthy: return "Avoid prolonged or heavy outdoor exertion; sensitive groups should remain indoors."
-        case .hazardous: return "Stay indoors with windows closed and avoid all outdoor exertion."
+        case .good: return "Ideal air quality for outdoor activities. Enjoy your usual outdoor activities."
+        case .moderate: return "No need to modify your usual outdoor activities unless you experience symptoms such as coughing and throat irritation."
+        case .sensitive: return "Consider reducing or rescheduling strenuous activities outdoors if you are experiencing symptoms."
+        case .unhealthy: return "Reduce or reschedule strenuous activities outdoors. Children and the elderly should also take it easy."
+        case .veryUnhealthy, .hazardous: return "Avoid strenuous activities outdoors. Children and the elderly should also avoid outdoor physical exertion."    
         }
     }
 
