@@ -50,4 +50,21 @@ final class NowcastTests: XCTestCase {
         XCTAssertEqual(WeatherFormat.precipitationTotals(rainMm: 0.6, snowCm: 2.2), "2 cm, 1 mm")
         XCTAssertNil(WeatherFormat.precipitationTotals(rainMm: 0.2, snowCm: nil))
     }
+
+    func testDryGaugesOverrideCurrentWetSlot() {
+    var f = forecast([(0.4, 0), (0, 0)])
+var obs = Observation(stationName: "Milton PWS", observedAt: start, temperature: 8, distanceKm: 1)
+obs.rainGauges = 2
+obs.rainLastHourMm = 0
+f.observation = obs
+XCTAssertNil(f.nowcast(at: start))
+    }
+
+    func testRadarInjectsCurrentPrecipitationWhenSlotIsDry() {
+        var f = forecast([(0, 0), (0.3, 0), (0, 0)])
+        f.radar = RadarNow(rainMmPerHour: 2.0, snowCmPerHour: 0, time: start)
+        let n = f.nowcast(at: start)
+        XCTAssertEqual(n?.change, .stopping(minutes: 30))
+        XCTAssertEqual(n?.kind, .rain)
+    }
 }
