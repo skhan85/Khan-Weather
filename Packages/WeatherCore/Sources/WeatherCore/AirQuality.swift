@@ -19,9 +19,13 @@ public struct AirQuality: Equatable, Codable, Sendable {
     public var pollen: [Pollen]
     /// True when the model covers pollen here at all (Europe), even if every count is zero today.
     public var hasPollenData: Bool
+/// Environment Canada Air Quality Health Index (1–10+ scale, Canada only).
+public var aqhi: Double?
+/// Nearest AQHI community name, e.g. "Milton".
+public var aqhiStation: String?
 
     public init(time: Date, usAQI: Double? = nil, todayMaxAQI: Double? = nil, pm25: Double? = nil, pm10: Double? = nil,
-                ozone: Double? = nil, nitrogenDioxide: Double? = nil, pollen: [Pollen] = [], hasPollenData: Bool = false) {
+                ozone: Double? = nil, nitrogenDioxide: Double? = nil, pollen: [Pollen] = [], hasPollenData: Bool = false, aqhi: Double? = nil, aqhiStation: String? = nil) {
         self.time = time
         self.usAQI = usAQI
         self.todayMaxAQI = todayMaxAQI
@@ -31,9 +35,31 @@ public struct AirQuality: Equatable, Codable, Sendable {
         self.nitrogenDioxide = nitrogenDioxide
         self.pollen = pollen
         self.hasPollenData = hasPollenData
+        self.aqhi = aqhi
+        self.aqhiStation = aqhiStation
     }
 
     public var category: AQICategory? { usAQI.map(AQICategory.init(aqi:)) }
+
+    public var aqhiCategory: AQICategory? {
+        guard let aqhi else { return nil }
+        switch aqhi {
+        case ..<3.5: return .good        // Low Risk (1–3)
+        case ..<6.5: return .moderate    // Moderate Risk (4–6)
+        case ..<10.5: return .unhealthy  // High Risk (7–10)
+        default: return .veryUnhealthy   // Very High Risk (10+)
+        }
+    }
+
+    public var aqhiRiskLabel: String? {
+        guard let aqhi else { return nil }
+        switch aqhi {
+        case ..<3.5: return "Low risk"
+        case ..<6.5: return "Moderate risk"
+        case ..<10.5: return "High risk"
+        default: return "Very high risk"
+        }
+    }
 }
 
 /// The EPA's six bands.
@@ -159,8 +185,48 @@ public struct AirQualityProvider: Sendable {
     }
 
     public func airQuality(at coordinate: Coordinate) async throws -> AirQuality {
-        let data = try await fetch(url(for: coordinate), loader: loader)
-        return try Self.parse(data)
+        async let openMeteoData = fetch(url(for: coordinate), loader: loader)
+        async let ecccAQHI: (value: Double, station: String)? = Region.inCanada(coordinate)
+            ? (try? await fetchAQHI(near: coordinate))
+            : nil
+        var aq = try Self.parse(try await openMeteoData)
+        if let eccc = await ecccAQHI {
+            aq.aqhi = eccc.value
+            aq.aqhiStation = eccc.station
+        }
+        return aq
+    }
+
+    private func fetchAQHI(near c: Coordinate) async throws -> (value: Double, station: String)? {
+        let span = 0.45
+        let bbox = [c.longitude - span * 1.4, c.latitude - span,
+                    c.longitude + span * 1.4, c.latitude + span]
+            .map { String(format: "%.3f", $0) }.joined(separator: ",")
+        var comps = URLComponents(string: "https://api.weather.gc.ca/collections/aqhi-observations-realtime/items")!
+        comps.queryItems = [
+            URLQueryItem(name: "f", value: "json"),
+            URLQueryItem(name: "bbox", value: bbox),
+            URLQueryItem(name: "latest", value: "true"),
+            URLQueryItem(name: "limit", value: "30"),
+        ]
+        let data = try await fetch(comps.url!, loader: loader)
+        return Self.parseAQHI(data, near: c)
+    }
+
+    static func parseAQHI(_ data: Data, near c: Coordinate) -> (value: Double, station: String)? {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let features = root["features"] as? [[String: Any]] else { return nil }
+        var best: (dist: Double, value: Double, station: String)?
+        for f in features {
+            guard let p = f["properties"] as? [String: Any],
+                  let val = (p["aqhi"] as? NSNumber)?.doubleValue,
+                  let point = EnvironmentCanadaProvider.pointCoordinate(f["geometry"]) else { continue }
+            let d = EnvironmentCanadaProvider.distanceKm(c, point)
+            guard d < (best?.dist ?? .infinity) else { continue }
+            let name = (p["location_name_en"] as? String) ?? "Nearby station"
+            best = (d, val, name)
+        }
+        return best.map { ($0.value, $0.station) }
     }
 
     private struct Response: Decodable {
