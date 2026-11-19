@@ -21,6 +21,7 @@ struct SettingsView: View {
     @AppStorage(AlertNotifier.rainKey) private var rainNotifications = false
     @AppStorage(AlertNotifier.frostKey) private var frostNotifications = false
     @AppStorage(DisplaySettings.showAirQualityKey) private var showAirQuality = true
+    @AppStorage("useHyperlocalPWS") private var useHyperlocalPWS = false
     @State private var notificationsDenied = false
     @State private var permissionText = "Checking…"
     @State private var permissionOK = true
@@ -153,6 +154,13 @@ struct SettingsView: View {
                 } footer: {
                     Text("Today's details shows pressure, UV, visibility, dew point, gusts, sunrise and sunset under the current conditions.")
                 }
+            Section {
+                Toggle("Hyperlocal PWS stations", isOn: $useHyperlocalPWS)
+            } header: {
+                Text("Observations")
+            } footer: {
+                Text("Pools nearby home weather stations via your Raspberry Pi relay when available, falling back to official stations.")
+            }
                 Section("Display") {
                     Picker("Appearance", selection: $appearance) {
                         ForEach(Appearance.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
@@ -257,5 +265,6 @@ struct SettingsView: View {
         hourlyCount = 24
         showDetails = true
         showAirQuality = true
+        useHyperlocalPWS = false
     }
 }
