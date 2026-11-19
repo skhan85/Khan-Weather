@@ -20,6 +20,7 @@ struct ContentView: View {
     @AppStorage(DisplaySettings.hourlyCountKey) private var hourlyCount = 24
     @AppStorage(DisplaySettings.showDetailsKey) private var showDetails = true
     @AppStorage(DisplaySettings.showAirQualityKey) private var showAirQuality = true
+    @AppStorage("useHyperlocalPWS") private var useHyperlocalPWS = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -110,6 +111,7 @@ struct ContentView: View {
         .onChange(of: places.selectedID) { _, _ in
             Task { await reload() }
         }
+        .onChange(of: useHyperlocalPWS) { _, _ in Task { await reload() } }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active, Date().timeIntervalSince(lastReload) > 120 { 
                                                                              Task { await reload() } }
