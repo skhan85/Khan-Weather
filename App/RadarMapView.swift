@@ -79,6 +79,8 @@ struct RadarMapView: View {
                 .foregroundStyle(.secondary)
                 .padding(.vertical, 2)
         }
+        .tint(.blue)
+        .toolbarColorScheme(.light, for: .navigationBar)
     }
 }
 
