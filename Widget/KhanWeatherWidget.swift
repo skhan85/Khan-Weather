@@ -77,7 +77,7 @@ enum WidgetAlertNotifier {
 
 struct WeatherTimelineProvider: AppIntentTimelineProvider {
     private let provider = OpenMeteoProvider()
-    private let observations = HyperlocalObservationProvider()
+    private let observations = WorldObservationProvider()
     private let alerts = WorldAlertProvider()
 
     func placeholder(in context: Context) -> WeatherEntry { .placeholder }
