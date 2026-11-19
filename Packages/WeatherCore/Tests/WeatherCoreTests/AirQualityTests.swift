@@ -47,6 +47,23 @@ final class AirQualityTests: XCTestCase {
         XCTAssertTrue(url.contains("us_aqi"))
         XCTAssertTrue(url.contains("birch_pollen"))
     }
+
+    func testParsesECCCAQHI() {
+        let json = """
+        {"features": [
+            {"geometry": {"type": "Point", "coordinates": [-79.88, 43.52]},
+             "properties": {"aqhi": 2, "location_name_en": "Milton"}},
+            {"geometry": {"type": "Point", "coordinates": [-79.38, 43.65]},
+             "properties": {"aqhi": 4, "location_name_en": "Toronto"}}
+        ]}
+        """.data(using: .utf8)!
+        let parsed = AirQualityProvider.parseAQHI(json, near: Coordinate(latitude: 43.518, longitude: -79.877))
+        XCTAssertEqual(parsed?.value, 2)
+        XCTAssertEqual(parsed?.station, "Milton")
+        let aq = AirQuality(time: Date(), aqhi: 2, aqhiStation: "Milton")
+        XCTAssertEqual(aq.aqhiCategory, .good)
+        XCTAssertEqual(aq.aqhiRiskLabel, "Low risk")
+    }
 }
 
 final class RainHeadsUpTests: XCTestCase {
