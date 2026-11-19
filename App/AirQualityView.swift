@@ -7,7 +7,30 @@ struct AirQualityView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if let aqi = air.usAQI, let category = air.category {
+            if let aqhi = air.aqhi, let category = air.aqhiCategory, let risk = air.aqhiRiskLabel {
+                let display = aqhi > 10 ? "10+" : "\(Int(aqhi.rounded()))"
+                HStack(spacing: 14) {
+                    Text(display)
+                        .font(.title2.weight(.bold))
+                        .monospacedDigit()
+                        .frame(width: 58, height: 58)
+                        .background(Circle().fill(.white.opacity(0.14)))
+                        .overlay(Circle().stroke(AQIColor.color(category), lineWidth: 4))
+                        .accessibilityLabel("Air Quality Health Index \(display), \(risk)")
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(risk)
+                            .font(.headline)
+                        Text("AQHI\(air.aqhiStation.map { " · \($0)" } ?? "")")
+                            .font(.footnote)
+                            .foregroundStyle(.white.opacity(0.82))
+                    }
+                }
+                AQIScale(aqi: min(aqhi, 11) / 11.0 * 300.0)
+                Text(category.advice)
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.9))
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if let aqi = air.usAQI, let category = air.category {
                 HStack(spacing: 14) {
                     Text("\(Int(aqi.rounded()))")
                         .font(.title2.weight(.bold))
@@ -65,9 +88,11 @@ struct AirQualityView: View {
                     .foregroundStyle(.white.opacity(0.82))
             }
 
-            Text(air.hasPollenData
-                 ? "US AQI and pollen via Open-Meteo (Copernicus CAMS), in µg/m³."
-                 : "US AQI via Open-Meteo (Copernicus CAMS) ,in µg/m³. Regional pollen data is currently available in Europe.")
+            Text(air.aqhi != nil
+                ? "AQHI via Environment Canada. Pollutants via Open-Meteo (Copernicus CAMS), in µg/m³."
+                : (air.hasPollenData
+                    ? "US AQI and pollen via Open-Meteo (Copernicus CAMS), in µg/m³."
+                    : "US AQI via Open-Meteo (Copernicus CAMS), in µg/m³. Regional pollen data is currently available in Europe."))
                 .font(.caption2)
                 .foregroundStyle(.white.opacity(0.7))
         }
