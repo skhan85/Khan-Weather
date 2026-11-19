@@ -246,9 +246,9 @@ final class EnvironmentCanadaProviderTests: XCTestCase {
         home.stationTemperatures = [11, 12, 13]
         XCTAssertEqual(forecast.applying(home).current.temperature, 6)
 
-        // At night the stations are used as they are.
+        // At night, warm wall/porch sensors (> 2.5° above forecast) are also filtered out.
         forecast.current.isDay = false
         home.stationTemperatures = [6.3, 8.4, 12.7]
-        XCTAssertEqual(forecast.applying(home).current.temperature, 8.4)
+        XCTAssertEqual(forecast.applying(home).current.temperature, 7.4, accuracy: 0.01)
     }
 }
