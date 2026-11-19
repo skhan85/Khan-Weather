@@ -282,6 +282,20 @@ public struct Forecast: Equatable, Codable, Sendable {
         calendar.timeZone = timeZone
         return daily.first { calendar.isDate($0.date, inSameDayAs: date) } ?? daily.first
     }
+
+    /// Lowest forecast temperature from tonight (6 PM or `date`, whichever is later) through 9 AM tomorrow.
+    public func tonightLow(from date: Date = Date()) -> Double? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let startOfToday = calendar.startOfDay(for: date)
+        guard let sixPM = calendar.date(byAdding: .hour, value: 18, to: startOfToday),
+              let nineAMTomorrow = calendar.date(byAdding: .hour, value: 33, to: startOfToday) else { return nil }
+        let windowStart = max(date, sixPM)
+        return hourly
+            .filter { $0.time >= windowStart && $0.time <= nineAMTomorrow }
+            .map(\.temperature)
+            .min()
+    }        
 }
 
 public enum ForecastError: Error, Equatable, LocalizedError {
