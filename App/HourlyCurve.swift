@@ -11,12 +11,17 @@ struct HourlyCurve: View {
     var firstIsNow = true
 
     private let columnWidth: CGFloat = 58
+    @State private var selectedIndex: Int?
 
     private var low: Double { hours.map { min($0.temperature, $0.modelLow ?? $0.temperature) }.min() ?? 0 }
     private var high: Double { hours.map { max($0.temperature, $0.modelHigh ?? $0.temperature) }.max() ?? 0 }
     private var hasBand: Bool { hours.contains { $0.modelLow != nil } }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let idx = selectedIndex, hours.indices.contains(idx) {
+                scrubBanner(for: hours[idx])
+            }
         ScrollView(.horizontal, showsIndicators: false) {
             VStack(spacing: 6) {
                 HStack(spacing: 0) {
@@ -39,6 +44,19 @@ struct HourlyCurve: View {
                     curve
                 }
                 .frame(width: columnWidth * CGFloat(hours.count), height: 74)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            let idx = Int(value.location.x / columnWidth)
+                            if hours.indices.contains(idx) {
+                                selectedIndex = idx
+                            }
+                        }
+                        .onEnded { _ in
+                            selectedIndex = nil
+                        }
+                )
                 HStack(spacing: 0) {
                     ForEach(hours) { hour in
                         PrecipChance(probability: hour.precipitationProbability, kind: hour.precipitationKind,
@@ -49,6 +67,36 @@ struct HourlyCurve: View {
             }
             .padding(.vertical, 4)
         }
+        }
+    }
+
+    private func scrubBanner(for hour: HourlyForecast) -> some View {
+        HStack(spacing: 10) {
+            Text(TimeText.hour(hour.time, timeZone))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Brand.gold)
+            Text(WeatherFormat.temperature(hour.temperature))
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+            if let feelsLike = hour.feelsLike {
+                Text("Feels \(WeatherFormat.temperature(feelsLike))")
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+            if let wind = hour.windSpeed {
+                Text(WeatherFormat.wind(wind))
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+            if let rain = hour.rain {
+                Text(String(format: "%.1f mm", rain))
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.black.opacity(0.35), in: Capsule())
     }
 
     @ViewBuilder
@@ -107,8 +155,8 @@ struct HourlyCurve: View {
                     .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round))
                     .foregroundStyle(Brand.gold)
                 PointMark(x: .value("Hour", Double(index)), y: .value("Temp", hour.temperature))
-                    .symbolSize(index == 0 ? 60 : 28)
-                    .foregroundStyle(.white)
+                    .symbolSize(selectedIndex == index ? 80 : ((index == 0 ? 60 : 28)))
+                    .foregroundStyle(selectedIndex == index ? Brand.gold : .white)
                     .annotation(position: .top, spacing: 4) {
                         Text(WeatherFormat.temperature(hour.temperature))
                             .font(.subheadline.weight(.bold))
