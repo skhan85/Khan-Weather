@@ -248,7 +248,7 @@ private struct ForecastList: View {
                 .glassRow()
             }
 
-            if showAirQuality, let airQuality, airQuality.usAQI != nil {
+            if showAirQuality, let airQuality, (airQuality.usAQI != nil || airQuality.aqhi != nil) {
                 Section {
                     AirQualityView(air: airQuality)
                 } header: {
@@ -533,6 +533,7 @@ struct TodayDetailsView: View {
         add("Pressure", WeatherFormat.pressure(now.pressure), "gauge.with.dots.needle.33percent")
         add("Visibility", hour?.visibility.flatMap { WeatherFormat.distance($0 / 1000) }, "eye")
         add("Dew point", hour?.dewPoint.map { WeatherFormat.temperature($0) }, "thermometer.medium")
+        add("Tonight's low", forecast.tonightLow().map { WeatherFormat.temperature($0) }, "moon.stars.fill")
         if let gusts = now.windGusts ?? hour?.windGusts {
             var text = WeatherFormat.wind(gusts)
             if let dir = WeatherFormat.compass(now.windDirection) { text = "\(dir), \(text)" }
