@@ -430,7 +430,7 @@ extension Forecast {
             let hours = copy.hours(on: day).filter { temps.hourly[Int($0.time.timeIntervalSince1970)] != nil }
             let spreads = hours.compactMap { h in h.modelHigh.flatMap { hi in h.modelLow.map { hi - $0 } } }
             if !spreads.isEmpty { d.modelSpread = spreads.reduce(0, +) / Double(spreads.count) }
-            guard hours.count >= 23 else { return d }   // 23 allows the short day when clocks change
+            guard hours.count >= 18 else { return d }  // ensure blended daily high/low match the 8-model hourly curve
             d.high = hours.map(\.temperature).max()!
             d.low = hours.map(\.temperature).min()!
             let feels = hours.compactMap(\.feelsLike)
