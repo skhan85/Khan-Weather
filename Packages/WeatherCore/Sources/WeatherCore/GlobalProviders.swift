@@ -92,7 +92,7 @@ public struct NWSObservationProvider: ObservationProvider {
     public let attribution = "Observations: US National Weather Service"
     private let loader: HTTPLoader
     /// Stations farther than this are skipped.
-    let maxDistanceKm: Double = 12
+    let maxDistanceKm: Double = 40
     let maxAge: TimeInterval = 2 * 3600
 
     public init(loader: @escaping HTTPLoader = defaultLoader) { self.loader = loader }
@@ -340,7 +340,7 @@ public struct BrightSkyAlertProvider: AlertProvider {
 public struct METARProvider: ObservationProvider {
     public let attribution = "Airport observations: NOAA Aviation Weather Center"
     private let loader: HTTPLoader
-    let maxDistanceKm: Double = 12
+    let maxDistanceKm: Double = 40
     let maxAge: TimeInterval = 3 * 3600
 
     public init(loader: @escaping HTTPLoader = defaultLoader) { self.loader = loader }
