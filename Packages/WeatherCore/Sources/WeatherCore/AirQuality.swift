@@ -23,9 +23,9 @@ public struct AirQuality: Equatable, Codable, Sendable {
 public var aqhi: Double?
 /// Nearest AQHI community name, e.g. "Milton".
 public var aqhiStation: String?
-
+public var aqhiTodayMax: Double?
     public init(time: Date, usAQI: Double? = nil, todayMaxAQI: Double? = nil, pm25: Double? = nil, pm10: Double? = nil,
-                ozone: Double? = nil, nitrogenDioxide: Double? = nil, pollen: [Pollen] = [], hasPollenData: Bool = false, aqhi: Double? = nil, aqhiStation: String? = nil) {
+                ozone: Double? = nil, nitrogenDioxide: Double? = nil, pollen: [Pollen] = [], hasPollenData: Bool = false, aqhi: Double? = nil, aqhiStation: String? = nil, aqhiTodayMax: Double? = nil) {
         self.time = time
         self.usAQI = usAQI
         self.todayMaxAQI = todayMaxAQI
@@ -37,6 +37,7 @@ public var aqhiStation: String?
         self.hasPollenData = hasPollenData
         self.aqhi = aqhi
         self.aqhiStation = aqhiStation
+        self.aqhiTodayMax = aqhiTodayMax
     }
 
     public var category: AQICategory? { usAQI.map(AQICategory.init(aqi:)) }
@@ -189,11 +190,15 @@ public struct AirQualityProvider: Sendable {
         async let ecccAQHI: (value: Double, station: String)? = Region.inCanada(coordinate)
             ? (try? await fetchAQHI(near: coordinate))
             : nil
+        async let ecccForecast: Double? = Region.inCanada(coordinate)
+            ? (try? await fetchAQHIForecast(near: coordinate))
+        : nil
         var aq = try Self.parse(try await openMeteoData)
         if let eccc = await ecccAQHI {
             aq.aqhi = eccc.value
             aq.aqhiStation = eccc.station
         }
+        aq.aqhiTodayMax = await ecccForecast
         return aq
     }
 
@@ -211,6 +216,44 @@ public struct AirQualityProvider: Sendable {
         ]
         let data = try await fetch(comps.url!, loader: loader)
         return Self.parseAQHI(data, near: c)
+    }
+
+    private func fetchAQHIForecast(near c: Coordinate) async throws -> Double? {
+        let span = 0.45
+        let bbox = [c.longitude - span * 1.4, c.latitude - span,
+                    c.longitude + span * 1.4, c.latitude + span]
+            .map { String(format: "%.3f", $0) }.joined(separator: ",")
+        var comps = URLComponents(string: "https://api.weather.gc.ca/collections/aqhi-forecasts-realtime/items")!
+        comps.queryItems = [
+            URLQueryItem(name: "f", value: "json"),
+            URLQueryItem(name: "bbox", value: bbox),
+            URLQueryItem(name: "latest", value: "true"),
+            URLQueryItem(name: "limit", value: "30"),
+        ]
+        let data = try await fetch(comps.url!, loader: loader)
+        return Self.parseAQHIForecast(data, near: c)
+    }
+
+    static func parseAQHIForecast(_ data: Data, near c: Coordinate) -> Double? {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let features = root["features"] as? [[String: Any]] else { return nil }
+        var bestDist = Double.infinity
+        var bestID: String?
+        var valuesByStation: [String: [Double]] = [:]
+        for f in features {
+            guard let p = f["properties"] as? [String: Any],
+                  let val = (p["aqhi"] as? NSNumber)?.doubleValue,
+                  let point = EnvironmentCanadaProvider.pointCoordinate(f["geometry"]) else { continue }
+            let sid = (p["location_id"] as? String) ?? (p["location_name_en"] as? String) ?? "station"
+            valuesByStation[sid, default: []].append(val)
+            let d = EnvironmentCanadaProvider.distanceKm(c, point)
+            if d < bestDist {
+                bestDist = d
+                bestID = sid
+            }
+        }
+        guard let bestID else { return nil }
+        return valuesByStation[bestID]?.max()
     }
 
     static func parseAQHI(_ data: Data, near c: Coordinate) -> (value: Double, station: String)? {
