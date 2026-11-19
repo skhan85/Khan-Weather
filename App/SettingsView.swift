@@ -159,7 +159,7 @@ struct SettingsView: View {
             } header: {
                 Text("Observations")
             } footer: {
-                Text("Pools nearby home weather stations via your Raspberry Pi relay when available, falling back to official stations.")
+                Text("Uses nearby personal weather stations when available, falling back to official stations.")
             }
                 Section("Display") {
                     Picker("Appearance", selection: $appearance) {
