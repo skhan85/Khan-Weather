@@ -114,7 +114,8 @@ final class WeatherViewModel: ObservableObject {
             target = coordinate ?? .fallback
         }
         let fallbackName = usingFallbackLocation ? "Toronto" : nil
-        let provider = self.provider, observations = self.observations, alertProvider = self.alertProvider
+        let provider = self.provider, alertProvider = self.alertProvider
+        let observations: ObservationProvider = UserDefaults.standard.bool(forKey: "useHyperlocalPWS") ? HyperlocalObservationProvider() : self.observations
 
         // Everything starts at once.
         let nameTask = Task { await Self.name(for: place, at: target) }
@@ -183,7 +184,8 @@ final class WeatherViewModel: ObservableObject {
             if let snap = cache[place.id], Date().timeIntervalSince(snap.at) < cacheAge / 2 { continue }
             try? await Task.sleep(nanoseconds: 600_000_000)
             let target = place.coordinate
-            let provider = self.provider, observations = self.observations, alertProvider = self.alertProvider
+          let provider = self.provider, alertProvider = self.alertProvider
+            let observations: ObservationProvider = UserDefaults.standard.bool(forKey: "useHyperlocalPWS") ? HyperlocalObservationProvider() : self.observations
             async let observed = try? observations.observation(near: target)
             async let radar = try? ECCCRadarProvider().now(at: target)
             async let fetchedAlerts = try? alertProvider.alerts(near: target)
