@@ -126,7 +126,7 @@ public struct HyperlocalObservationProvider: ObservationProvider {
     }
 
     /// Further than this from a nearby official station, the Netatmo reading is set aside.
-    static let officialLimit: Double = 3
+    static let officialLimit: Double = 2
 
     static func merge(official base: Observation?, netatmo local: Observation) -> Observation {
         var local = local
