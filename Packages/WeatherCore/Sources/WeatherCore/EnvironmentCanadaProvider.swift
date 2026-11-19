@@ -343,7 +343,7 @@ public extension Forecast {
         // In daylight a home sensor in the sun can read 5-13° high (seen in Milton, 15 Nov at 11 am:
         // 6.3, 7.0, 8.4, 12.7 and 19.2° side by side). Sunshine only ever warms them, so by day
         // stations more than a little above the forecast are dropped and the rest decide.
-        if o.dataProvider == "NETATMO", current.isDay, let temps = o.stationTemperatures, !temps.isEmpty {
+        if o.dataProvider == "NETATMO", let temps = o.stationTemperatures, !temps.isEmpty {
             let shaded = temps.filter { $0 <= current.temperature + Self.sunWarmLimit }
             if let mid = Self.median(Array(shaded.prefix(3))) {
                 o.temperature = (mid * 10).rounded() / 10
