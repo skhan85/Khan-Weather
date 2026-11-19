@@ -23,6 +23,11 @@ struct AirQualityView: View {
                         Text("AQHI\(air.aqhiStation.map { " · \($0)" } ?? "")")
                             .font(.footnote)
                             .foregroundStyle(.white.opacity(0.82))
+                        if let peak = air.aqhiTodayMax, peak.rounded() > aqhi.rounded() {
+                            Text("Up to \(peak > 10 ? "10+" : "\(Int(peak.rounded()))") later")
+                                .font(.footnote)
+                                .foregroundStyle(.white.opacity(0.82))
+                        }
                     }
                 }
                 AQIScale(aqi: min(aqhi, 11) / 11.0 * 300.0)
