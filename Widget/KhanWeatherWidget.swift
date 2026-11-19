@@ -139,10 +139,12 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
                 .applying(obs)
             .applyingRadar(await radarNow)
             let today = forecast.daily.first
-            return WeatherEntry(date: Date(), current: forecast.current, high: today?.high, low: today?.low,
+           let todayLow = forecast.tonightLow().map { min($0, today?.high ?? $0) } ?? today?.low
+           var days = Array(forecast.daily.prefix(5)); if !days.isEmpty, let todayLow { days[0].low = todayLow }
+            return WeatherEntry(date: Date(), current: forecast.current, high: today?.high, low: todayLow,
                                 placeName: await place, error: nil, nowcast: forecast.nowcast()?.shortText,
                                 alert: await active?.first?.title,
-                                hours: Self.hoursStartingNow(forecast), days: Array(forecast.daily.prefix(5)),
+                                hours: Self.hoursStartingNow(forecast), days: days,
                                 timeZone: forecast.timeZone)
         } catch {
             return WeatherEntry(date: Date(), current: nil, high: nil, low: nil, placeName: await place,
