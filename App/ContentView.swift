@@ -171,8 +171,9 @@ private struct ForecastList: View {
     private var hoursStartingNow: [HourlyForecast] {
         forecast.hoursStartingNow(count: hourlyCount)
     }
-
-    private var weekLow: Double { forecast.daily.map(\.low).min() ?? 0 }
+    private var todayDisplay: DailyForecast? { guard var d = forecast.day() else { return nil }; if let tonight = forecast.tonightLow() { d.low = min(tonight, d.high) }; return d }
+    
+    private var weekLow: Double { forecast.daily.enumerated().map { $0.offset == 0 ? min(forecast.tonightLow() ?? $0.element.low, $0.element.high) : $0.element.low }.min() ?? 0 }
     private var weekHigh: Double { forecast.daily.map(\.high).max() ?? 0 }
 
     var body: some View {
@@ -196,7 +197,7 @@ private struct ForecastList: View {
                 CurrentConditionsView(current: forecast.current, placeName: placeName, isSavedPlace: isSavedPlace,
                                       observation: forecast.observation, timeZone: forecast.timeZone,
                                       skySource: forecast.skySource,
-                                      today: forecast.day(), outlook: Outlook.text(forecast),
+                                      today: todayDisplay, outlook: Outlook.text(forecast),
                                       wear: WhatToWear.tip(current: forecast.current,
                                                            upcoming: Array(forecast.upcomingHours(count: 13).dropFirst()),
                                                            hourText: { TimeText.hour($0, forecast.timeZone) }))
@@ -216,11 +217,12 @@ private struct ForecastList: View {
 
             Section {
                 ForEach(Array(forecast.daily.enumerated()), id: \.element.id) { index, day in
-                    NavigationLink {
+                    let displayDay: DailyForecast = { var d = day; if index == 0 { d.low = min(forecast.tonightLow() ?? day.low, day.high) }; return d }()
+                                                                               NavigationLink {
                         DayDetailView(day: day, hours: forecast.hours(on: day), timeZone: forecast.timeZone,
                                       location: forecast.location)
                     } label: {
-                        DailyRow(day: day, isToday: index == 0, timeZone: forecast.timeZone,
+                        DailyRow(day: displayDay, isToday: index == 0, timeZone: forecast.timeZone,
                                  weekLow: weekLow, weekHigh: weekHigh,
                                  current: index == 0 ? forecast.current.temperature : nil)
                     }
@@ -533,7 +535,6 @@ struct TodayDetailsView: View {
         add("Pressure", WeatherFormat.pressure(now.pressure), "gauge.with.dots.needle.33percent")
         add("Visibility", hour?.visibility.flatMap { WeatherFormat.distance($0 / 1000) }, "eye")
         add("Dew point", hour?.dewPoint.map { WeatherFormat.temperature($0) }, "thermometer.medium")
-        add("Tonight's low", forecast.tonightLow().map { WeatherFormat.temperature($0) }, "moon.stars.fill")
         if let gusts = now.windGusts ?? hour?.windGusts {
             var text = WeatherFormat.wind(gusts)
             if let dir = WeatherFormat.compass(now.windDirection) { text = "\(dir), \(text)" }
@@ -541,6 +542,10 @@ struct TodayDetailsView: View {
         }
         add("Sunrise", day?.sunrise.map { TimeText.time($0, tz) }, "sunrise.fill")
         add("Sunset", day?.sunset.map { TimeText.time($0, tz) }, "sunset.fill")
+        if let sunrise = day?.sunrise, let sunset = day?.sunset {
+            let mins = Int(sunset.timeIntervalSince(sunrise) / 60)
+            add("Daylight", "\(mins / 60) hr \(mins % 60) min", "sun.max")
+        }
         if let rain = day?.rainSum, let snow = day?.snowfallSum {
             add("Today's total", WeatherFormat.precipitationTotals(rainMm: rain, snowCm: snow), "drop")
         }
