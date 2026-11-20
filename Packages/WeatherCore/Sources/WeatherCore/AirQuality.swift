@@ -25,6 +25,9 @@ public struct AirQuality: Equatable, Codable, Sendable {
     public var aqhiStation: String?
     /// The highest AQHI forecast for the rest of today there.
     public var aqhiTodayMax: Double?
+    /// Google's pollen index where Open-Meteo has no pollen (outside Europe), via the family relay.
+    /// Empty out of season; nil when the relay didn't answer.
+    public var pollenIndex: [PollenIndex]?
 
     public init(time: Date, usAQI: Double? = nil, todayMaxAQI: Double? = nil, pm25: Double? = nil, pm10: Double? = nil,
                 ozone: Double? = nil, nitrogenDioxide: Double? = nil, pollen: [Pollen] = [], hasPollenData: Bool = false, aqhi: Double? = nil, aqhiStation: String? = nil, aqhiTodayMax: Double? = nil) {
@@ -195,12 +198,14 @@ public struct AirQualityProvider: Sendable {
         async let ecccForecast: Double? = Region.inCanada(coordinate)
             ? (try? await fetchAQHIForecast(near: coordinate))
             : nil
+        async let googlePollen = PollenIndexProvider.today(at: coordinate, loader: loader)
         var aq = try Self.parse(try await openMeteoData)
         if let eccc = await ecccAQHI {
             aq.aqhi = eccc.value
             aq.aqhiStation = eccc.station
         }
         aq.aqhiTodayMax = await ecccForecast
+        if !aq.hasPollenData { aq.pollenIndex = await googlePollen }
         return aq
     }
 
