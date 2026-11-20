@@ -86,6 +86,8 @@ public struct HourlyForecast: Equatable, Codable, Sendable, Identifiable {
     public var snowfall: Double?
     /// metres
     public var visibility: Double?
+    /// Sea-level pressure, hPa.
+    public var pressure: Double?
     // How the models in the blend see this hour (North America only).
     /// Coldest and warmest model temperature, °C.
     public var modelLow: Double?
@@ -190,8 +192,8 @@ public struct PrecipitationSlot: Equatable, Codable, Sendable {
     }
 
     /// Below this a slot counts as dry; 0.1 mm per 15 min is about the lightest drizzle a gauge records.
-    static let wetThreshold = 0.1
-    var isWet: Bool { precipitation >= Self.wetThreshold || snowfall >= 0.1 }
+    public static let wetThreshold = 0.1
+    public var isWet: Bool { precipitation >= Self.wetThreshold || snowfall >= 0.1 }
 }
 
 public struct Forecast: Equatable, Codable, Sendable {
@@ -211,6 +213,9 @@ public struct Forecast: Equatable, Codable, Sendable {
     /// Where "now"'s sky (rain, snow, cloud) came from, for the caption: "radar over this spot",
     /// "Toronto Pearson, 25 km away" or "the forecast". nil means the forecast.
     public var skySource: String?
+    /// The model's own hours from yesterday 00:00 through today, before any blending or station
+    /// changes, for like-for-like "than yesterday" comparisons. nil when the provider has no past hours.
+    public var recentHours: [HourlyForecast]?
 
     public init(location: Coordinate, timeZoneIdentifier: String, current: CurrentConditions,
                 hourly: [HourlyForecast], daily: [DailyForecast], source: String, fetchedAt: Date,

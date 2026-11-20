@@ -139,3 +139,95 @@ struct SunArcView: View {
         .accessibilityElement(children: .combine)
     }
 }
+
+/// Next two hours in 15-minute bars, under the same "Rain starting in about 20 min" line the
+/// Now card and the notification use (both read `Forecast.nowcastSlots`).
+struct NextTwoHoursView: View {
+    let nowcast: Nowcast
+    let slots: [PrecipitationSlot]
+
+    /// mm per 15 minutes at which a bar is full height (about 4 mm/h, heavy rain).
+    private static let full = 1.0
+
+    private func height(_ s: PrecipitationSlot) -> CGFloat {
+        guard s.isWet else { return 3 }
+        let amount = max(s.precipitation, s.snowfall)
+        // Square root so drizzle still shows and a downpour doesn't flatten everything else.
+        return 10 + 50 * CGFloat(min(sqrt(amount / Self.full), 1))
+    }
+
+    private func color(_ s: PrecipitationSlot) -> Color {
+        guard s.isWet else { return .white.opacity(0.3) }
+        if s.snowfall > 0 && s.rain < PrecipitationSlot.wetThreshold { return .white }
+        if s.snowfall > 0 { return Color(red: 0.78, green: 0.72, blue: 1) }
+        return Color(red: 0.45, green: 0.75, blue: 1)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label {
+                Text(nowcast.text).font(.headline)
+            } icon: {
+                Image(systemName: nowcast.kind == .snow ? "cloud.snow.fill" : "cloud.rain.fill")
+                    .foregroundStyle(Brand.gold)
+            }
+            HStack(alignment: .bottom, spacing: 4) {
+                ForEach(slots, id: \.time) { s in
+                    Capsule()
+                        .fill(color(s))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: height(s))
+                }
+            }
+            .frame(height: 62, alignment: .bottom)
+            HStack {
+                Text("Now")
+                Spacer()
+                Text("1 hr")
+                Spacer()
+                Text("2 hr")
+            }
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.white.opacity(0.82))
+            Text("Light to heavy, in 15-minute steps.")
+                .font(.caption2)
+                .foregroundStyle(.white.opacity(0.7))
+        }
+        .foregroundStyle(.white)
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(nowcast.text)
+    }
+}
+
+/// Tonight's moon under the sun arc: phase icon, name, how much is lit and the next full moon.
+struct MoonRow: View {
+    let date: Date
+    let timeZone: TimeZone
+
+    var body: some View {
+        let moon = MoonPhase(date: date)
+        let full = moon.nextFullMoon(after: date)
+        HStack(spacing: 10) {
+            Image(systemName: moon.symbolName)
+                .font(.title2)
+                .foregroundStyle(.white)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(moon.name).font(.body.weight(.semibold))
+                Text("\(Int((moon.illumination * 100).rounded()))% lit")
+                    .font(.footnote)
+                    .foregroundStyle(.white.opacity(0.82))
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 1) {
+                Text("Full moon").font(.footnote.weight(.medium)).foregroundStyle(.white.opacity(0.82))
+                Text(full.formatted(Date.FormatStyle(timeZone: timeZone).weekday(.abbreviated).month(.abbreviated).day()))
+                    .font(.body.weight(.semibold))
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(10)
+        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+}

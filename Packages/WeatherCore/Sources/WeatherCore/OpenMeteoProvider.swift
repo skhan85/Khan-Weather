@@ -79,6 +79,8 @@ public struct OpenMeteoProvider: ForecastProvider {
             URLQueryItem(name: "timezone", value: "auto"),
             URLQueryItem(name: "timeformat", value: "unixtime"),
             URLQueryItem(name: "forecast_days", value: String(forecastDays)),
+            // Yesterday too, for "colder than yesterday" and the pressure trend. Split off in `parse`.
+            URLQueryItem(name: "past_days", value: "1"),
         ]
         return components.url!
     }
@@ -172,6 +174,7 @@ public struct OpenMeteoProvider: ForecastProvider {
         "temperature_2m", "apparent_temperature", "precipitation_probability", "precipitation",
         "weather_code", "is_day", "relative_humidity_2m", "dew_point_2m", "wind_speed_10m",
         "wind_gusts_10m", "wind_direction_10m", "uv_index", "rain", "showers", "snowfall", "visibility",
+        "pressure_msl",
     ]
     static let dailyFields = [
         "weather_code", "temperature_2m_max", "temperature_2m_min",
@@ -243,6 +246,7 @@ public struct OpenMeteoProvider: ForecastProvider {
                 hour.rain = Self.sum(h.rain.value(at: i), h.showers.value(at: i))
                 hour.snowfall = h.snowfall.value(at: i)
                 hour.visibility = h.visibility.value(at: i)
+                hour.pressure = h.pressure.value(at: i)
                 hourly.append(hour)
             }
         }
@@ -291,16 +295,33 @@ public struct OpenMeteoProvider: ForecastProvider {
             }
         }
 
-        return Forecast(
+        // `past_days=1` adds yesterday. Everything else in the app starts at today 00:00, so
+        // yesterday's hours are kept apart (with today's, unblended) and yesterday's row is dropped.
+        let timeZoneIdentifier = r.timezone ?? TimeZone.current.identifier
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: timeZoneIdentifier) ?? .current
+        let startOfToday = calendar.startOfDay(for: current.time)
+        var recentHours: [HourlyForecast]? = nil
+        if hourly.contains(where: { $0.time < startOfToday }) {
+            let startOfTomorrow = calendar.date(byAdding: .day, value: 1, to: startOfToday) ?? startOfToday
+            recentHours = hourly.filter { $0.time < startOfTomorrow }
+            hourly = hourly.filter { $0.time >= startOfToday }
+        }
+        // Daily rows are dated at local midnight; the hour of slack covers odd time-zone data.
+        daily = daily.filter { $0.date > startOfToday.addingTimeInterval(-3600) }
+
+        var forecast = Forecast(
             location: Coordinate(latitude: r.latitude, longitude: r.longitude),
-            timeZoneIdentifier: r.timezone ?? TimeZone.current.identifier,
+            timeZoneIdentifier: timeZoneIdentifier,
             current: current,
             hourly: hourly,
             daily: daily,
             source: "Open-Meteo",
             fetchedAt: fetchedAt,
             minutely: minutely
-        ).withDailyHeadlines()
+        )
+        forecast.recentHours = recentHours
+        return forecast.withDailyHeadlines()
     }
 
     /// Adds two optional amounts; nil only when both are missing.
@@ -378,9 +399,11 @@ public struct OpenMeteoProvider: ForecastProvider {
         let showers: [Double?]?
         let snowfall: [Double?]?
         let visibility: [Double?]?
+        let pressure: [Double?]?
 
         enum CodingKeys: String, CodingKey {
             case time, precipitation, rain, showers, snowfall, visibility
+            case pressure = "pressure_msl"
             case relativeHumidity = "relative_humidity_2m"
             case dewPoint = "dew_point_2m"
             case windSpeed = "wind_speed_10m"
