@@ -1,0 +1,32 @@
+name: Score chance of rain
+
+# Run by hand (Actions tab) to re-score: which chance of rain is most accurate? (tools/score_precip.py)
+# Linux: GitHub's Mac runners can't reach api.open-meteo.com.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: tools/verify-cache
+          key: verify-cache-${{ github.run_id }}
+          restore-keys: verify-cache-
+      - name: Score
+        working-directory: tools
+        run: python3 score_precip.py | tee precip-report.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: precip-results
+          path: |
+            tools/precip-results.json
+            tools/precip-report.txt

@@ -99,4 +99,39 @@ public enum ModelBlend {
         if total > 0 { return sum / total }
         return present.values.reduce(0, +) / Double(present.count)
     }
+
+    // MARK: Chance of rain
+
+    /// A model hour counts as wet from this much precipitation (mm).
+    static let wetHourMm: Double = 0.2
+    /// A model day counts as wet from this much (mm), as at ECCC's "measurable" day.
+    static let wetDayMm: Double = 0.5
+    /// Fewest models for their share to count.
+    static let minModelsForChance = 4
+
+    /// Open-Meteo's hourly chance averaged with the share of blend models that are wet that hour.
+    ///
+    /// Scored over Nov 2025-Oct 2026 against the hourly gauges at Hamilton RBG and Guelph
+    /// (tools/score_precip.py, 17,000 hours per lead day), the half-and-half mix had a lower
+    /// Brier score than Open-Meteo's chance at every lead: 4% better today, 12% on days 3-4.
+    public static func hourlyChance(openMeteo: Double?, wet: Int, of count: Int) -> Double? {
+        guard count >= minModelsForChance else { return openMeteo }
+        let share = 100 * Double(wet) / Double(count)
+        guard let openMeteo else { return share.rounded() }
+        return (0.5 * openMeteo + 0.5 * share).rounded()
+    }
+
+    /// Open-Meteo's chance for the day mixed with the share of models whose day total is wet.
+    ///
+    /// Scored on 1,445 days at five ECCC stations around Milton (tools/score_precip.py), Open-Meteo's
+    /// daily chance runs far too low (days it gave 20-30% were wet half the time). Mixing in the
+    /// models' share cut the Brier score by about 30% today and tomorrow (best with 3/4 share) and
+    /// 15-20% on days 3-6 (best half and half).
+    public static func dailyChance(openMeteo: Double?, wet: Int, of count: Int, dayIndex: Int) -> Double? {
+        guard count >= minModelsForChance else { return openMeteo }
+        let share = 100 * Double(wet) / Double(count)
+        guard let openMeteo else { return share.rounded() }
+        let w = dayIndex <= 1 ? 0.75 : 0.5
+        return ((1 - w) * openMeteo + w * share).rounded()
+    }
 }

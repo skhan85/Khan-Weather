@@ -1,0 +1,32 @@
+name: Score lead times
+
+# Run by hand (Actions tab) to re-score: blend accuracy at the real lead times (tools/score_leads.py)
+# Linux: GitHub's Mac runners can't reach api.open-meteo.com.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: tools/verify-cache
+          key: leads-cache-${{ github.run_id }}
+          restore-keys: leads-cache-
+      - name: Score
+        working-directory: tools
+        run: python3 score_leads.py | tee lead-report.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lead-results
+          path: |
+            tools/lead-results.json
+            tools/lead-report.txt
