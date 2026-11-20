@@ -1,6 +1,6 @@
 name: Score lead times
 
-# One-off analysis: does a bias correction make the blend more accurate? (tools/score_leads.py)
+# One-off analysis: blend accuracy at the real lead times (tools/score_leads.py)
 # Linux: GitHub's Mac runners can't reach api.open-meteo.com.
 
 on:
