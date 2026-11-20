@@ -163,24 +163,28 @@ private struct AQHIScale: View {
         (.good, 3.5), (.moderate, 6.5), (.unhealthy, 10.5), (.veryUnhealthy, 11),
     ]
 
+    /// Where `value` sits along the bar, 0 at AQHI 1 and 1 at 11.
+    private static func fraction(_ value: Double) -> CGFloat {
+        CGFloat(min(max((value - 1) / 10, 0), 1))
+    }
+
     var body: some View {
         GeometryReader { geo in
             let w = geo.size.width
-            let fraction = { (v: Double) in min(max((v - 1) / 10, 0), 1) }
             ZStack(alignment: .leading) {
                 HStack(spacing: 2) {
                     ForEach(Array(Self.bands.enumerated()), id: \.offset) { i, band in
-                        let start = i == 0 ? 1 : Self.bands[i - 1].1
+                        let start: Double = i == 0 ? 1 : Self.bands[i - 1].1
                         Capsule()
                             .fill(AQIColor.color(band.0))
-                            .frame(width: max(0, (fraction(band.1) - fraction(start)) * w - 2))
+                            .frame(width: max(0, (Self.fraction(band.1) - Self.fraction(start)) * w - 2))
                     }
                 }
                 Circle()
                     .fill(.white)
                     .overlay(Circle().stroke(.black.opacity(0.35), lineWidth: 1.5))
                     .frame(width: geo.size.height + 4, height: geo.size.height + 4)
-                    .offset(x: fraction(min(aqhi, 11)) * w - (geo.size.height + 4) / 2)
+                    .offset(x: Self.fraction(min(aqhi, 11)) * w - (geo.size.height + 4) / 2)
             }
         }
         .frame(height: 8)
