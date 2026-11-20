@@ -92,27 +92,6 @@ struct AirQualityView: View {
                     .font(.footnote)
                     .foregroundStyle(.white.opacity(0.82))
             }
-            if let index = air.pollenIndex, !index.isEmpty, air.pollen.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Label("Pollen", systemImage: "leaf.fill")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.82))
-                    ForEach(index.prefix(5)) { p in
-                        HStack {
-                            Text(p.name)
-                            Spacer()
-                            PollenIndexDots(value: p.value)
-                            Text(p.category)
-                                .font(.subheadline.weight(.semibold))
-                                .frame(width: 80, alignment: .trailing)
-                        }
-                        .accessibilityElement(children: .combine)
-                    }
-                    Text("Pollen: Google Pollen API.")
-                        .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.7))
-                }
-            }
 
             Text(air.aqhi != nil
                 ? "AQHI via Environment Canada. Pollutants via Open-Meteo (Copernicus CAMS), in µg/m³."
@@ -222,22 +201,6 @@ private struct PollenLevelDots: View {
             ForEach(0..<4) { i in
                 Circle()
                     .fill(i <= level.rawValue ? Brand.gold : .white.opacity(0.2))
-                    .frame(width: 7, height: 7)
-            }
-        }
-        .accessibilityHidden(true)
-    }
-}
-
-/// Five gold dots for Google's Universal Pollen Index (1–5).
-private struct PollenIndexDots: View {
-    let value: Int
-
-    var body: some View {
-        HStack(spacing: 3) {
-            ForEach(1...5, id: \.self) { i in
-                Circle()
-                    .fill(i <= value ? Brand.gold : .white.opacity(0.2))
                     .frame(width: 7, height: 7)
             }
         }
