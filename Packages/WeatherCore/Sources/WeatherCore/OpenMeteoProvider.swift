@@ -79,8 +79,6 @@ public struct OpenMeteoProvider: ForecastProvider {
             URLQueryItem(name: "timezone", value: "auto"),
             URLQueryItem(name: "timeformat", value: "unixtime"),
             URLQueryItem(name: "forecast_days", value: String(forecastDays)),
-            // Yesterday too, for "colder than yesterday" and the pressure trend. Split off in `parse`.
-            URLQueryItem(name: "past_days", value: "1"),
         ]
         return components.url!
     }
@@ -199,6 +197,8 @@ public struct OpenMeteoProvider: ForecastProvider {
             URLQueryItem(name: "timezone", value: "auto"),
             URLQueryItem(name: "timeformat", value: "unixtime"),
             URLQueryItem(name: "forecast_days", value: String(forecastDays)),
+            // Yesterday too, for "colder than yesterday" and the pressure trend. Split off in `parse`.
+            URLQueryItem(name: "past_days", value: "1"),
         ]
         return components.url!
     }
