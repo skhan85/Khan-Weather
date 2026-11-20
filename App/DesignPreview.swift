@@ -135,8 +135,8 @@ struct DesignPreview: View {
         return VStack(spacing: 14) {
             CurrentConditionsView(current: current, placeName: "Milton", today: today,
                                   outlook: "Warming to 16° by 2 PM.",
-                                  vsNormal: (NormalComparison.text(high: 16, normalHigh: 7), 1),
-                                  vsYesterday: (YesterdayComparison.text(-5), -1))
+                                  vsNormal: (NormalComparison.shortText(high: 16, normalHigh: 7), 1),
+                                  vsYesterday: (YesterdayComparison.shortText(-5), -1))
             VStack(spacing: 10) {
                 DayPartsView(parts: parts)
                 ForEach(rows.indices, id: \.self) { i in

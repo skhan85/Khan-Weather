@@ -95,6 +95,17 @@ public enum NormalComparison {
         default: return "About usual for the date · \(normal)"
         }
     }
+
+    /// Short form for the Now card: "9° above normal", "Normal for the date".
+    public static func shortText(high: Double, normalHigh: Double,
+                                 unit: TemperatureUnit = UnitSettings.current.temperature) -> String {
+        let shown = Int((abs(high - normalHigh) * (unit == .fahrenheit ? 1.8 : 1)).rounded())
+        switch trend(high: high, normalHigh: normalHigh) {
+        case 1: return "\(shown)° above normal"
+        case -1: return "\(shown)° below normal"
+        default: return "Normal for the date"
+        }
+    }
 }
 
 /// Fetches 1991–2020 daily highs and lows from Open-Meteo's archive and turns them into normals.

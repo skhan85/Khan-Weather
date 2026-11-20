@@ -33,6 +33,10 @@ final class YesterdayMoonTests: XCTestCase {
         XCTAssertEqual(YesterdayComparison.trend(1.2, unit: .celsius), 0)
         // 1.2 °C is 2 °F, which is worth saying in Fahrenheit.
         XCTAssertEqual(YesterdayComparison.text(1.2, unit: .fahrenheit), "2° warmer than yesterday at this time")
+        XCTAssertEqual(YesterdayComparison.shortText(-5.2, unit: .celsius), "5° colder than yesterday")
+        XCTAssertEqual(YesterdayComparison.shortText(0.4, unit: .celsius), "Same as yesterday")
+        XCTAssertEqual(NormalComparison.shortText(high: 15, normalHigh: 6, unit: .celsius), "9° above normal")
+        XCTAssertEqual(NormalComparison.shortText(high: 6.5, normalHigh: 6, unit: .celsius), "Normal for the date")
     }
 
     func testPressureTrend() {
