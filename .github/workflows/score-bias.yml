@@ -1,0 +1,35 @@
+name: Score bias correction
+
+# One-off analysis: does a bias correction make the blend more accurate? (tools/score_bias.py)
+# Linux: GitHub's Mac runners can't reach api.open-meteo.com.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/project-thread-s3gj1h]
+    paths: ["tools/score_bias.py", ".github/workflows/score-bias.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: tools/verify-cache
+          key: verify-cache-${{ github.run_id }}
+          restore-keys: verify-cache-
+      - name: Score
+        working-directory: tools
+        run: python3 score_bias.py | tee bias-report.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bias-results
+          path: |
+            tools/bias-results.json
+            tools/bias-report.txt
