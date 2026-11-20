@@ -60,6 +60,7 @@ struct ModelComparisonView: View {
                             Spacer(minLength: 4)
                             Text(WeatherFormat.temperature(row.high))
                                 .font(.body.weight(.bold))
+                                .frame(width: 40, alignment: .trailing)
                             Text(WeatherFormat.temperature(row.low))
                                 .font(.body.weight(.semibold))
                                 .foregroundStyle(.white.opacity(0.7))

@@ -113,8 +113,8 @@ struct ContentView: View {
         }
         .onChange(of: useHyperlocalPWS) { _, _ in Task { await reload() } }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active, Date().timeIntervalSince(lastReload) > 120 { 
-                                                                             Task { await reload() } }
+            // Coming back within two minutes doesn't refetch (Open-Meteo answers HTTP 429 when hit too often).
+            if phase == .active, Date().timeIntervalSince(lastReload) > 120 { Task { await reload() } }
         }
     }
 
@@ -137,12 +137,12 @@ struct ContentView: View {
         model.onCurrentLocation = { AlertNotifier.rememberCurrentLocation($0) }
         await model.refresh(place: places.selected)
         AlertNotifier.markSeen(model.alerts)
-        if case .loaded(let f) = model.state {
-            if places.selected == nil { AlertNotifier.markRainSeen(f.nowcast()) }
+        // After a failed load, skip the widget reload and prefetch: more requests would only add to a 429.
+        guard case .loaded(let f) = model.state else { return }
+        if places.selected == nil { AlertNotifier.markRainSeen(f.nowcast()) }
         WidgetCenter.shared.reloadAllTimelines()
         // Warm up the saved places so the first switch to one is quick.
-        Task { await model.prefetch(places.places)  }
-             }
+        Task { await model.prefetch(places.places) }
     }
 }
 
@@ -185,6 +185,15 @@ private struct ForecastList: View {
                 Section {
                     Label("Location is off, so this shows Toronto. Turn on location in Settings for weather where you are.",
                           systemImage: "location.slash")
+                        .font(.footnote)
+                }
+                .glassRow()
+            }
+
+            if Date().timeIntervalSince(forecast.fetchedAt) > 45 * 60 {
+                Section {
+                    Label("Couldn't refresh. This is the forecast from \(TimeText.time(forecast.fetchedAt, forecast.timeZone)); pull down to try again.",
+                          systemImage: "clock.arrow.circlepath")
                         .font(.footnote)
                 }
                 .glassRow()
@@ -415,6 +424,21 @@ struct CurrentConditionsView: View {
         return "\(WeatherFormat.feelsLikeLabel(current.feelsLikeKind)) \(WeatherFormat.temperature(current.feelsLike))"
     }
 
+    private var factChips: some View {
+        HStack(alignment: .center, spacing: 8) {
+            if let today {
+                FactChip(text: "\(WeatherFormat.temperature(today.high)) / \(WeatherFormat.temperature(today.low))",
+                         systemImage: "thermometer.medium")
+            }
+            if let humidity = current.humidity {
+                FactChip(text: WeatherFormat.percent(humidity), systemImage: "humidity.fill")
+            }
+            if let wind = current.windSpeed {
+                FactChip(text: WeatherFormat.wind(wind), systemImage: "wind")
+            }
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -461,26 +485,19 @@ struct CurrentConditionsView: View {
                     }
             }
             if let wear {
-                        Label {
-                            Text(wear).font(.subheadline.weight(.semibold))
-                        } icon: {
-                            Image(systemName: "tshirt.fill").foregroundStyle(Brand.gold)
-                        }
-                        .fixedSize(horizontal: false, vertical: true)
-                    }
-            HStack(alignment: .center, spacing: 8) {
-                if let today {
-                    FactChip(text: "\(WeatherFormat.temperature(today.high)) / \(WeatherFormat.temperature(today.low))",
-                             systemImage: "thermometer.medium")
+                Label {
+                    Text(wear).font(.subheadline.weight(.semibold))
+                } icon: {
+                    Image(systemName: "tshirt.fill").foregroundStyle(Brand.gold)
                 }
-                if let humidity = current.humidity {
-                    FactChip(text: WeatherFormat.percent(humidity), systemImage: "humidity.fill")
-                }
-                if let wind = current.windSpeed {
-                    FactChip(text: WeatherFormat.wind(wind), systemImage: "wind")
-                }
+                .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxWidth: .infinity, alignment: .leading) 
+            // In one row when they fit; on a narrow phone or with large text, a row that scrolls.
+            ViewThatFits(in: .horizontal) {
+                factChips
+                ScrollView(.horizontal, showsIndicators: false) { factChips }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
             Group {
                 if let observation, observation.isLocal {
                     Text(Self.localCaption(observation, timeZone: timeZone)

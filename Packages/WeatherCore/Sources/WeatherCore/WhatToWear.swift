@@ -20,7 +20,7 @@ public enum WhatToWear {
             let starting = wet.time <= current.time.addingTimeInterval(45 * 60) ? "" : " from \(hourText(wet.time))"
             extras.append(item + starting)
         }
-        let gusts = window.compactMap(\.windGusts).max() ?? current.windGusts ?? 0
+        let gusts = max(window.compactMap(\.windGusts).max() ?? 0, current.windGusts ?? 0)
         if gusts >= 50 { extras.append("something windproof") }
         let uv = window.compactMap(\.uvIndex).max() ?? 0
         if uv >= 6 { extras.append("sunscreen") }

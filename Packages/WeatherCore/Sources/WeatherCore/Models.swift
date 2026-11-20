@@ -308,6 +308,22 @@ public struct Forecast: Equatable, Codable, Sendable {
             .min()
     }
 
+    /// A saved forecast shown later (the network failed): "now" moves to the forecast hour for
+    /// `date`, since the old station reading and radar no longer describe it. Within the hour it
+    /// was made, the forecast is returned as it is.
+    public func rolledForward(to date: Date = Date()) -> Forecast {
+        guard date.timeIntervalSince(current.time) > 3600, let h = hour(at: date) else { return self }
+        var copy = self
+        copy.current = CurrentConditions(time: date, temperature: h.temperature, feelsLike: h.feelsLike ?? h.temperature,
+                                         feelsLikeKind: .apparent, humidity: h.humidity, windSpeed: h.windSpeed,
+                                         windDirection: h.windDirection, precipitation: h.precipitation,
+                                         condition: h.condition, isDay: h.isDay, pressure: nil, windGusts: h.windGusts)
+        copy.observation = nil
+        copy.radar = nil
+        copy.skySource = nil
+        return copy
+    }
+
     /// The daily rows as every screen and the widget show them: today's low is tonight's low
     /// (like The Weather Network), never above today's high. Use this instead of `daily` for
     /// anything displayed, so the list, the Now card, the day screen and the widget agree.

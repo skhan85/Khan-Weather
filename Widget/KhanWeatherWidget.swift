@@ -127,7 +127,7 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
         do {
             let obs = await observed
             // Same order as the app: the station reading re-weights the blend only when it's local.
-            let forecast = try await provider.forecast(for: coordinate, observedTemperature: obs?.blendAnchor)
+            let forecast = try await provider.forecast(for: coordinate, anchor: obs?.blendAnchor)
                 .applying(obs)
                 .applyingRadar(await radarNow)
             let days = forecast.displayDaily()

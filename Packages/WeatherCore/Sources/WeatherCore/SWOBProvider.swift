@@ -94,8 +94,8 @@ public struct SWOBProvider: ObservationProvider {
                                             "avg_wnd_spd_10m_pst1mt", "avg_wnd_spd"])
             .flatMap { (0...250).contains($0) ? $0 : nil }
         let gusts = firstValue(p, prefixes: ["max_wnd_spd_10m_pst1hr", "max_wnd_spd_10m_pst10mts",
-                                         "max_wnd_spd_pst1hr", "max_wnd_spd"])
-        .flatMap { (0...300).contains($0) ? $0 : nil }
+                                             "max_wnd_spd_pst1hr", "max_wnd_spd"])
+            .flatMap { (0...300).contains($0) ? $0 : nil }
         let direction = firstValue(p, prefixes: ["avg_wnd_dir_10m_pst10mts", "avg_wnd_dir_10m_pst2mts",
                                                  "avg_wnd_dir_10m_pst1mt", "avg_wnd_dir"])
         let humidity = value(p["rel_hum"]).flatMap { (0...100).contains($0) ? $0 : nil }

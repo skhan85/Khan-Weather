@@ -167,13 +167,13 @@ public struct PartnerStationProvider: ObservationProvider {
         let wind = (number("avg_wnd_spd_10m_pst10mts") ?? number("avg_wnd_spd_10m_pst2mts")
                     ?? number("avg_wnd_spd_10m_pst1mt")).flatMap { (0...250).contains($0) ? $0 : nil }
         let gusts = (number("max_wnd_spd_10m_pst1hr") ?? number("max_wnd_spd_10m_pst10mts")
-                     ?? number("max_wnd_spd_pst1hr")).flatMap { (0...300).contains($0) ? $0 : nil }                     
+                     ?? number("max_wnd_spd_pst1hr")).flatMap { (0...300).contains($0) ? $0 : nil }
         let direction = number("avg_wnd_dir_10m_pst10mts") ?? number("avg_wnd_dir_10m_pst2mts")
             ?? number("avg_wnd_dir_10m_pst1mt")
         let humidity = number("rel_hum").flatMap { (0...100).contains($0) ? $0 : nil }
         let rain1h = (number("pcpn_amt_pst1hr") ?? number("rnfl_amt_pst1hr"))
             .flatMap { (0...200).contains($0) ? $0 : nil }
-        
+
         var feelsLike: Double?
         var kind: FeelsLikeKind?
         if let chill = EnvironmentCanadaProvider.windChill(temperature: t, windKmh: wind) {
@@ -188,7 +188,7 @@ public struct PartnerStationProvider: ObservationProvider {
         if let rain1h {
             o.rainGauges = 1
             o.rainLastHourMm = rain1h
-        }            
+        }
         if let msc = v["msc_id"], let folder = partnerFolder(mscID: msc) {
             o.dataProvider = folder.uppercased()   // "ON-MTO"
         }

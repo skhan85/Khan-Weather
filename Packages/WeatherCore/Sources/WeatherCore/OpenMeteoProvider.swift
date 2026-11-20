@@ -26,18 +26,18 @@ public struct OpenMeteoProvider: ForecastProvider {
     }
 
     public func forecast(for coordinate: Coordinate) async throws -> Forecast {
-        try await forecast(for: coordinate, observedTemperature: nil)
+        try await forecast(for: coordinate, anchor: { nil })
     }
 
-    public func forecast(for coordinate: Coordinate, observedTemperature: Double?) async throws -> Forecast {
-        try await forecast(for: coordinate, anchor: { observedTemperature })
+    public func forecast(for coordinate: Coordinate, anchor: ModelBlend.Anchor?) async throws -> Forecast {
+        try await forecast(for: coordinate, anchor: { anchor })
     }
 
     /// `anchor` gives the local station temperature that re-weights the first hours of the blend
     /// (see `ModelBlend.blend`). It is awaited only once the model data has arrived, so a slow
     /// station overlaps the download instead of adding to it.
     public func forecast(for coordinate: Coordinate,
-                         anchor: @escaping @Sendable () async -> Double?) async throws -> Forecast {
+                         anchor: @escaping @Sendable () async -> ModelBlend.Anchor?) async throws -> Forecast {
         // In North America, temperatures are a weighted blend of several models (see ModelBlend).
         // Everything else stays on Open-Meteo's default.
         async let blended = Self.usesBlend(coordinate)
@@ -60,12 +60,12 @@ public struct OpenMeteoProvider: ForecastProvider {
 
     /// Blended hourly temperatures. nil if the request fails, so the default stays.
     func blendedTemperatures(for coordinate: Coordinate,
-                             anchor: @Sendable () async -> Double? = { nil }) async -> ModelTemperatures? {
+                             anchor: @Sendable () async -> ModelBlend.Anchor? = { nil }) async -> ModelTemperatures? {
         let request = URLRequest(url: blendURL(for: coordinate), timeoutInterval: 15)
         guard let (data, response) = try? await loader(request) else { return nil }
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { return nil }
         let observed = await anchor()
-        return try? Self.parseBlend(data, observedTemperature: observed, now: Date())
+        return try? Self.parseBlend(data, anchor: observed, now: Date())
     }
 
     func blendURL(for coordinate: Coordinate) -> URL {
@@ -97,9 +97,26 @@ public struct OpenMeteoProvider: ForecastProvider {
         var hourly: [Int: Hour] = [:]
     }
 
+    /// Each series' value at `epoch`, interpolated between the two hours around it (or the nearest
+    /// end when `epoch` is outside the hours).
+    static func valuesAt(_ epoch: Double, times: [Double],
+                         series: [WeatherModel: [Double?]]) -> [WeatherModel: Double] {
+        guard !times.isEmpty else { return [:] }
+        let after = times.firstIndex { $0 >= epoch } ?? times.count - 1
+        let before = max(0, times[after] > epoch ? after - 1 : after)
+        let span = times[after] - times[before]
+        let f = span > 0 ? min(1, max(0, (epoch - times[before]) / span)) : 0
+        return series.compactMapValues { s in
+            guard after < s.count, let a = s[before], let b = s[after] else {
+                return before < s.count ? s[before] : nil
+            }
+            return a + (b - a) * f
+        }
+    }
+
     /// With several models, Open-Meteo suffixes each field: "temperature_2m_gem_seamless".
     static func parseBlend(_ data: Data,
-                           observedTemperature: Double? = nil,
+                           anchor: ModelBlend.Anchor? = nil,
                            now: Date) throws -> ModelTemperatures {
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let hourly = root["hourly"] as? [String: Any],
@@ -112,11 +129,10 @@ public struct OpenMeteoProvider: ForecastProvider {
         let precip = Dictionary(uniqueKeysWithValues: ModelBlend.members.map { ($0, series("precipitation", $0)) })
 
         let nowEpoch = now.timeIntervalSince1970
-        let currentIndex = times.enumerated().min(by: {
-            abs($0.element.doubleValue - nowEpoch) < abs($1.element.doubleValue - nowEpoch)
-        })?.offset
-        let currentModelTemps: [WeatherModel: Double]? = currentIndex.map { idx in
-            temps.compactMapValues { idx < $0.count ? $0[idx] : nil }
+        let observedTemperature = anchor?.temperature
+        // Each model's temperature at the minute of the reading, read between the hours around it.
+        let currentModelTemps: [WeatherModel: Double]? = anchor.map { a in
+            Self.valuesAt(a.time.timeIntervalSince1970, times: times.map(\.doubleValue), series: temps)
         }
 
         var out = ModelTemperatures()

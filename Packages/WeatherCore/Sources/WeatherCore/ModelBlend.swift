@@ -25,9 +25,22 @@ public enum ModelBlend {
         [.europeAI: 0.47, .us: 0.23, .uk: 0.125, .europe: 0.075, .germany: 0.07, .canada: 0.03],
         [.europeAI: 0.49, .europe: 0.165, .us: 0.15, .uk: 0.08, .germany: 0.06, .canada: 0.055],
     ]
-    /// How many hours ahead a live PWS reading dynamically re-weights the models.
+    /// How many hours ahead a live station reading re-weights the models.
     static let liveWeightHours: Double = 6
-    
+    /// Added to each model's squared error (°C²) before inverting it. A single reading wobbles by
+    /// a degree or so, so a model 0.3° off gets about 1.6× the weight of one 1.5° off, not 5×.
+    static let errorSoftening: Double = 2
+
+    /// A local station reading that re-weights the first hours of the blend.
+    public struct Anchor: Equatable, Sendable {
+        public var temperature: Double
+        public var time: Date
+        public init(temperature: Double, time: Date) {
+            self.temperature = temperature
+            self.time = time
+        }
+    }
+
     /// The weight of `model` at `leadHours` from now.
     static func weight(_ model: WeatherModel, leadHours: Double) -> Double {
         let x = min(max((leadHours - 12) / 24, 0), Double(byDay.count - 1))
@@ -61,7 +74,7 @@ public enum ModelBlend {
                 let priorFloor = max(weight(model, leadHours: leadHours), 0.04)
                 if let nowTemp = currentModelTemps[model] {
                     let err = abs(nowTemp - obs)
-                    let invSq = priorFloor / (err * err + 0.5)
+                    let invSq = priorFloor / (err * err + errorSoftening)
                     errorWeights[model] = invSq
                     invTotal += invSq
                 }
