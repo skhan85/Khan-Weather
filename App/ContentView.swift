@@ -45,6 +45,7 @@ struct ContentView: View {
                     ForecastList(forecast: forecast,
                                  alerts: model.alerts,
                                  airQuality: model.airQuality,
+                                 normals: model.normals,
                                  placeName: model.placeName,
                                  isSavedPlace: places.selected != nil,
                                  attribution: model.provider.attribution,
@@ -150,6 +151,7 @@ private struct ForecastList: View {
     let forecast: Forecast
     let alerts: [WeatherAlert]
     let airQuality: AirQuality?
+    var normals: ClimateNormals? = nil
     let placeName: String?
     let isSavedPlace: Bool
     let attribution: String
@@ -178,6 +180,20 @@ private struct ForecastList: View {
     private var todayDisplay: DailyForecast? { forecast.displayDay() }
     private var weekLow: Double { days.map(\.low).min() ?? 0 }
     private var weekHigh: Double { days.map(\.high).max() ?? 0 }
+    /// Normals for this spot only (never the previous place's).
+    private var localNormals: ClimateNormals? {
+        guard let normals, normals.covers(forecast.location) else { return nil }
+        return normals
+    }
+    private func normalHigh(_ day: DailyForecast) -> Double? {
+        localNormals?.normal(for: day.date, timeZone: forecast.timeZone)?.high
+    }
+    /// "6° warmer than usual · normal high 7°" for today, from the same high as the chip.
+    private var vsNormal: (text: String, trend: Int)? {
+        guard let today = todayDisplay, let normal = normalHigh(today) else { return nil }
+        return (NormalComparison.text(high: today.high, normalHigh: normal),
+                NormalComparison.trend(high: today.high, normalHigh: normal))
+    }
 
     var body: some View {
         List {
@@ -212,10 +228,21 @@ private struct ForecastList: View {
                                       today: todayDisplay, outlook: Outlook.text(forecast, hourText: { TimeText.hour($0, forecast.timeZone) }),
                                       wear: WhatToWear.tip(current: forecast.current,
                                                            upcoming: Array(forecast.upcomingHours(count: 13).dropFirst()),
-                                                           hourText: { TimeText.hour($0, forecast.timeZone) }))
+                                                           hourText: { TimeText.hour($0, forecast.timeZone) }),
+                                      vsNormal: vsNormal)
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+            }
+
+            let parts = forecast.dayParts()
+            if parts.count == 4 {
+                Section {
+                    DayPartsView(parts: parts)
+                } header: {
+                    SkySectionHeader(title: "Today and tonight", systemImage: "sun.and.horizon")
+                }
+                .glassRow()
             }
 
             Section {
@@ -231,11 +258,13 @@ private struct ForecastList: View {
                 ForEach(Array(days.enumerated()), id: \.element.id) { index, day in
                     NavigationLink {
                         DayDetailView(day: day, hours: forecast.hours(on: day), timeZone: forecast.timeZone,
-                                      location: forecast.location, appDays: days)
+                                      location: forecast.location, appDays: days,
+                                      normal: localNormals?.normal(for: day.date, timeZone: forecast.timeZone))
                     } label: {
                         DailyRow(day: day, isToday: index == 0, timeZone: forecast.timeZone,
                                  weekLow: weekLow, weekHigh: weekHigh,
-                                 current: index == 0 ? forecast.current.temperature : nil)
+                                 current: index == 0 ? forecast.current.temperature : nil,
+                                 normalTrend: normalHigh(day).map { NormalComparison.trend(high: day.high, normalHigh: $0) })
                     }
                 }
                 NavigationLink {
@@ -310,13 +339,15 @@ private struct ForecastList: View {
 }
 
 /// One day in the 10-day list: weekday, icon, chance of rain or snow, and the low-to-high bar.
-private struct DailyRow: View {
+struct DailyRow: View {
     let day: DailyForecast
     let isToday: Bool
     let timeZone: TimeZone
     let weekLow: Double
     let weekHigh: Double
     var current: Double?
+    /// +1 above normal, -1 below, 0 or nil: no arrow.
+    var normalTrend: Int? = nil
 
     var body: some View {
         HStack(spacing: 10) {
@@ -342,9 +373,17 @@ private struct DailyRow: View {
                              font: .caption2.weight(.semibold), showsIcon: false)
             }
             .frame(width: 40)
-            Text(WeatherFormat.temperature(day.high))
-                .font(.body.weight(.semibold))
-                .frame(width: 36, alignment: .trailing)
+            HStack(spacing: 1) {
+                if let normalTrend, normalTrend != 0 {
+                    Image(systemName: normalTrend > 0 ? "arrow.up" : "arrow.down")
+                        .font(.caption2.weight(.heavy))
+                        .foregroundStyle(normalTrend > 0 ? Brand.gold : Color(red: 0.62, green: 0.84, blue: 1))
+                        .accessibilityLabel(normalTrend > 0 ? "Above normal" : "Below normal")
+                }
+                Text(WeatherFormat.temperature(day.high))
+                    .font(.body.weight(.semibold))
+            }
+            .frame(width: 46, alignment: .trailing)
             TemperatureRangeBar(low: day.low, high: day.high, weekLow: weekLow, weekHigh: weekHigh, current: current)
             Text(WeatherFormat.temperature(day.low))
                 .font(.body.weight(.medium))
@@ -368,6 +407,8 @@ struct CurrentConditionsView: View {
     var outlook: String? = nil
     /// "Warm jacket, and an umbrella from 1 PM."
     var wear: String? = nil
+    /// "6° warmer than usual · normal high 7°", and +1/-1/0 for the icon.
+    var vsNormal: (text: String, trend: Int)? = nil
     @AppStorage(DisplaySettings.mainTemperatureKey) private var mainTemperature = MainTemperature.actual.rawValue
 
     private var feelsFirst: Bool { mainTemperature == MainTemperature.feelsLike.rawValue }
@@ -447,6 +488,16 @@ struct CurrentConditionsView: View {
                 }
                 .fixedSize(horizontal: false, vertical: true)
             }
+            if let vsNormal {
+                Label {
+                    Text(vsNormal.text).font(.subheadline.weight(.semibold))
+                } icon: {
+                    Image(systemName: vsNormal.trend > 0 ? "thermometer.sun.fill"
+                          : vsNormal.trend < 0 ? "thermometer.snowflake" : "thermometer.medium")
+                        .foregroundStyle(Brand.gold)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
             // In one row when they fit; on a narrow phone or with large text, a row that scrolls.
             ViewThatFits(in: .horizontal) {
                 factChips
@@ -515,8 +566,6 @@ struct TodayDetailsView: View {
             if let dir = WeatherFormat.compass(now.windDirection) { text = "\(dir), \(text)" }
             add("Gusts", text, "wind")
         }
-        add("Sunrise", day?.sunrise.map { TimeText.time($0, tz) }, "sunrise.fill")
-        add("Sunset", day?.sunset.map { TimeText.time($0, tz) }, "sunset.fill")
         if let sunrise = day?.sunrise, let sunset = day?.sunset {
             let mins = Int(sunset.timeIntervalSince(sunrise) / 60)
             add("Daylight", "\(mins / 60) hr \(mins % 60) min", "sun.max")
@@ -528,6 +577,15 @@ struct TodayDetailsView: View {
     }
 
     var body: some View {
+        VStack(spacing: 10) {
+            if let day = forecast.day(), let rise = day.sunrise, let set = day.sunset {
+                SunArcView(sunrise: rise, sunset: set, timeZone: forecast.timeZone)
+            }
+            grid
+        }
+    }
+
+    private var grid: some View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
             ForEach(tiles) { tile in
                 VStack(alignment: .leading, spacing: 4) {

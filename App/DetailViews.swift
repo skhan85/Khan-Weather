@@ -177,6 +177,8 @@ struct DayDetailView: View {
     var location: Coordinate?
     /// All the app's displayed days, passed on to the model comparison.
     var appDays: [DailyForecast] = []
+    /// 1991–2020 normal high and low for the date, when known.
+    var normal: (high: Double, low: Double)? = nil
 
     var body: some View {
         List {
@@ -215,6 +217,9 @@ struct DayDetailView: View {
                               return "\($0.label) (±\(String(format: "%.0f", half))°)"
                           },
                           systemImage: "checkmark.seal")
+                DetailRow(title: "Normal for the date",
+                          value: normal.map { "\(WeatherFormat.temperature($0.high)) / \(WeatherFormat.temperature($0.low))" },
+                          systemImage: "calendar.badge.clock")
                 DetailRow(title: "Sunrise", value: day.sunrise.map { TimeText.time($0, timeZone) },
                           systemImage: "sunrise")
                 DetailRow(title: "Sunset", value: day.sunset.map { TimeText.time($0, timeZone) },
