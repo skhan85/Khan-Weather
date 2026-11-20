@@ -247,18 +247,37 @@ public struct Forecast: Equatable, Codable, Sendable {
         hours[0].windSpeed = c.windSpeed ?? hours[0].windSpeed
         hours[0].windDirection = c.windDirection ?? hours[0].windDirection
         hours[0].windGusts = c.windGusts ?? hours[0].windGusts
-        return Self.withoutRoundingBlips(hours)
+        return Self.withoutRoundingBlips(hours, keep: dayExtremeTimes(at: date))
+    }
+
+    /// The hour of each day's highest and lowest temperature, and of tonight's low. The hourly
+    /// curve leaves these as they are, so it always shows the same high and low as the daily rows.
+    func dayExtremeTimes(at date: Date = Date()) -> Set<Date> {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let byDay = Dictionary(grouping: hourly) { calendar.startOfDay(for: $0.time) }
+        var out = Set<Date>()
+        for hours in byDay.values {
+            if let hi = hours.max(by: { $0.temperature < $1.temperature }) { out.insert(hi.time) }
+            if let lo = hours.min(by: { $0.temperature < $1.temperature }) { out.insert(lo.time) }
+        }
+        if let tonight = tonightLow(from: date), let hour = hourly.first(where: { $0.temperature == tonight && $0.time > date.addingTimeInterval(-3600) }) {
+            out.insert(hour.time)
+        }
+        return out
     }
 
     /// A flat 6.4°, 6.5°, 6.4° reads "6°, 7°, 6°": one hour pops up or down only because it sits
     /// on the other side of a rounding line. When an hour's rounded value differs from two
     /// neighbours that agree, and the hour itself is within half a degree of them, it takes their
     /// average, which rounds the same as they do. Real one-hour changes are bigger and stay.
+    /// Hours in `keep` (a day's high or low) are never changed.
     static func withoutRoundingBlips(_ hours: [HourlyForecast],
-                                     unit: TemperatureUnit = UnitSettings.current.temperature) -> [HourlyForecast] {
+                                     unit: TemperatureUnit = UnitSettings.current.temperature,
+                                     keep: Set<Date> = []) -> [HourlyForecast] {
         guard hours.count >= 3 else { return hours }
         var out = hours
-        for i in 1..<(hours.count - 1) {
+        for i in 1..<(hours.count - 1) where !keep.contains(hours[i].time) {
             let a = unit.convert(hours[i - 1].temperature), b = unit.convert(hours[i].temperature)
             let c = unit.convert(hours[i + 1].temperature)
             guard a.rounded() == c.rounded(), b.rounded() != a.rounded(), abs(b - (a + c) / 2) < 0.6 else { continue }

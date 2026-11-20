@@ -108,3 +108,61 @@ final class CompareRowMatchesAppTests: XCTestCase {
         XCTAssertEqual(out[3].high, 9, "a day the app doesn't have keeps the blend")
     }
 }
+
+final class TodaysHighOnTheCurveTests: XCTestCase {
+    private let tz = TimeZone(identifier: "America/Toronto")!
+    private let midnight = Date(timeIntervalSince1970: 1_795_150_800)   // 2026-11-20 00:00 Toronto
+
+    private func hourText(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = tz
+        f.dateFormat = "h a"
+        f.amSymbol = "am"
+        f.pmSymbol = "pm"
+        return f.string(from: date)
+    }
+
+    /// 6:40 am, 8°. The day peaks at 15.6° at 1 pm between two 15.4° hours, so the daily high is
+    /// 16°. The rounding-blip rule used to flatten that hour to 15°, and the summary said
+    /// "Warming to 15° by 12 pm" under a 16° high.
+    private func forecast() -> Forecast {
+        let temps: [Double] = [7.5, 7.3, 7.1, 7, 7.2, 7.6, 7.9, 8, 8.1, 9, 11, 13, 15.4, 15.6, 15.4, 14.6,
+                               13, 11.5, 10, 8.5, 7, 5.5, 4.5, 3.8, 3.6, 3.4, 3.6, 4]
+        let hourly = temps.enumerated().map { i, t in
+            HourlyForecast(time: midnight.addingTimeInterval(Double(i) * 3600), temperature: t, condition: .clear)
+        }
+        let now = midnight.addingTimeInterval(6 * 3600 + 40 * 60)
+        let current = CurrentConditions(time: now, temperature: 8, feelsLike: 6, feelsLikeKind: .apparent,
+                                        condition: .clear, isDay: false)
+        let days = [DailyForecast(date: midnight, high: 15.6, low: 7, condition: .clear),
+                    DailyForecast(date: midnight.addingTimeInterval(86_400), high: 12, low: 3.1, condition: .clear)]
+        return Forecast(location: .fallback, timeZoneIdentifier: tz.identifier, current: current,
+                        hourly: hourly, daily: days, source: "test", fetchedAt: now)
+    }
+
+    func testCurveKeepsTheDaysHigh() {
+        let f = forecast()
+        let now = midnight.addingTimeInterval(6 * 3600 + 40 * 60)
+        let curve = f.hoursStartingNow(from: now, count: 24)
+        let shownMax = curve.filter { $0.time < midnight.addingTimeInterval(86_400) }
+            .map { Int($0.temperature.rounded()) }.max()
+        XCTAssertEqual(shownMax, 16)
+        XCTAssertEqual(Outlook.text(f, at: now, hourText: hourText), "Warming to a high of 16° by 1 pm.")
+    }
+
+    func testCurveKeepsTonightsLow() {
+        let f = forecast()
+        let now = midnight.addingTimeInterval(6 * 3600 + 40 * 60)
+        let curve = f.hoursStartingNow(from: now, count: 24)
+        // 3.6, 3.4, 3.6 would read 4°, 3°, 4°, a blip, but 3.4 is tonight's low, so it stays.
+        XCTAssertEqual(curve.map(\.temperature).min(), 3.4)
+    }
+
+    func testHomeStationsOnByDefaultForAppAndWidget() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "HomeStations-\(UUID())"))
+        XCTAssertTrue(ObservationSource.usesHyperlocal(defaults))
+        defaults.set(false, forKey: ObservationSource.hyperlocalKey)
+        XCTAssertFalse(ObservationSource.usesHyperlocal(defaults))
+    }
+}

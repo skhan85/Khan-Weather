@@ -42,8 +42,10 @@ struct WeatherWidgetIntent: WidgetConfigurationIntent {
 
     /// Mirrors Settings > Hyperlocal PWS stations in the app. The widget can't read the app's
     /// settings (no App Group on a free Apple ID), so it has its own switch; keep both the same.
-    @Parameter(title: "Hyperlocal PWS stations", default: false)
-    var useHyperlocalPWS: Bool
+    /// A new name (it was `useHyperlocalPWS`, default off), so widgets already on the Home Screen
+    /// pick up the new default and match the app.
+    @Parameter(title: "Home weather stations", default: true)
+    var useHomeStations: Bool
 }
 
 /// Alert notifications from the widget. The widget can't read the app's settings or memory (no
@@ -87,14 +89,14 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> WeatherEntry { .placeholder }
 
     func snapshot(for configuration: WeatherWidgetIntent, in context: Context) async -> WeatherEntry {
-        var entry: WeatherEntry = context.isPreview ? .placeholder : await loadEntry(notify: .off, hyperlocal: configuration.useHyperlocalPWS)
+        var entry: WeatherEntry = context.isPreview ? .placeholder : await loadEntry(notify: .off, hyperlocal: configuration.useHomeStations)
         entry.unit = configuration.temperatureUnit.unit
         return entry
     }
 
     func timeline(for configuration: WeatherWidgetIntent, in context: Context) async -> Timeline<WeatherEntry> {
         var entry = await loadEntry(notify: configuration.alertNotifications,
-                                    hyperlocal: configuration.useHyperlocalPWS)
+                                    hyperlocal: configuration.useHomeStations)
         entry.unit = configuration.temperatureUnit.unit
         // Ask iOS to refresh in about 30 minutes; it may wait longer to save battery.
         return Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(30 * 60)))
@@ -117,7 +119,9 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
         // give up on the whole refresh and keep showing an old widget.
         let observations = ObservationSource.provider(hyperlocal: hyperlocal)
         let alerts = self.alerts
-        async let observed = Deadline.run(8) { try? await observations.observation(near: coordinate) }
+        let previous = WidgetObservationMemory.last(near: coordinate)
+        async let observed = Deadline.run(8) { try? await observations.observation(near: coordinate) }?
+            .smoothed(after: previous)
         async let active = Deadline.run(8) { try? await alerts.alerts(near: coordinate) }
         async let radarNow = Deadline.run(6) { try? await ECCCRadarProvider().now(at: coordinate) }
         // Only for a real location: the Toronto fallback isn't where the person is.
@@ -126,6 +130,7 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
         }
         do {
             let obs = await observed
+            if let obs { WidgetObservationMemory.remember(obs, near: coordinate) }
             // Same order as the app: the station reading re-weights the blend only when it's local.
             let forecast = try await provider.forecast(for: coordinate, anchor: obs?.blendAnchor)
                 .applying(obs)
@@ -166,5 +171,26 @@ struct KhanWeatherWidget: Widget {
         .configurationDisplayName("Current weather")
         .description("Temperature, the next few hours, today's high and low, and weather alerts where you are.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .accessoryInline, .accessoryCircular, .accessoryRectangular])
+    }
+}
+
+/// The widget's last station reading for a spot, so it smooths home-station wobble the same way
+/// the app does (`Observation.smoothed(after:)`).
+enum WidgetObservationMemory {
+    private static let key = "widgetLastObservation"
+
+    private static func spot(_ c: Coordinate) -> String {
+        String(format: "%.2f,%.2f", c.latitude, c.longitude)
+    }
+
+    static func last(near c: Coordinate) -> Observation? {
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let saved = try? JSONDecoder().decode([String: Observation].self, from: data) else { return nil }
+        return saved[spot(c)]
+    }
+
+    static func remember(_ o: Observation, near c: Coordinate) {
+        guard let data = try? JSONEncoder().encode([spot(c): o]) else { return }
+        UserDefaults.standard.set(data, forKey: key)
     }
 }
