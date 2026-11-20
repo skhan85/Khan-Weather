@@ -125,8 +125,8 @@ struct DesignPreview: View {
         let base = entry.current!
         entry = WeatherEntry(
             date: entry.date,
-            current: CurrentConditions(time: base.time, temperature: condition == .snow ? -4 : 21,
-                                       feelsLike: condition == .snow ? -9 : 23, feelsLikeKind: .apparent,
+            current: CurrentConditions(time: base.time, temperature: condition == .snow ? -4 : 6,
+                                       feelsLike: condition == .snow ? -9 : 3, feelsLikeKind: .apparent,
                                        condition: condition, isDay: isDay),
             high: entry.high, low: entry.low, placeName: "Milton", error: nil,
             alert: condition == .thunderstorm ? "Severe thunderstorm warning" : nil,
