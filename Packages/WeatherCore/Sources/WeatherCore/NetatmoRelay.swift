@@ -23,7 +23,7 @@ public struct NetatmoStation: Decodable, Equatable, Sendable {
 public struct NetatmoRelayProvider: ObservationProvider {
     public let attribution = "Personal weather stations: Netatmo"
     /// Fixed https address of the relay (Tailscale Funnel on the Pi).
-    public static let defaultBaseURL = URL(string: "https://raspberrypi.tailf30d3.ts.net/v1/netatmo")!
+    public static let defaultBaseURL = URL(string: "https://weather-relay.khanofmilton.ca/v1/netatmo")!
 
     private let baseURL: URL
     private let loader: HTTPLoader
