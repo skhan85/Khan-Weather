@@ -24,6 +24,11 @@ public struct Nowcast: Equatable, Sendable {
     public var kind: Kind
     public var change: Change
 
+    public init(kind: Kind, change: Change) {
+        self.kind = kind
+        self.change = change
+    }
+
     public var text: String {
         switch change {
         case .starting(let m): return "\(kind.noun) starting in about \(Self.duration(m))"
