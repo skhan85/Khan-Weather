@@ -110,6 +110,26 @@ public struct ModelComparisonProvider: Sendable {
         return out + blendRows(out)
     }
 
+    /// The row for the model Khan Weather uses shows the app's own high and low for the day
+    /// (the 10-day list, the Now card and the widget), not a blend of each model's daily max/min.
+    /// Models peak at different hours, so averaging their highs runs warmer than the high of the
+    /// averaged hourly curve the app shows (16° against 15°), and today's low is tonight's low.
+    /// `appDays` are the app's displayed rows (`Forecast.displayDaily`); days it doesn't have keep
+    /// the computed blend.
+    public static func showingApp(_ rows: [ModelDay], appDays: [DailyForecast], used: WeatherModel,
+                                  timeZone: TimeZone) -> [ModelDay] {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        return rows.map { row in
+            guard row.model == used,
+                  let day = appDays.first(where: { calendar.isDate($0.date, inSameDayAs: row.date) }) else { return row }
+            var r = row
+            r.high = day.high
+            r.low = day.low
+            return r
+        }
+    }
+
     /// One "Khan Weather blend" row per day, weighted the same way as the app's temperatures.
     static func blendRows(_ days: [ModelDay]) -> [ModelDay] {
         let dates = Array(Set(days.map(\.date))).sorted()

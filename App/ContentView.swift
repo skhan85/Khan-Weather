@@ -209,7 +209,7 @@ private struct ForecastList: View {
                 CurrentConditionsView(current: forecast.current, placeName: placeName, isSavedPlace: isSavedPlace,
                                       observation: forecast.observation, timeZone: forecast.timeZone,
                                       skySource: forecast.skySource,
-                                      today: todayDisplay, outlook: Outlook.text(forecast),
+                                      today: todayDisplay, outlook: Outlook.text(forecast, hourText: { TimeText.hour($0, forecast.timeZone) }),
                                       wear: WhatToWear.tip(current: forecast.current,
                                                            upcoming: Array(forecast.upcomingHours(count: 13).dropFirst()),
                                                            hourText: { TimeText.hour($0, forecast.timeZone) }))
@@ -231,7 +231,7 @@ private struct ForecastList: View {
                 ForEach(Array(days.enumerated()), id: \.element.id) { index, day in
                     NavigationLink {
                         DayDetailView(day: day, hours: forecast.hours(on: day), timeZone: forecast.timeZone,
-                                      location: forecast.location)
+                                      location: forecast.location, appDays: days)
                     } label: {
                         DailyRow(day: day, isToday: index == 0, timeZone: forecast.timeZone,
                                  weekLow: weekLow, weekHigh: weekHigh,
@@ -239,7 +239,7 @@ private struct ForecastList: View {
                     }
                 }
                 NavigationLink {
-                    ModelGridView(location: forecast.location, timeZone: forecast.timeZone)
+                    ModelGridView(location: forecast.location, timeZone: forecast.timeZone, appDays: days)
                 } label: {
                     Label {
                         Text("Compare all models").font(.subheadline.weight(.semibold))
@@ -306,51 +306,6 @@ private struct ForecastList: View {
                                         shownTemperature: forecast.current.temperature)
         }
         .fontDesign(.rounded)
-    }
-}
-
-/// One plain sentence about the next few hours, e.g. "Cooling to 1° by 11 PM."
-enum Outlook {
-    /// Whole degrees in the user's unit, exactly as the screen shows them.
-    private static func shown(_ celsius: Double) -> Int {
-        Int(UnitSettings.current.temperature.convert(celsius).rounded())
-    }
-
-    private static func isCloudOnly(_ c: WeatherCondition) -> Bool {
-        [.mainlyClear, .partlyCloudy, .overcast].contains(c)
-    }
-
-    /// Built from the same numbers as the Now card and the hourly curve, so they never disagree.
-    static func text(_ forecast: Forecast) -> String? {
-        if let nowcast = forecast.nowcast() { return nowcast.text }
-        let later = Array(forecast.upcomingHours(count: 7).dropFirst())
-        guard later.count >= 3, let last = later.last else { return nil }
-        let tz = forecast.timeZone
-        let now = forecast.current
-        // Rain or snow coming up is the most useful thing to say.
-        if let wet = later.first(where: { ($0.precipitationProbability ?? 0) >= 50 }) {
-            return "\(wet.precipitationKind.noun.capitalized) likely around \(TimeText.hour(wet.time, tz))."
-        }
-       let nowShown = shown(now.temperature)
-        let minHour = later.min(by: { $0.temperature < $1.temperature }) ?? last
-        let maxHour = later.max(by: { $0.temperature < $1.temperature }) ?? last
-        let warmDelta = shown(maxHour.temperature) - nowShown
-        let coolDelta = nowShown - shown(minHour.temperature)
-        if max(warmDelta, coolDelta) >= 2 {
-            let peak = warmDelta >= coolDelta ? maxHour : minHour
-            let targetShown = shown(peak.temperature)
-            let reach = later.first(where: { shown($0.temperature) == targetShown }) ?? peak
-            let verb = targetShown < nowShown ? "Cooling" : "Warming"
-            return "\(verb) to \(WeatherFormat.temperature(peak.temperature)) by \(TimeText.hour(reach.time, tz))."
-        }
-        if last.condition != now.condition && !(isCloudOnly(last.condition) && isCloudOnly(now.condition)) {
-            return "\(last.condition.description) by \(TimeText.hour(last.time, tz))."
-        }
-        // Steady: quote the temperature the coming hours mostly show.
-        let counts = Dictionary(grouping: later, by: { shown($0.temperature) }).mapValues(\.count)
-        let typical = counts.max { $0.value < $1.value }?.key ?? nowShown
-        let typicalHour = later.first(where: { shown($0.temperature) == typical }) ?? last
-        return "Steady around \(WeatherFormat.temperature(typicalHour.temperature)) for the next few hours."
     }
 }
 

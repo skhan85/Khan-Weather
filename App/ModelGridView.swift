@@ -6,6 +6,8 @@ import WeatherCore
 struct ModelGridView: View {
     let location: Coordinate
     let timeZone: TimeZone
+    /// The app's displayed days, so the Khan Weather row matches the rest of the app.
+    var appDays: [DailyForecast] = []
 
     @State private var days: [ModelDay] = []
     @State private var loading = true
@@ -119,6 +121,8 @@ struct ModelGridView: View {
 
     private func load() async {
         defer { loading = false }
-        days = (try? await ModelComparisonProvider().days(at: location)) ?? []
+        let all = (try? await ModelComparisonProvider().days(at: location)) ?? []
+        days = ModelComparisonProvider.showingApp(all, appDays: appDays,
+                                                  used: WeatherModel.usedForTemperatures(at: location), timeZone: timeZone)
     }
 }

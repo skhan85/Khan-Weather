@@ -175,6 +175,8 @@ struct DayDetailView: View {
     let hours: [HourlyForecast]
     let timeZone: TimeZone
     var location: Coordinate?
+    /// All the app's displayed days, passed on to the model comparison.
+    var appDays: [DailyForecast] = []
 
     var body: some View {
         List {
@@ -224,7 +226,7 @@ struct DayDetailView: View {
             if let location {
                 Section {
                     NavigationLink {
-                        ModelComparisonView(day: day, location: location, timeZone: timeZone)
+                        ModelComparisonView(day: day, location: location, timeZone: timeZone, appDays: appDays)
                     } label: {
                         Label {
                             Text("Compare forecast models").font(.body.weight(.semibold))
