@@ -6,6 +6,8 @@ struct ModelComparisonView: View {
     let day: DailyForecast
     let location: Coordinate
     let timeZone: TimeZone
+    /// The app's displayed days, so the Khan Weather row matches the rest of the app.
+    var appDays: [DailyForecast] = []
 
     @State private var rows: [ModelDay] = []
     @State private var failed = false
@@ -78,7 +80,7 @@ struct ModelComparisonView: View {
             }
             Section {
                 NavigationLink {
-                    ModelGridView(location: location, timeZone: timeZone)
+                    ModelGridView(location: location, timeZone: timeZone, appDays: appDays)
                 } label: {
                     Label {
                         Text("All models, all 10 days").font(.subheadline.weight(.semibold))
@@ -110,7 +112,7 @@ struct ModelComparisonView: View {
         let source = usedModel == .blend
             ? "Khan Weather's temperatures are a blend of eight models, weighted by how accurate each model was near Milton over the past year. Today the German (ICON), European and Canadian models lead; from tomorrow the European AI model (AIFS) leads, with NOAA's GFS, the German and UK models close behind. The first hours are also eased toward nearby station readings."
             : "Khan Weather's temperatures here come from \(usedModel.name)."
-        return source + " High-res models only reach a day or two ahead. Models via Open-Meteo.com (CC BY 4.0)."
+        return source + " The highlighted row's high and low are the ones the app shows, taken from its hourly forecast (today's low is tonight's low); the other rows are each model's midnight-to-midnight high and low." + " High-res models only reach a day or two ahead. Models via Open-Meteo.com (CC BY 4.0)."
     }
 
     /// "Models agree within 2°" or "Models disagree: highs from 3° to 9°".
@@ -131,7 +133,8 @@ struct ModelComparisonView: View {
             let sameDay = try await ModelComparisonProvider().days(at: location)
                 .filter { calendar.isDate($0.date, inSameDayAs: day.date) }
             let used = usedModel
-            rows = sameDay.filter { $0.model == used } + sameDay.filter { $0.model != used }
+            let ordered = sameDay.filter { $0.model == used } + sameDay.filter { $0.model != used }
+            rows = ModelComparisonProvider.showingApp(ordered, appDays: [day] + appDays, used: used, timeZone: timeZone)
             failed = rows.isEmpty
         } catch {
             failed = true
