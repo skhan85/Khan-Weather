@@ -93,6 +93,8 @@ public struct OpenMeteoProvider: ForecastProvider {
             var count: Int
             var wet: Int
             var freezing: Int
+            /// Each model's precipitation (mm) this hour, for the day's chance of rain.
+            var precipitation: [WeatherModel: Double] = [:]
         }
         var hourly: [Int: Hour] = [:]
     }
@@ -147,14 +149,16 @@ public struct OpenMeteoProvider: ForecastProvider {
                                               observedTemperature: observedTemperature,
                                               currentModelTemps: currentModelTemps) else { continue }
             let values = Array(hourTemps.values)
-            let wet = at(precip).filter { hourTemps[$0.key] != nil && $0.value >= 0.2 }.count
+            let hourPrecip = at(precip).filter { hourTemps[$0.key] != nil }
+            let wet = hourPrecip.filter { $0.value >= ModelBlend.wetHourMm }.count
             out.hourly[t.intValue] = .init(temperature: temp,
                                            feelsLike: ModelBlend.blend(at(feels),
                                                                        leadHours: lead,
                                                                        observedTemperature: observedTemperature,
                                                                        currentModelTemps: currentModelTemps),
                                            low: values.min()!, high: values.max()!, count: values.count,
-                                           wet: wet, freezing: values.filter { $0 <= 0 }.count)
+                                           wet: wet, freezing: values.filter { $0 <= 0 }.count,
+                                           precipitation: hourPrecip)
         }
         return out
     }
@@ -446,12 +450,29 @@ extension Forecast {
                 h.modelCount = t.count
                 h.modelsWet = t.wet
                 h.modelsFreezing = t.freezing
+                h.precipitationProbability = ModelBlend.hourlyChance(openMeteo: h.precipitationProbability,
+                                                                     wet: t.wet, of: t.count)
             }
             return h
         }
-        copy.daily = daily.map { day in
+        copy.daily = daily.enumerated().map { index, day in
             var d = day
             let hours = copy.hours(on: day).filter { temps.hourly[Int($0.time.timeIntervalSince1970)] != nil }
+            if hours.count >= 20 {
+                // Each model's total for the day, from the models that cover every hour of it.
+                var totals: [WeatherModel: Double] = [:], counts: [WeatherModel: Int] = [:]
+                for h in hours {
+                    for (m, mm) in temps.hourly[Int(h.time.timeIntervalSince1970)]?.precipitation ?? [:] {
+                        totals[m, default: 0] += mm
+                        counts[m, default: 0] += 1
+                    }
+                }
+                let full = totals.filter { counts[$0.key] == hours.count }
+                d.precipitationProbability = ModelBlend.dailyChance(
+                    openMeteo: d.precipitationProbability,
+                    wet: full.values.filter { $0 >= ModelBlend.wetDayMm }.count,
+                    of: full.count, dayIndex: index)
+            }
             let spreads = hours.compactMap { h in h.modelHigh.flatMap { hi in h.modelLow.map { hi - $0 } } }
             if !spreads.isEmpty { d.modelSpread = spreads.reduce(0, +) / Double(spreads.count) }
             guard hours.count >= 18 else { return d }  // ensure blended daily high/low match the 8-model hourly curve
@@ -464,7 +485,8 @@ extension Forecast {
             }
             return d
         }
-        return copy
+        // A day whose chance fell may no longer be headlined as rain.
+        return copy.withDailyHeadlines()
     }
 }
 
