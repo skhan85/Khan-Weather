@@ -20,6 +20,9 @@ final class WeatherViewModel: ObservableObject {
     @Published private(set) var alerts: [WeatherAlert] = []
     /// Air quality and pollen at the forecast spot; nil if the service didn't answer.
     @Published private(set) var airQuality: AirQuality?
+    /// 1991–2020 normal highs and lows near the forecast spot, for "warmer than usual". Screens
+    /// check `covers(_:)`, so normals for the previous place are never shown for a new one.
+    @Published private(set) var normals: ClimateNormals?
 
     let provider: ForecastProvider
     let observations: ObservationProvider
@@ -139,6 +142,7 @@ final class WeatherViewModel: ObservableObject {
         let radarTask = Task { try? await ECCCRadarProvider().now(at: target) }
         let alertsTask = Task { try? await alertProvider.alerts(near: target) }
         let airTask = Task { try? await AirQualityProvider().airQuality(at: target) }
+        let normalsTask = Task { try? await ClimateNormalsProvider().normals(at: target) }
 
         let base: Forecast
         do {
@@ -177,6 +181,10 @@ final class WeatherViewModel: ObservableObject {
             group.addTask { @MainActor in
                 guard let fresh = await airTask.value, gen == self.generation else { return }
                 self.airQuality = fresh
+            }
+            group.addTask { @MainActor in
+                guard let fresh = await normalsTask.value, gen == self.generation else { return }
+                self.normals = fresh
             }
             group.addTask { @MainActor in
                 let observed = await observedTask.value

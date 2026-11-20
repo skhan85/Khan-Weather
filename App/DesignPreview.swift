@@ -14,6 +14,8 @@ struct DesignPreview: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                Text("Today").font(.headline)
+                todaySamples
                 Text("Lock Screen").font(.headline)
                 lockScreen
                 Text("Widgets").font(.headline)
@@ -52,6 +54,53 @@ struct DesignPreview: View {
             }
             .padding()
         }
+    }
+
+    /// The Now card's "warmer than usual" line, today in four parts, normal arrows and the sun arc.
+    private var todaySamples: some View {
+        let now = Date()
+        let current = CurrentConditions(time: now, temperature: 6, feelsLike: 3, feelsLikeKind: .windChill,
+                                        condition: .clear, isDay: true)
+        let today = DailyForecast(date: now, high: 16, low: 4, condition: .clear)
+        let parts = [
+            DayPart(kind: .morning, start: now, temperature: 9, feelsLike: 7, precipitationProbability: 0,
+                    precipitationKind: .rain, condition: .clear, isDay: true),
+            DayPart(kind: .afternoon, start: now.addingTimeInterval(21600), temperature: 16, feelsLike: 15,
+                    precipitationProbability: 10, precipitationKind: .rain, condition: .mainlyClear, isDay: true),
+            DayPart(kind: .evening, start: now.addingTimeInterval(43200), temperature: 7, feelsLike: 5,
+                    precipitationProbability: 60, precipitationKind: .rain, condition: .rainShowers, isDay: false),
+            DayPart(kind: .overnight, start: now.addingTimeInterval(64800), temperature: -1, feelsLike: -5,
+                    precipitationProbability: 40, precipitationKind: .snow, condition: .snowShowers, isDay: false),
+        ]
+        let rows: [(Double, Double, WeatherCondition, Int)] = [
+            (16, 4, .clear, 1), (15, 5, .mainlyClear, 1), (7, -2, .partlyCloudy, 0), (-1, -6, .snow, -1), (4, 0, .overcast, 0),
+        ]
+        let tz = TimeZone.current
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = tz
+        let rise = c.date(bySettingHour: 7, minute: 19, second: 0, of: now)!
+        let set = c.date(bySettingHour: 16, minute: 50, second: 0, of: now)!
+        let afternoon = c.date(bySettingHour: 13, minute: 30, second: 0, of: now)!
+        return VStack(spacing: 14) {
+            CurrentConditionsView(current: current, placeName: "Milton", today: today,
+                                  outlook: "Warming to 16° by 2 PM.",
+                                  vsNormal: (NormalComparison.text(high: 16, normalHigh: 7), 1))
+            VStack(spacing: 10) {
+                DayPartsView(parts: parts)
+                ForEach(rows.indices, id: \.self) { i in
+                    let r = rows[i]
+                    DailyRow(day: DailyForecast(date: now.addingTimeInterval(Double(i) * 86400), high: r.0, low: r.1,
+                                                condition: r.2),
+                             isToday: i == 0, timeZone: tz, weekLow: -6, weekHigh: 16, normalTrend: r.3)
+                }
+                SunArcView(sunrise: rise, sunset: set, timeZone: tz, now: afternoon)
+            }
+            .padding(12)
+        }
+        .padding(.vertical, 12)
+        .background(SkyBackground(condition: .clear, isDay: true))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .environment(\.colorScheme, .dark)
     }
 
     /// A mock Lock Screen with the inline, circular and rectangular widgets, drawn white the way
