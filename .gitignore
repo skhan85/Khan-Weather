@@ -14,3 +14,4 @@ build.log
 App/Info.plist
 Widget/Info.plist
 Watch/Info.plist
+__pycache__/

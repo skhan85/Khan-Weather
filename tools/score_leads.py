@@ -91,31 +91,42 @@ def run_series(lat, lon, models, run, tag):
 
 
 def main():
+    from concurrent.futures import ThreadPoolExecutor
     rows = []   # (bucket, lead, {model: err}, day parity, station)
     for cid, label in sm.STATIONS:
         lat, lon = sm.station_coords(cid)
         sm.START, sm.END = START, END
         ot, _ = sm.observations(cid)
-        print(label, len(ot), "obs", file=sys.stderr)
+        print(label, len(ot), "obs", file=sys.stderr, flush=True)
+        runs = []
         d = START
         while d <= END:
             for hh in (0, 12):
-                run = datetime(d.year, d.month, d.day, hh)
-                issue = run + timedelta(hours=ISSUE_DELAY)
-                series = run_series(lat, lon, GLOBAL, run, cid)
-                series.update(run_series(lat, lon, [HRRR], issue - timedelta(hours=HRRR_LAG), cid))
-                for t, o in ot.items():
-                    vt = datetime.fromisoformat(t)
-                    lead = (vt - issue).total_seconds() / 3600
-                    if not (0 <= lead < 48):
+                runs.append((d, datetime(d.year, d.month, d.day, hh)))
+            d += timedelta(days=1)
+
+        def load(item):
+            day, run = item
+            issue = run + timedelta(hours=ISSUE_DELAY)
+            series = run_series(lat, lon, GLOBAL, run, cid)
+            series.update(run_series(lat, lon, [HRRR], issue - timedelta(hours=HRRR_LAG), cid))
+            return day, issue, series
+
+        with ThreadPoolExecutor(6) as pool:
+            for k, (day, issue, series) in enumerate(pool.map(load, runs)):
+                if k % 50 == 0:
+                    print(f"  {label} run {k}/{len(runs)}", file=sys.stderr, flush=True)
+                for lead in range(48):
+                    t = (issue + timedelta(hours=lead)).strftime("%Y-%m-%dT%H:00")
+                    o = ot.get(t)
+                    if o is None:
                         continue
                     e = {m: s[t] - o for m, s in series.items() if t in s}
                     if len(e) < 5:
                         continue
                     b = next(i for i, (a, z) in enumerate(BUCKETS) if a <= lead < z)
-                    rows.append((b, lead, e, d.toordinal() % 2, label))
-            d += timedelta(days=1)
-        print(" ", label, "rows", len(rows), file=sys.stderr)
+                    rows.append((b, lead, e, day.toordinal() % 2, label))
+        print(" ", label, "rows", len(rows), file=sys.stderr, flush=True)
 
     models = GLOBAL + [HRRR]
     report = {}
@@ -135,6 +146,13 @@ def main():
             return sum(r[2][m] * w for m, w in ws.items()) / s if s else None
         res["AppBlend"] = round(sum(abs(app(r)) for r in full) / len(full), 3)
         res["AppBlend_bias"] = round(sum(app(r) for r in full) / len(full), 3)
+        # Same weights, but each day's row centred 9 h earlier (lead 3, 27, 51 ... instead of
+        # 12, 36, 60): the previous-runs "day N" is closer to lead 24N + a few hours.
+        def shifted(r):
+            ws = {m: app_weight(m, r[1] + 9) for m in mem}
+            s = sum(ws.values())
+            return sum(r[2][m] * w for m, w in ws.items()) / s if s else None
+        res["AppShifted"] = round(sum(abs(shifted(r)) for r in full) / len(full), 3)
         def cov(s):
             k = len(mem); C = [[0.0] * k for _ in range(k)]
             for r in s:
@@ -151,7 +169,11 @@ def main():
         report[f"{a}-{z}h"] = res
     with open("lead-results.json", "w") as f:
         json.dump(report, f, indent=1)
-    print(json.dumps(report, indent=1))
+    for k, r in report.items():
+        print(f"{k:>7} hours={r['hours']} app={r['AppBlend']} shifted={r['AppShifted']} "
+              f"fitted_test={r['fitted_test']} app_test={r['app_test']} weights={r['weights']}")
+        print("        " + " ".join(f"{m}={v}" for m, v in r.items() if isinstance(v, float) and not m.endswith('_bias')
+                                     and m not in ('AppBlend', 'AppShifted', 'fitted_test', 'app_test')))
 
 
 if __name__ == "__main__":

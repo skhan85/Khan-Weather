@@ -12,17 +12,25 @@ permissions:
 jobs:
   score:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         with:
           path: tools/verify-cache
           key: leads-cache-${{ github.run_id }}
-          restore-keys: leads-cache-
+          restore-keys: |
+            leads-cache-
+            verify-cache-
       - name: Score
         working-directory: tools
         run: python3 score_leads.py | tee lead-report.txt
+      # Saved even when the run is cut short, so the next run picks up where this one stopped.
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: tools/verify-cache
+          key: leads-cache-${{ github.run_id }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -1,0 +1,24 @@
+name: Score forward log
+
+# Run by hand (Actions tab): the logged live forecasts at true lead times vs ECCC (tools/score_forward.py).
+# Linux: GitHub's Mac runners can't reach api.open-meteo.com.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get the log
+        run: |
+          git fetch --depth=1 origin forecast-log
+          git show FETCH_HEAD:forecast-log.jsonl > tools/forecast-log.jsonl
+      - name: Score
+        working-directory: tools
+        run: python3 score_forward.py forecast-log.jsonl
