@@ -123,8 +123,8 @@ final class OpenMeteoProviderTests: XCTestCase {
                     HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
         })
         let forecast = try await provider.forecast(for: .fallback)
-        // Hours already past use the first day's weights: HRRR 0.45, ECMWF 0.03.
-        let expected: Double = (-5.0 * 0.45 - 3.0 * 0.03) / 0.48
+        // Hours already past use the first day's weights: HRRR 0.15, ECMWF 0.20.
+        let expected: Double = (-5.0 * 0.15 - 3.0 * 0.20) / 0.35
         XCTAssertEqual(forecast.hourly[0].temperature, expected, accuracy: 0.001)
         XCTAssertEqual(forecast.hourly[0].feelsLike, -9.0)
         XCTAssertEqual(forecast.hourly[0].modelLow, -5.0)
@@ -138,10 +138,10 @@ final class OpenMeteoProviderTests: XCTestCase {
     }
 
     func testBlendWeightsShiftWithLeadTime() throws {
-        let values: [WeatherModel: Double] = [.us: 0, .europe: 10]
-        let today: Double = 0.3 / 0.35                      // GFS 0.32, ECMWF 0.03
-        let day6: Double = 1.65 / 0.315                     // GFS 0.15, ECMWF 0.165
-        let between: Double = 10 * 0.08 / (0.08 + 0.2325)   // halfway between days 3 and 4 at 72 h
+        let values: [WeatherModel: Double] = [.germany: 0, .europe: 10]
+        let today: Double = 10 * 0.20 / 0.50                // ICON 0.30, ECMWF 0.20
+        let day6: Double = 10 * 0.165 / 0.225               // ICON 0.06, ECMWF 0.165
+        let between: Double = 10 * 0.08 / (0.08 + 0.1375)   // halfway between days 3 and 4 at 72 h
         XCTAssertEqual(try XCTUnwrap(ModelBlend.blend(values, leadHours: 6)), today, accuracy: 0.001)
         XCTAssertEqual(try XCTUnwrap(ModelBlend.blend(values, leadHours: 200)), day6, accuracy: 0.001)
         XCTAssertEqual(try XCTUnwrap(ModelBlend.blend(values, leadHours: 72)), between, accuracy: 0.001)

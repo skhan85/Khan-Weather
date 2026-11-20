@@ -6,7 +6,11 @@ import Foundation
 /// hourly readings at Toronto Pearson and Hamilton Airport (tools/score_models.py), fitted for the
 /// lowest error on held-out days. Each row is one forecast day; hours in between are interpolated
 /// so the curve doesn't jump. What the scoring found:
-/// - Today (first 24 h): NOAA's HRRR/GFS, which update every hour, are far ahead.
+/// - Today (first 24 h): no single model. The archive's "today" is each model's latest run, which
+///   for hourly-updated HRRR is a 1-2 hour forecast, so it made HRRR look far ahead. Scored at the
+///   lead times the app really uses (tools/score_leads.py, Apr-Oct 2026 single runs; and
+///   tools/score_forward.py, the live log from 15 Nov), HRRR/GFS ran cold and the old weights
+///   (77% on them) were worse than a plain average; ICON, ECMWF and GEM did best.
 /// - From tomorrow: ECMWF's AI model (AIFS) is the most accurate single model and nearly unbiased,
 ///   rising from about a quarter of the blend tomorrow to half by day 6; GFS, ICON and UKMO follow.
 /// A model with no value for an hour (out of range or out of its area) is skipped.
@@ -17,7 +21,8 @@ public enum ModelBlend {
 
     /// Weights by forecast day, centred at lead hours 12, 36, 60, 84, 108 and 132.
     static let byDay: [[WeatherModel: Double]] = [
-        [.usHighRes: 0.45, .us: 0.32, .germany: 0.12, .uk: 0.08, .europe: 0.03],
+        // Today. GFS is left out: for the first two days Open-Meteo's "GFS" is the same HRRR series.
+        [.germany: 0.30, .europe: 0.20, .usHighRes: 0.15, .canada: 0.15, .uk: 0.10, .europeAI: 0.10],
         [.europeAI: 0.28, .germany: 0.22, .uk: 0.185, .canadaHighRes: 0.12, .canada: 0.10, .europe: 0.04,
          .usHighRes: 0.025, .us: 0.025],
         [.europeAI: 0.35, .us: 0.23, .germany: 0.18, .uk: 0.125, .europe: 0.075, .canada: 0.04],

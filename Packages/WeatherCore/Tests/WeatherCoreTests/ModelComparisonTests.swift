@@ -17,9 +17,9 @@ final class ModelComparisonTests: XCTestCase {
         XCTAssertEqual(days.filter { $0.model != .blend }.count, 9, "ECMWF's missing second day is dropped")
         let blend = days.filter { $0.model == .blend }
         XCTAssertEqual(blend.count, 2)
-        // Day 1 (today's weights): GEM 0, ECMWF 0.03, ICON 0.12, GFS 0.32.
-        let weighted: Double = 3.5 * 0.03 + 3.1 * 0.12 + 4.0 * 0.32
-        let expected: Double = weighted / 0.47
+        // Day 1 (today's weights): GEM 0.15, ECMWF 0.20, ICON 0.30, GFS 0.
+        let weighted: Double = 2.9 * 0.15 + 3.5 * 0.20 + 3.1 * 0.30
+        let expected: Double = weighted / 0.65
         XCTAssertEqual(try XCTUnwrap(blend[0].high), expected, accuracy: 0.001)
         let gemDay2 = try XCTUnwrap(days.first { $0.model == .canada && $0.date.timeIntervalSince1970 == 1794632400 })
         XCTAssertEqual(gemDay2.high, 5.5)

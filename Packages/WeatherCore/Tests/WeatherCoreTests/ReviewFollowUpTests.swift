@@ -35,12 +35,12 @@ final class ReviewFollowUpTests: XCTestCase {
 
     func testOneReadingDoesNotHandAModelTheWholeBlend() {
         // One model 0.3° off the reading and one 1.5° off.
-        // At lead 0 their priors are 0.45 and 0.32 (see ModelBlend.byDay).
-        let values: [WeatherModel: Double] = [.usHighRes: 10, .us: 12]
-        let now: [WeatherModel: Double] = [.usHighRes: 5.3, .us: 6.5]
+        // At lead 0 their priors are 0.30 and 0.20 (see ModelBlend.byDay).
+        let values: [WeatherModel: Double] = [.germany: 10, .europe: 12]
+        let now: [WeatherModel: Double] = [.germany: 5.3, .europe: 6.5]
         let blended = ModelBlend.blend(values, leadHours: 0, observedTemperature: 5, currentModelTemps: now)!
-        // Fully live at lead 0: weights ∝ prior / (err² + 2), about 74/26, so ≈ 10.5. With the old
-        // err² + 0.5 it was 87/13 (≈ 10.26).
+        // Fully live at lead 0: weights ∝ prior / (err² + 2), about 75/25, so ≈ 10.5. With
+        // err² + 0.5 it would be 88/12 (≈ 10.24).
         XCTAssertGreaterThan(blended, 10.4)
         XCTAssertLessThan(blended, 11.9)
     }
