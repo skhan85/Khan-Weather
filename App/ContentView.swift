@@ -191,7 +191,7 @@ private struct ForecastList: View {
     /// "6° warmer than usual · normal high 7°" for today, from the same high as the chip.
     private var vsNormal: (text: String, trend: Int)? {
         guard let today = todayDisplay, let normal = normalHigh(today) else { return nil }
-        return (NormalComparison.text(high: today.high, normalHigh: normal),
+        return (NormalComparison.shortText(high: today.high, normalHigh: normal),
                 NormalComparison.trend(high: today.high, normalHigh: normal))
     }
 
@@ -231,7 +231,7 @@ private struct ForecastList: View {
                                                            hourText: { TimeText.hour($0, forecast.timeZone) }),
                                       vsNormal: vsNormal,
                                       vsYesterday: forecast.changeSinceYesterday().map {
-                                          (YesterdayComparison.text($0), YesterdayComparison.trend($0))
+                                          (YesterdayComparison.shortText($0), YesterdayComparison.trend($0))
                                       })
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
@@ -502,22 +502,14 @@ struct CurrentConditionsView: View {
                 }
                 .fixedSize(horizontal: false, vertical: true)
             }
-            if let vsNormal {
+            // Against normal and against yesterday share one line, to keep the card short.
+            let comparisons = [vsNormal, vsYesterday].compactMap { $0 }
+            if let first = comparisons.first {
                 Label {
-                    Text(vsNormal.text).font(.subheadline.weight(.semibold))
+                    Text(comparisons.map(\.text).joined(separator: " · ")).font(.subheadline.weight(.semibold))
                 } icon: {
-                    Image(systemName: vsNormal.trend > 0 ? "thermometer.sun.fill"
-                          : vsNormal.trend < 0 ? "thermometer.snowflake" : "thermometer.medium")
-                        .foregroundStyle(Brand.gold)
-                }
-                .fixedSize(horizontal: false, vertical: true)
-            }
-            if let vsYesterday {
-                Label {
-                    Text(vsYesterday.text).font(.subheadline.weight(.semibold))
-                } icon: {
-                    Image(systemName: vsYesterday.trend > 0 ? "arrow.up.circle.fill"
-                          : vsYesterday.trend < 0 ? "arrow.down.circle.fill" : "equal.circle.fill")
+                    Image(systemName: first.trend > 0 ? "thermometer.sun.fill"
+                          : first.trend < 0 ? "thermometer.snowflake" : "thermometer.medium")
                         .foregroundStyle(Brand.gold)
                 }
                 .fixedSize(horizontal: false, vertical: true)

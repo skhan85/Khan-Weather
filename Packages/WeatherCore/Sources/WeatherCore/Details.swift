@@ -29,6 +29,13 @@ public enum YesterdayComparison {
         return "\(abs(d))° \(d > 0 ? "warmer" : "colder") than yesterday at this time"
     }
 
+    /// Short form for the Now card: "2° colder than yesterday", "Same as yesterday".
+    public static func shortText(_ changeC: Double, unit: TemperatureUnit = UnitSettings.current.temperature) -> String {
+        let d = degrees(changeC, unit: unit)
+        if abs(d) < 2 { return "Same as yesterday" }
+        return "\(abs(d))° \(d > 0 ? "warmer" : "colder") than yesterday"
+    }
+
     /// +1 warmer, -1 colder, 0 about the same.
     public static func trend(_ changeC: Double, unit: TemperatureUnit = UnitSettings.current.temperature) -> Int {
         let d = degrees(changeC, unit: unit)
