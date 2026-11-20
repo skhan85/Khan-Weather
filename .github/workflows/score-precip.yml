@@ -1,13 +1,10 @@
 name: Score chance of rain
 
-# One-off analysis: which chance of rain is most accurate? (tools/score_precip.py)
+# Run by hand (Actions tab) to re-score: which chance of rain is most accurate? (tools/score_precip.py)
 # Linux: GitHub's Mac runners can't reach api.open-meteo.com.
 
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/project-thread-s3gj1h]
-    paths: ["tools/score_precip.py", ".github/workflows/score-precip.yml"]
 
 permissions:
   contents: read

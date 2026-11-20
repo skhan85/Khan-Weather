@@ -1,13 +1,10 @@
 name: Score bias correction
 
-# One-off analysis: does a bias correction make the blend more accurate? (tools/score_bias.py)
+# Run by hand (Actions tab) to re-score: does a bias correction make the blend more accurate? (tools/score_bias.py)
 # Linux: GitHub's Mac runners can't reach api.open-meteo.com.
 
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/project-thread-s3gj1h]
-    paths: ["tools/score_bias.py", ".github/workflows/score-bias.yml"]
 
 permissions:
   contents: read
