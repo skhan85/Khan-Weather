@@ -344,7 +344,10 @@ public extension Forecast {
         // 6.3, 7.0, 8.4, 12.7 and 19.2° side by side). Sunshine only ever warms them, so by day
         // stations more than a little above the forecast are dropped and the rest decide.
         if o.dataProvider == "NETATMO", let temps = o.stationTemperatures, !temps.isEmpty {
-            let shaded = temps.filter { $0 <= current.temperature + Self.sunWarmLimit }
+            // At night there's no sun to heat them, and the models are the likelier ones to be off
+            // (cloud they missed keeps it milder), so only a reading well above them is set aside.
+            let limit = current.isDay ? Self.sunWarmLimit : Self.nightWarmLimit
+            let shaded = temps.filter { $0 <= current.temperature + limit }
             if let mid = Self.median(Array(shaded.prefix(3))) {
                 o.temperature = (mid * 10).rounded() / 10
             } else {
@@ -449,6 +452,8 @@ public extension Forecast {
 
     /// By day, home stations more than this above the forecast are taken to be in the sun.
     static let sunWarmLimit: Double = 2.5
+    /// At night, a home station more than this above the forecast is taken to be by a warm wall.
+    static let nightWarmLimit: Double = 4
 
     static func median(_ values: [Double]) -> Double? {
         guard !values.isEmpty else { return nil }
@@ -477,14 +482,17 @@ public extension Forecast {
         let obsDewPoint = obsHumidity.map { Self.dewPoint(temperature: observation.temperature, humidity: $0) }
         let baseHumidity = forecastValue(at: time) { $0.humidity }
         let baseDewPoint = forecastValue(at: time) { $0.dewPoint }
-        let humidityGap = (obsHumidity != nil && baseHumidity != nil) ? obsHumidity! - baseHumidity! : nil
-        let dewPointGap = (obsDewPoint != nil && baseDewPoint != nil) ? obsDewPoint! - baseDewPoint! : nil
+        let humidityGap = obsHumidity.flatMap { o in baseHumidity.map { o - $0 } }
+        let dewPointGap = obsDewPoint.flatMap { o in baseDewPoint.map { o - $0 } }
 
+        // Home wind sensors are usually sheltered and read low, so only an official station's
+        // wind steers the next hours (the Now card still shows the home reading).
+        let officialWind = observation.dataProvider != "NETATMO"
         let baseWind = forecastValue(at: time) { $0.windSpeed }
-        let windGap = (observation.windSpeed != nil && baseWind != nil) ? observation.windSpeed! - baseWind! : nil
+        let windGap = officialWind ? observation.windSpeed.flatMap { w in baseWind.map { w - $0 } } : nil
 
         let baseGusts = forecastValue(at: time) { $0.windGusts }
-        let gustsGap = (observation.windGusts != nil && baseGusts != nil) ? observation.windGusts! - baseGusts! : nil
+        let gustsGap = officialWind ? observation.windGusts.flatMap { g in baseGusts.map { g - $0 } } : nil
 
         return hourly.map { hour in
             let hoursAhead = hour.time.timeIntervalSince(time) / 3600

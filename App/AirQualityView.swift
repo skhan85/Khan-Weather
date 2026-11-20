@@ -30,7 +30,7 @@ struct AirQualityView: View {
                         }
                     }
                 }
-                AQIScale(aqi: min(aqhi, 11) / 11.0 * 300.0)
+                AQHIScale(aqhi: aqhi)
                 Text(category.advice)
                     .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.9))
@@ -146,6 +146,45 @@ private struct AQIScale: View {
                     .overlay(Circle().stroke(.black.opacity(0.35), lineWidth: 1.5))
                     .frame(width: geo.size.height + 4, height: geo.size.height + 4)
                     .offset(x: x - (geo.size.height + 4) / 2)
+            }
+        }
+        .frame(height: 8)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Environment Canada's AQHI bands, 1 to 10+: low 1–3, moderate 4–6, high 7–10, very high above.
+/// Coloured like the ring above it, so the marker always sits in its own band.
+private struct AQHIScale: View {
+    let aqhi: Double
+
+    /// The bar runs from 1 to 11; each band's share of it.
+    private static let bands: [(AQICategory, Double)] = [
+        (.good, 3.5), (.moderate, 6.5), (.unhealthy, 10.5), (.veryUnhealthy, 11),
+    ]
+
+    /// Where `value` sits along the bar, 0 at AQHI 1 and 1 at 11.
+    private static func fraction(_ value: Double) -> CGFloat {
+        CGFloat(min(max((value - 1) / 10, 0), 1))
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            ZStack(alignment: .leading) {
+                HStack(spacing: 2) {
+                    ForEach(Array(Self.bands.enumerated()), id: \.offset) { i, band in
+                        let start: Double = i == 0 ? 1 : Self.bands[i - 1].1
+                        Capsule()
+                            .fill(AQIColor.color(band.0))
+                            .frame(width: max(0, (Self.fraction(band.1) - Self.fraction(start)) * w - 2))
+                    }
+                }
+                Circle()
+                    .fill(.white)
+                    .overlay(Circle().stroke(.black.opacity(0.35), lineWidth: 1.5))
+                    .frame(width: geo.size.height + 4, height: geo.size.height + 4)
+                    .offset(x: Self.fraction(min(aqhi, 11)) * w - (geo.size.height + 4) / 2)
             }
         }
         .frame(height: 8)

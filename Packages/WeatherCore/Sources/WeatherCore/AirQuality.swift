@@ -19,11 +19,13 @@ public struct AirQuality: Equatable, Codable, Sendable {
     public var pollen: [Pollen]
     /// True when the model covers pollen here at all (Europe), even if every count is zero today.
     public var hasPollenData: Bool
-/// Environment Canada Air Quality Health Index (1–10+ scale, Canada only).
-public var aqhi: Double?
-/// Nearest AQHI community name, e.g. "Milton".
-public var aqhiStation: String?
-public var aqhiTodayMax: Double?
+    /// Environment Canada Air Quality Health Index (1–10+ scale, Canada only).
+    public var aqhi: Double?
+    /// Nearest AQHI community name, e.g. "Milton".
+    public var aqhiStation: String?
+    /// The highest AQHI forecast for the rest of today there.
+    public var aqhiTodayMax: Double?
+
     public init(time: Date, usAQI: Double? = nil, todayMaxAQI: Double? = nil, pm25: Double? = nil, pm10: Double? = nil,
                 ozone: Double? = nil, nitrogenDioxide: Double? = nil, pollen: [Pollen] = [], hasPollenData: Bool = false, aqhi: Double? = nil, aqhiStation: String? = nil, aqhiTodayMax: Double? = nil) {
         self.time = time
@@ -90,13 +92,13 @@ public enum AQICategory: Int, Codable, Sendable, Comparable {
     }
 
     /// Environment Canada AQHI health messages.
-        public var advice: String {
+    public var advice: String {
         switch self {
         case .good: return "Ideal air quality for outdoor activities. Enjoy your usual outdoor activities."
         case .moderate: return "No need to modify your usual outdoor activities unless you experience symptoms such as coughing and throat irritation."
         case .sensitive: return "Consider reducing or rescheduling strenuous activities outdoors if you are experiencing symptoms."
         case .unhealthy: return "Reduce or reschedule strenuous activities outdoors. Children and the elderly should also take it easy."
-        case .veryUnhealthy, .hazardous: return "Avoid strenuous activities outdoors. Children and the elderly should also avoid outdoor physical exertion."    
+        case .veryUnhealthy, .hazardous: return "Avoid strenuous activities outdoors. Children and the elderly should also avoid outdoor physical exertion."
         }
     }
 
@@ -192,7 +194,7 @@ public struct AirQualityProvider: Sendable {
             : nil
         async let ecccForecast: Double? = Region.inCanada(coordinate)
             ? (try? await fetchAQHIForecast(near: coordinate))
-        : nil
+            : nil
         var aq = try Self.parse(try await openMeteoData)
         if let eccc = await ecccAQHI {
             aq.aqhi = eccc.value
@@ -228,15 +230,24 @@ public struct AirQualityProvider: Sendable {
             URLQueryItem(name: "f", value: "json"),
             URLQueryItem(name: "bbox", value: bbox),
             URLQueryItem(name: "latest", value: "true"),
-            URLQueryItem(name: "limit", value: "30"),
+            // Each community has a forecast for every hour of the next two days or so: room for several.
+            URLQueryItem(name: "limit", value: "300"),
         ]
         let data = try await fetch(comps.url!, loader: loader)
         return Self.parseAQHIForecast(data, near: c)
     }
 
-    static func parseAQHIForecast(_ data: Data, near c: Coordinate) -> Double? {
+    /// The highest AQHI forecast for the rest of today at the nearest community. Periods after
+    /// midnight (in `timeZone`) are left out, so "Up to 6 later" never means tomorrow night. A
+    /// feature without a readable `forecast_datetime` is kept, as before.
+    static func parseAQHIForecast(_ data: Data, near c: Coordinate, now: Date = Date(),
+                                  timeZone: TimeZone = .current) -> Double? {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let features = root["features"] as? [[String: Any]] else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let midnight = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) ?? now
+        let iso = ISO8601DateFormatter()
         var bestDist = Double.infinity
         var bestID: String?
         var valuesByStation: [String: [Double]] = [:]
@@ -245,12 +256,16 @@ public struct AirQualityProvider: Sendable {
                   let val = (p["aqhi"] as? NSNumber)?.doubleValue,
                   let point = EnvironmentCanadaProvider.pointCoordinate(f["geometry"]) else { continue }
             let sid = (p["location_id"] as? String) ?? (p["location_name_en"] as? String) ?? "station"
-            valuesByStation[sid, default: []].append(val)
             let d = EnvironmentCanadaProvider.distanceKm(c, point)
             if d < bestDist {
                 bestDist = d
                 bestID = sid
             }
+            if let text = p["forecast_datetime"] as? String, let at = iso.date(from: text) {
+                // The hour ending at `at` must start before midnight and not be over already.
+                guard at < midnight, at > now.addingTimeInterval(-3600) else { continue }
+            }
+            valuesByStation[sid, default: []].append(val)
         }
         guard let bestID else { return nil }
         return valuesByStation[bestID]?.max()

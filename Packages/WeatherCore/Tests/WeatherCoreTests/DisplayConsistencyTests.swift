@@ -54,7 +54,7 @@ final class DisplayConsistencyTests: XCTestCase {
     func testBlendAnchorOnlyForLocalStations() {
         let near = Observation(stationName: "Campbellville", observedAt: midnight, temperature: 4, distanceKm: 6)
         let far = Observation(stationName: "Toronto Pearson", observedAt: midnight, temperature: 7, distanceKm: 28)
-        XCTAssertEqual(near.blendAnchor, 4)
+        XCTAssertEqual(near.blendAnchor, ModelBlend.Anchor(temperature: 4, time: midnight))
         XCTAssertNil(far.blendAnchor)
     }
 

@@ -71,7 +71,7 @@ public extension Forecast {
     /// What precipitation is doing over the next two hours, or nil when it stays dry
     /// (or the 15-minute data is missing or stale).
     func nowcast(at now: Date = Date()) -> Nowcast? {
-         var slots = minutely
+        var slots = minutely
             .filter { $0.time.addingTimeInterval(900) > now && $0.time < now.addingTimeInterval(Self.nowcastWindow) }
             .sorted { $0.time < $1.time }
         // The first slot must cover "now", otherwise the data is old and we'd be guessing.
@@ -83,15 +83,16 @@ public extension Forecast {
         if observation?.gaugesSayDry == true, radar?.isPrecipitating != true,
            current.temperature > 1, slots[0].snowfall == 0 {
             slots[0] = PrecipitationSlot(time: slots[0].time, precipitation: 0, rain: 0, snowfall: 0)
-        } else if (radar?.isPrecipitating == true || (observation?.rainLastHourMm ?? 0) >= 0.2), !slots[0].isWet {
-            let hourlyRate = max(radar?.rainMmPerHour ?? 0, observation?.rainLastHourMm ?? 0)
+        } else if let radar, radar.isPrecipitating, !slots[0].isWet {
+            // Only the radar says it's falling now; a gauge's last hour may be rain that has stopped.
+            let hourlyRate = max(radar.rainMmPerHour, radar.snowCmPerHour)
             let slotAmount = max(PrecipitationSlot.wetThreshold, hourlyRate / 4.0)
-            let isSnow = current.temperature <= 0
+            let isSnow = radar.isSnowing && !radar.isRaining
             slots[0] = PrecipitationSlot(
-               time: slots[0].time,
-               precipitation: slotAmount,
-               rain: isSnow ? 0 : slotAmount,
-               snowfall: isSnow ? slotAmount : 0
+                time: slots[0].time,
+                precipitation: slotAmount,
+                rain: isSnow ? 0 : slotAmount,
+                snowfall: isSnow ? slotAmount : 0
             )
         }
 

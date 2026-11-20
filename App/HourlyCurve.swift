@@ -18,10 +18,6 @@ struct HourlyCurve: View {
     private var hasBand: Bool { hours.contains { $0.modelLow != nil } }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if let idx = selectedIndex, hours.indices.contains(idx) {
-                scrubBanner(for: hours[idx])
-            }
         ScrollView(.horizontal, showsIndicators: false) {
             VStack(spacing: 6) {
                 HStack(spacing: 0) {
@@ -45,17 +41,14 @@ struct HourlyCurve: View {
                 }
                 .frame(width: columnWidth * CGFloat(hours.count), height: 74)
                 .contentShape(Rectangle())
+                // Touch and hold, then slide, to read each hour. A plain swipe still scrolls the strip.
                 .gesture(
-                    DragGesture(minimumDistance: 0)
+                    LongPressGesture(minimumDuration: 0.25)
+                        .sequenced(before: DragGesture(minimumDistance: 0))
                         .onChanged { value in
-                            let idx = Int(value.location.x / columnWidth)
-                            if hours.indices.contains(idx) {
-                                selectedIndex = idx
-                            }
+                            if case .second(true, let drag?) = value { select(at: drag.location.x) }
                         }
-                        .onEnded { _ in
-                            selectedIndex = nil
-                        }
+                        .onEnded { _ in selectedIndex = nil }
                 )
                 HStack(spacing: 0) {
                     ForEach(hours) { hour in
@@ -67,7 +60,18 @@ struct HourlyCurve: View {
             }
             .padding(.vertical, 4)
         }
+        // Over the strip rather than above it, so the chart doesn't jump under the finger.
+        .overlay(alignment: .top) {
+            if let idx = selectedIndex, hours.indices.contains(idx) {
+                scrubBanner(for: hours[idx])
+                    .allowsHitTesting(false)
+            }
         }
+    }
+
+    private func select(at x: CGFloat) {
+        let idx = Int(x / columnWidth)
+        if hours.indices.contains(idx) { selectedIndex = idx }
     }
 
     private func scrubBanner(for hour: HourlyForecast) -> some View {
@@ -155,7 +159,7 @@ struct HourlyCurve: View {
                     .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round))
                     .foregroundStyle(Brand.gold)
                 PointMark(x: .value("Hour", Double(index)), y: .value("Temp", hour.temperature))
-                    .symbolSize(selectedIndex == index ? 80 : ((index == 0 ? 60 : 28)))
+                    .symbolSize(selectedIndex == index ? 80 : (index == 0 ? 60 : 28))
                     .foregroundStyle(selectedIndex == index ? Brand.gold : .white)
                     .annotation(position: .top, spacing: 4) {
                         Text(WeatherFormat.temperature(hour.temperature))

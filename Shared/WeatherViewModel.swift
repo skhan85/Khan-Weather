@@ -62,28 +62,38 @@ final class WeatherViewModel: ObservableObject {
     private var cache: [UUID?: Snapshot] = [:]
     /// Older than this, a cached forecast isn't shown while switching.
     private let cacheAge: TimeInterval = 45 * 60
-    private static func diskCacheKey(_ key: UUID?) -> String {
-        "forecastCache-\(key?.uuidString ?? "current")"
+    /// The last good forecast per place, kept as a file in Caches (a 10-day forecast is too big
+    /// for UserDefaults, which loads whole at launch). Shown when loading fails, for up to 6 hours.
+    private static func diskCacheURL(_ key: UUID?) -> URL? {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("forecast-\(key?.uuidString ?? "current").json")
     }
 
     private static func saveDiskCache(_ forecast: Forecast, for key: UUID?) {
-        if let data = try? JSONEncoder().encode(forecast) {
-            UserDefaults.standard.set(data, forKey: diskCacheKey(key))
-        }
+        guard let url = diskCacheURL(key), let data = try? JSONEncoder().encode(forecast) else { return }
+        try? data.write(to: url, options: .atomic)
     }
 
     private static func loadDiskCache(for key: UUID?, maxAge: TimeInterval = 6 * 3600) -> Forecast? {
-        guard let data = UserDefaults.standard.data(forKey: diskCacheKey(key)),
+        guard let url = diskCacheURL(key), let data = try? Data(contentsOf: url),
               let forecast = try? JSONDecoder().decode(Forecast.self, from: data),
               Date().timeIntervalSince(forecast.fetchedAt) < maxAge else { return nil }
         return forecast
     }
+
+    /// Clears the copies the first version kept in UserDefaults.
+    private static let dropOldDiskCache: Void = {
+        for key in UserDefaults.standard.dictionaryRepresentation().keys where key.hasPrefix("forecastCache-") {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+    }()
 
     /// Loads the forecast for `place`, or for the current location when it is nil.
     ///
     /// The Open-Meteo forecast is shown as soon as it arrives; the station reading, radar, alerts and
     /// air quality are filled in as each one answers, so one slow service doesn't hold up the screen.
     func refresh(place: SavedPlace? = nil) async {
+        _ = Self.dropOldDiskCache
         generation += 1
         let gen = generation
         let key = place?.id
@@ -142,7 +152,7 @@ final class WeatherViewModel: ObservableObject {
             // Keep showing the last good forecast if we have one.
             if case .loaded = state { return }
             if let cached = Self.loadDiskCache(for: key) {
-                state = .loaded(cached)
+                state = .loaded(cached.rolledForward())
                 return
             }
             state = .failed(error.localizedDescription)
@@ -196,7 +206,7 @@ final class WeatherViewModel: ObservableObject {
             let obs = await observed
             let base: Forecast?
             if let om = provider as? OpenMeteoProvider {
-                base = try? await om.forecast(for: target, observedTemperature: obs?.blendAnchor)
+                base = try? await om.forecast(for: target, anchor: obs?.blendAnchor)
             } else {
                 base = try? await provider.forecast(for: target)
             }

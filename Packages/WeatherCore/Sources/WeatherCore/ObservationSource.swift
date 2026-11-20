@@ -14,9 +14,9 @@ public extension Observation {
     /// The temperature that may re-weight the first hours of the model blend: only a reading
     /// close enough to stand in for this spot. A station 25-40 km away is used for the sky only
     /// (see `Forecast.applying`), so it mustn't steer the models either.
-    var blendAnchor: Double? {
+    var blendAnchor: ModelBlend.Anchor? {
         guard isLocal, temperature.isFinite else { return nil }
-        return temperature
+        return ModelBlend.Anchor(temperature: temperature, time: observedAt)
     }
 }
 
