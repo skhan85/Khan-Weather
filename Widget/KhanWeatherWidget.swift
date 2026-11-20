@@ -169,7 +169,7 @@ struct KhanWeatherWidget: Widget {
                 .containerBackground(for: .widget) { WidgetSky(entry: entry) }
         }
         .configurationDisplayName("Current weather")
-        .description("Temperature, the next few hours, today's high and low, and weather alerts where you are.")
+        .description("Temperature, feels-like and conditions where you are. Home Screen sizes add the next few hours, the week ahead and alerts.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .accessoryInline, .accessoryCircular, .accessoryRectangular])
     }
 }

@@ -28,26 +28,26 @@ struct WeatherEntry: TimelineEntry {
         var hours: [HourlyForecast] = []
         for i in 1...6 {
             let time: Date = now.addingTimeInterval(Double(i) * 3600)
-            let temperature: Double = 21 + Double(i % 3)
+            let temperature: Double = 6 + Double(i % 3)
             let rainy: Bool = i == 4
-            let condition: WeatherCondition = rainy ? .rainShowers : .partlyCloudy
+            let condition: WeatherCondition = rainy ? .rainShowers : .mainlyClear
             let chance: Double = rainy ? 40 : 0
             hours.append(HourlyForecast(time: time, temperature: temperature,
                                         precipitationProbability: chance, condition: condition, isDay: true))
         }
         return WeatherEntry(
             date: now,
-            current: CurrentConditions(time: now, temperature: 21, feelsLike: 23, feelsLikeKind: .apparent,
-                                       humidity: 50, windSpeed: 10, windDirection: 270, precipitation: 0,
-                                       condition: .partlyCloudy, isDay: true),
-            high: 24, low: 14, placeName: "Toronto", error: nil, hours: hours, days: placeholderDays(now))
+            current: CurrentConditions(time: now, temperature: 6, feelsLike: 3, feelsLikeKind: .windChill,
+                                       humidity: 70, windSpeed: 12, windDirection: 270, precipitation: 0,
+                                       condition: .mainlyClear, isDay: true),
+            high: 9, low: 1, placeName: "Milton", error: nil, hours: hours, days: placeholderDays(now))
     }()
 }
 
 private func placeholderDays(_ now: Date) -> [DailyForecast] {
     var days: [DailyForecast] = []
-    let highs: [Double] = [24, 22, 19, 21, 25]
-    let lows: [Double] = [14, 13, 10, 11, 15]
+    let highs: [Double] = [9, 7, 3, 4, 6]
+    let lows: [Double] = [1, 2, -3, -2, 0]
     let skies: [WeatherCondition] = [.partlyCloudy, .rainShowers, .overcast, .clear, .clear]
     for i in 0..<5 {
         let date: Date = now.addingTimeInterval(Double(i) * 86_400)
