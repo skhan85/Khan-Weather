@@ -52,12 +52,28 @@ final class NowcastTests: XCTestCase {
     }
 
     func testDryGaugesOverrideCurrentWetSlot() {
-    var f = forecast([(0.4, 0), (0, 0)])
-var obs = Observation(stationName: "Milton PWS", observedAt: start, temperature: 8, distanceKm: 1)
-obs.rainGauges = 2
-obs.rainLastHourMm = 0
-f.observation = obs
-XCTAssertNil(f.nowcast(at: start))
+        var f = forecast([(0.4, 0), (0, 0)])
+        f.current.temperature = 5
+        var obs = Observation(stationName: "Milton PWS", observedAt: start, temperature: 5, distanceKm: 1)
+        obs.rainGauges = 2
+        obs.rainLastHourMm = 0
+        f.observation = obs
+        XCTAssertNil(f.nowcast(at: start))
+    }
+
+    /// Home gauges aren't heated: at freezing they read dry while it snows, so they mustn't cancel it.
+    func testDryGaugesDoNotCancelSnow() {
+        var f = forecast([(0.3, 0.2), (0.3, 0.2), (0, 0)])
+        f.current.temperature = -2
+        var obs = Observation(stationName: "Milton PWS", observedAt: start, temperature: -2, distanceKm: 1)
+        obs.rainGauges = 2
+        obs.rainLastHourMm = 0
+        f.observation = obs
+        XCTAssertEqual(f.nowcast(at: start)?.kind, .snow)
+
+        // Even a few degrees above freezing, a slot the model says is snow stays snow.
+        f.current.temperature = 2
+        XCTAssertEqual(f.nowcast(at: start)?.kind, .snow)
     }
 
     func testRadarInjectsCurrentPrecipitationWhenSlotIsDry() {

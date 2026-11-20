@@ -32,6 +32,60 @@ public struct AccuracyLog: Codable, Equatable, Sendable {
         public var id: String { model.rawValue }
     }
 
+    /// The day's lowest and highest local station reading, seen while the app was open. A stand-in
+    /// for the climate station's record when that never arrives, so it is used only with care
+    /// (see `usable(today:)`).
+    public struct LocalRange: Codable, Equatable, Sendable {
+        public var day: String
+        public var high: Double
+        public var low: Double
+        public var station: String
+        public var samples: Int
+        /// Readings taken between midnight and 8 AM, when the low usually happens. Optional so
+        /// ranges saved before it existed still decode.
+        public var nightSamples: Int?
+
+        public init(day: String, temperature: Double, station: String, isNight: Bool) {
+            self.day = day; high = temperature; low = temperature; self.station = station
+            samples = 1; nightSamples = isNight ? 1 : 0
+        }
+
+        public mutating func add(_ temperature: Double, station: String, isNight: Bool) {
+            high = max(high, temperature)
+            low = min(low, temperature)
+            self.station = station
+            samples += 1
+            if isNight { nightSamples = (nightSamples ?? 0) + 1 }
+        }
+
+        /// Only after the climate station has had a full day to post (the day before yesterday or
+        /// older), and only with readings overnight and through the day, so a range taken from a
+        /// few afternoon looks never stands in for the real low.
+        public func usable(today: String) -> Bool {
+            guard let cutoff = AccuracyLog.day(today, offsetBy: -1), day < cutoff else { return false }
+            return samples >= 6 && (nightSamples ?? 0) >= 1 && samples - (nightSamples ?? 0) >= 3
+        }
+
+        /// Whether `date` falls between midnight and 8 AM where the reading was taken.
+        public static func isNight(_ date: Date, timeZone: TimeZone) -> Bool {
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = timeZone
+            return calendar.component(.hour, from: date) < 8
+        }
+    }
+
+    /// "2026-11-15" shifted by `days`, or nil if it isn't a date.
+    static func day(_ day: String, offsetBy days: Int) -> String? {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyy-MM-dd"
+        guard let date = f.date(from: day),
+              let shifted = f.calendar.date(byAdding: .day, value: days, to: date) else { return nil }
+        return f.string(from: shifted)
+    }
+
     public var forecasts: [Forecast] = []
     public var observed: [Observed] = []
     public init() {}

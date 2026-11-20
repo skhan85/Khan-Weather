@@ -30,10 +30,18 @@ public struct OpenMeteoProvider: ForecastProvider {
     }
 
     public func forecast(for coordinate: Coordinate, observedTemperature: Double?) async throws -> Forecast {
+        try await forecast(for: coordinate, anchor: { observedTemperature })
+    }
+
+    /// `anchor` gives the local station temperature that re-weights the first hours of the blend
+    /// (see `ModelBlend.blend`). It is awaited only once the model data has arrived, so a slow
+    /// station overlaps the download instead of adding to it.
+    public func forecast(for coordinate: Coordinate,
+                         anchor: @escaping @Sendable () async -> Double?) async throws -> Forecast {
         // In North America, temperatures are a weighted blend of several models (see ModelBlend).
         // Everything else stays on Open-Meteo's default.
         async let blended = Self.usesBlend(coordinate)
-            ? blendedTemperatures(for: coordinate, observedTemperature: observedTemperature)
+            ? blendedTemperatures(for: coordinate, anchor: anchor)
             : nil
         let request = URLRequest(url: url(for: coordinate), timeoutInterval: 20)
         let (data, response) = try await loader(request)
@@ -52,12 +60,12 @@ public struct OpenMeteoProvider: ForecastProvider {
 
     /// Blended hourly temperatures. nil if the request fails, so the default stays.
     func blendedTemperatures(for coordinate: Coordinate,
-                             observedTemperature: Double? = nil,
-                             now: Date = Date()) async -> ModelTemperatures? {
+                             anchor: @Sendable () async -> Double? = { nil }) async -> ModelTemperatures? {
         let request = URLRequest(url: blendURL(for: coordinate), timeoutInterval: 15)
         guard let (data, response) = try? await loader(request) else { return nil }
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { return nil }
-        return try? Self.parseBlend(data, observedTemperature: observedTemperature, now: now)
+        let observed = await anchor()
+        return try? Self.parseBlend(data, observedTemperature: observed, now: Date())
     }
 
     func blendURL(for coordinate: Coordinate) -> URL {

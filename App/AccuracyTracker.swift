@@ -7,16 +7,8 @@ import WeatherCore
 enum AccuracyTracker {
     private static let logKey = "accuracyLog"
     private static let lastRunKey = "accuracyLastRun"
-    private static let localObsKey = "accuracyLocalObserved"
+    private static let localObsKey = "accuracyLocalRanges"
     private static let defaults = UserDefaults.standard
-
-    struct LocalDayRange: Codable {
-        var day: String
-        var high: Double
-        var low: Double
-        var station: String
-        var samples: Int
-    }
 
     static var log: AccuracyLog {
         get {
@@ -27,36 +19,42 @@ enum AccuracyTracker {
         set { defaults.set(try? JSONEncoder().encode(newValue), forKey: logKey) }
     }
 
-    private static var localRanges: [String: LocalDayRange] {
+    /// Saved under a new key: ranges from the first version recorded raw home-station readings.
+    private static var localRanges: [String: AccuracyLog.LocalRange] {
         get {
             guard let data = defaults.data(forKey: localObsKey),
-                  let dict = try? JSONDecoder().decode([String: LocalDayRange].self, from: data) else { return [:] }
+                  let dict = try? JSONDecoder().decode([String: AccuracyLog.LocalRange].self, from: data) else { return [:] }
             return dict
         }
         set { defaults.set(try? JSONEncoder().encode(newValue), forKey: localObsKey) }
     }
 
+    /// Notes the temperature shown on the Now card when it came from a local station. That is the
+    /// filtered value (sun-heated home stations set aside), not the station's raw reading.
     @MainActor
-    static func recordObservation(_ obs: Observation?, timeZone: TimeZone, now: Date = Date()) {
-        guard let obs, obs.isLocal else { return }
+    static func recordObservation(_ obs: Observation?, shownTemperature: Double, timeZone: TimeZone, now: Date = Date()) {
+        guard let obs, obs.isLocal, shownTemperature.isFinite else { return }
         let today = AccuracyLog.dayString(now, timeZone: timeZone)
+        let night = AccuracyLog.LocalRange.isNight(now, timeZone: timeZone)
         var ranges = localRanges
         if var existing = ranges[today] {
-            existing.high = max(existing.high, obs.temperature)
-            existing.low = min(existing.low, obs.temperature)
-            existing.station = obs.stationName
-            existing.samples += 1
+            existing.add(shownTemperature, station: obs.stationName, isNight: night)
             ranges[today] = existing
         } else {
-            ranges[today] = LocalDayRange(day: today, high: obs.temperature, low: obs.temperature,
-                                          station: obs.stationName, samples: 1)
+            ranges[today] = AccuracyLog.LocalRange(day: today, temperature: shownTemperature,
+                                                   station: obs.stationName, isNight: night)
         }
-        localRanges = ranges
+        // Keep about two weeks.
+        let oldest = AccuracyLog.dayString(now, timeZone: timeZone, offsetDays: -14)
+        localRanges = ranges.filter { $0.key >= oldest }
     }
 
     @MainActor
-    static func update(location: Coordinate, timeZone: TimeZone, observation: Observation? = nil, now: Date = Date()) async {
-        recordObservation(observation, timeZone: timeZone, now: now)
+    static func update(location: Coordinate, timeZone: TimeZone, observation: Observation? = nil,
+                       shownTemperature: Double? = nil, now: Date = Date()) async {
+        if let shownTemperature {
+            recordObservation(observation, shownTemperature: shownTemperature, timeZone: timeZone, now: now)
+        }
         if let last = defaults.object(forKey: lastRunKey) as? Date, now.timeIntervalSince(last) < 3 * 3600 { return }
         defaults.set(now, forKey: lastRunKey)
         var log = self.log
@@ -74,13 +72,14 @@ enum AccuracyTracker {
             if !highs.isEmpty { log.record(AccuracyLog.Forecast(day: tomorrow, highs: highs, lows: lows)) }
         }
 
-        // Climate stations post a day's record the next morning or so; try the three oldest open days,
-        // falling back to local PWS/SWOB min/max if at least 4 readings were captured that day.
+        // Climate stations post a day's record the next morning or so; try the three oldest open days.
+        // A day the climate station still hasn't posted after a full extra day falls back to the
+        // local readings, if they covered the night and the day (see LocalRange.usable).
         let ranges = localRanges
         for day in log.unscoredDays(before: today).suffix(3) {
             if let seen = try? await ClimateDailyProvider().observed(day: day, near: location) {
                 log.record(seen)
-            } else if let local = ranges[day], local.samples >= 4 {
+            } else if let local = ranges[day], local.usable(today: today) {
                 log.record(AccuracyLog.Observed(day: day, high: local.high, low: local.low, station: local.station))
             }
         }

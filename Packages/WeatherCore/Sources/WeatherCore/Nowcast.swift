@@ -78,9 +78,12 @@ public extension Forecast {
         guard !slots.isEmpty, slots[0].time <= now else { return nil }
 
         // Bridge live PWS rain gauges and radar directly into the current 15-minute slot.
-        if observation?.gaugesSayDry == true && radar?.isPrecipitating != true {
+        // Home gauges aren't heated and miss snow, so they only overrule rain, above freezing
+        // (the same rule as `dryIfGaugesSay`).
+        if observation?.gaugesSayDry == true, radar?.isPrecipitating != true,
+           current.temperature > 1, slots[0].snowfall == 0 {
             slots[0] = PrecipitationSlot(time: slots[0].time, precipitation: 0, rain: 0, snowfall: 0)
-            } else if (radar?.isPrecipitating == true || (observation?.rainLastHourMm ?? 0) >= 0.2), !slots[0].isWet {
+        } else if (radar?.isPrecipitating == true || (observation?.rainLastHourMm ?? 0) >= 0.2), !slots[0].isWet {
             let hourlyRate = max(radar?.rainMmPerHour ?? 0, observation?.rainLastHourMm ?? 0)
             let slotAmount = max(PrecipitationSlot.wetThreshold, hourlyRate / 4.0)
             let isSnow = current.temperature <= 0
