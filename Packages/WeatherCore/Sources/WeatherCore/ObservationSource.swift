@@ -4,6 +4,14 @@ import Foundation
 public enum ObservationSource {
     /// The app's Settings switch for Netatmo home stations (through the relay).
     public static let hyperlocalKey = "useHyperlocalPWS"
+    /// On unless turned off, in the app and the widget alike: the widget can't read the app's
+    /// settings, so both must start from the same choice to show the same "now".
+    public static let hyperlocalDefault = true
+
+    /// The app's setting, or the default when it was never changed.
+    public static func usesHyperlocal(_ defaults: UserDefaults = .standard) -> Bool {
+        defaults.object(forKey: hyperlocalKey) as? Bool ?? hyperlocalDefault
+    }
 
     public static func provider(hyperlocal: Bool) -> ObservationProvider {
         hyperlocal ? HyperlocalObservationProvider() : WorldObservationProvider()

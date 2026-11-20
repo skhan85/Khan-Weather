@@ -20,7 +20,7 @@ struct ContentView: View {
     @AppStorage(DisplaySettings.hourlyCountKey) private var hourlyCount = 24
     @AppStorage(DisplaySettings.showDetailsKey) private var showDetails = true
     @AppStorage(DisplaySettings.showAirQualityKey) private var showAirQuality = true
-    @AppStorage(ObservationSource.hyperlocalKey) private var useHyperlocalPWS = false
+    @AppStorage(ObservationSource.hyperlocalKey) private var useHyperlocalPWS = ObservationSource.hyperlocalDefault
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {

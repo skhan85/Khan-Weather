@@ -222,7 +222,7 @@ final class WeatherViewModel: ObservableObject {
 
     /// Netatmo home stations through the relay when Settings has them on, otherwise official stations.
     private func currentObservationProvider() -> ObservationProvider {
-        UserDefaults.standard.bool(forKey: ObservationSource.hyperlocalKey)
+        ObservationSource.usesHyperlocal()
             ? ObservationSource.provider(hyperlocal: true) : observations
     }
 

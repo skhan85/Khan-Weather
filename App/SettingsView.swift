@@ -21,7 +21,7 @@ struct SettingsView: View {
     @AppStorage(AlertNotifier.rainKey) private var rainNotifications = false
     @AppStorage(AlertNotifier.frostKey) private var frostNotifications = false
     @AppStorage(DisplaySettings.showAirQualityKey) private var showAirQuality = true
-    @AppStorage(ObservationSource.hyperlocalKey) private var useHyperlocalPWS = false
+    @AppStorage(ObservationSource.hyperlocalKey) private var useHyperlocalPWS = ObservationSource.hyperlocalDefault
     @State private var notificationsDenied = false
     @State private var permissionText = "Checking…"
     @State private var permissionOK = true
@@ -155,11 +155,11 @@ struct SettingsView: View {
                     Text("Today's details shows pressure, UV, visibility, dew point, gusts, sunrise and sunset under the current conditions.")
                 }
             Section {
-                Toggle("Hyperlocal PWS stations", isOn: $useHyperlocalPWS)
+                Toggle("Home weather stations", isOn: $useHyperlocalPWS)
             } header: {
                 Text("Observations")
             } footer: {
-                Text("Uses nearby personal weather stations when available, falling back to official stations. Widgets have their own switch: touch and hold a widget, choose Edit Widget, and set it the same way.")
+                Text("Uses nearby personal weather stations when available, falling back to official stations. On by default. Widgets have their own switch, also on by default: if you turn this off, touch and hold a widget, choose Edit Widget, and turn off Home weather stations there too.")
             }
                 Section("Display") {
                     Picker("Appearance", selection: $appearance) {
@@ -265,6 +265,6 @@ struct SettingsView: View {
         hourlyCount = 24
         showDetails = true
         showAirQuality = true
-        useHyperlocalPWS = false
+        useHyperlocalPWS = ObservationSource.hyperlocalDefault
     }
 }
