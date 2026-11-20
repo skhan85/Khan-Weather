@@ -5,9 +5,6 @@ name: Score forward log
 
 on:
   workflow_dispatch:
-  push:
-    branches: [claude/project-thread-s3gj1h]
-    paths: ["tools/score_forward.py"]
 
 permissions:
   contents: read
