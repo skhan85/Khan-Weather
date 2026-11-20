@@ -14,6 +14,8 @@ struct DesignPreview: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                Text("New details").font(.headline)
+                newSamples
                 Text("Today").font(.headline)
                 todaySamples
                 Text("Lock Screen").font(.headline)
@@ -56,6 +58,55 @@ struct DesignPreview: View {
         }
     }
 
+    /// Next 2 hours bars, the detail tiles with their notes, and the moon.
+    private var newSamples: some View {
+        let now = Date()
+        let tz = TimeZone.current
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = tz
+        let start = c.dateInterval(of: .hour, for: now)!.start
+        let amounts: [Double] = [0, 0, 0.05, 0.2, 0.6, 1.1, 0.7, 0.3]
+        let slots = amounts.enumerated().map { i, mm in
+            PrecipitationSlot(time: start.addingTimeInterval(Double(i) * 900), precipitation: mm, rain: mm)
+        }
+        let hourly: [HourlyForecast] = (0..<24).map { i in
+            var h = HourlyForecast(time: start.addingTimeInterval(Double(i) * 3600), temperature: 6, condition: .rain)
+            h.uvIndex = i < 3 ? 4 : 1
+            h.visibility = 8000
+            h.dewPoint = 2
+            h.humidity = 78
+            h.windGusts = 48
+            h.pressure = 1004
+            return h
+        }
+        var recent = hourly
+        recent.insert({ var h = hourly[0]; h.time = start.addingTimeInterval(-3 * 3600); h.pressure = 1008; return h }(), at: 0)
+        let sunrise = c.date(bySettingHour: 7, minute: 19, second: 0, of: now)!
+        let sunset = c.date(bySettingHour: 16, minute: 50, second: 0, of: now)!
+        var day = DailyForecast(date: c.startOfDay(for: now), high: 8, low: 2, condition: .rain, rainSum: 6, snowfallSum: 0)
+        day.sunrise = sunrise
+        day.sunset = sunset
+        var week = [day]
+        for i in 1..<7 {
+            week.append(DailyForecast(date: day.date.addingTimeInterval(Double(i) * 86400), high: 3, low: -4,
+                                      condition: .snow, rainSum: 1, snowfallSum: i == 3 ? 8 : 0))
+        }
+        var forecast = Forecast(location: .fallback, timeZoneIdentifier: tz.identifier,
+                                current: CurrentConditions(time: now, temperature: 6, feelsLike: 3, feelsLikeKind: .windChill,
+                                                           humidity: 78, windSpeed: 22, windDirection: 290,
+                                                           condition: .rain, isDay: true, pressure: 1004, windGusts: 48),
+                                hourly: hourly, daily: week, source: "Preview", fetchedAt: now)
+        forecast.recentHours = recent
+        return VStack(spacing: 12) {
+            NextTwoHoursView(nowcast: Nowcast(kind: .rain, change: .starting(minutes: 30)), slots: slots)
+            TodayDetailsView(forecast: forecast)
+        }
+        .padding(12)
+        .background(SkyBackground(condition: .rain, isDay: true))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .environment(\.colorScheme, .dark)
+    }
+
     /// The Now card's "warmer than usual" line, today in four parts, normal arrows and the sun arc.
     private var todaySamples: some View {
         let now = Date()
@@ -84,7 +135,8 @@ struct DesignPreview: View {
         return VStack(spacing: 14) {
             CurrentConditionsView(current: current, placeName: "Milton", today: today,
                                   outlook: "Warming to 16° by 2 PM.",
-                                  vsNormal: (NormalComparison.text(high: 16, normalHigh: 7), 1))
+                                  vsNormal: (NormalComparison.text(high: 16, normalHigh: 7), 1),
+                                  vsYesterday: (YesterdayComparison.text(-5), -1))
             VStack(spacing: 10) {
                 DayPartsView(parts: parts)
                 ForEach(rows.indices, id: \.self) { i in

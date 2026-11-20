@@ -229,10 +229,22 @@ private struct ForecastList: View {
                                       wear: WhatToWear.tip(current: forecast.current,
                                                            upcoming: Array(forecast.upcomingHours(count: 13).dropFirst()),
                                                            hourText: { TimeText.hour($0, forecast.timeZone) }),
-                                      vsNormal: vsNormal)
+                                      vsNormal: vsNormal,
+                                      vsYesterday: forecast.changeSinceYesterday().map {
+                                          (YesterdayComparison.text($0), YesterdayComparison.trend($0))
+                                      })
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+            }
+
+            if let nowcast = forecast.nowcast() {
+                Section {
+                    NextTwoHoursView(nowcast: nowcast, slots: forecast.nowcastSlots())
+                } header: {
+                    SkySectionHeader(title: "Next 2 hours", systemImage: "umbrella")
+                }
+                .glassRow()
             }
 
             let parts = forecast.dayParts()
@@ -304,7 +316,7 @@ private struct ForecastList: View {
                     NavigationLink {
                         RadarMapView(center: forecast.location)
                     } label: {
-                        Label("Radar map", systemImage: "dot.radiowaves.left.and.right")
+                        Label("Radar, temperature, wind and cloud maps", systemImage: "dot.radiowaves.left.and.right")
                             .font(.body.weight(.medium))
                     }
                 }
@@ -409,6 +421,8 @@ struct CurrentConditionsView: View {
     var wear: String? = nil
     /// "6° warmer than usual · normal high 7°", and +1/-1/0 for the icon.
     var vsNormal: (text: String, trend: Int)? = nil
+    /// "5° colder than yesterday at this time", and +1/-1/0 for the icon.
+    var vsYesterday: (text: String, trend: Int)? = nil
     @AppStorage(DisplaySettings.mainTemperatureKey) private var mainTemperature = MainTemperature.actual.rawValue
 
     private var feelsFirst: Bool { mainTemperature == MainTemperature.feelsLike.rawValue }
@@ -498,6 +512,16 @@ struct CurrentConditionsView: View {
                 }
                 .fixedSize(horizontal: false, vertical: true)
             }
+            if let vsYesterday {
+                Label {
+                    Text(vsYesterday.text).font(.subheadline.weight(.semibold))
+                } icon: {
+                    Image(systemName: vsYesterday.trend > 0 ? "arrow.up.circle.fill"
+                          : vsYesterday.trend < 0 ? "arrow.down.circle.fill" : "equal.circle.fill")
+                        .foregroundStyle(Brand.gold)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
             // In one row when they fit; on a narrow phone or with large text, a row that scrolls.
             ViewThatFits(in: .horizontal) {
                 factChips
@@ -545,6 +569,10 @@ struct TodayDetailsView: View {
         let title: String
         let value: String
         let systemImage: String
+        /// One short line on what the number means.
+        var note: String = ""
+        /// Small arrow after the value (pressure trend).
+        var trendImage: String? = nil
         var id: String { title }
     }
 
@@ -554,24 +582,41 @@ struct TodayDetailsView: View {
         let day = forecast.day()
         let tz = forecast.timeZone
         var list: [Tile] = []
-        func add(_ title: String, _ value: String?, _ image: String) {
-            if let value { list.append(Tile(title: title, value: value, systemImage: image)) }
+        func add(_ title: String, _ value: String?, _ image: String, note: String = "", trend: String? = nil) {
+            if let value { list.append(Tile(title: title, value: value, systemImage: image, note: note, trendImage: trend)) }
         }
-        add("UV index", WeatherFormat.uvLevel(hour?.uvIndex), "sun.max.fill")
-        add("Pressure", WeatherFormat.pressure(now.pressure), "gauge.with.dots.needle.33percent")
-        add("Visibility", hour?.visibility.flatMap { WeatherFormat.distance($0 / 1000) }, "eye")
-        add("Dew point", hour?.dewPoint.map { WeatherFormat.temperature($0) }, "thermometer.medium")
+        // The rest of today's hours, for when to wear sunscreen.
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = tz
+        let restOfToday = forecast.upcomingHours(count: 24).filter { calendar.isDate($0.time, inSameDayAs: Date()) }
+        add("UV index", WeatherFormat.uvLevel(hour?.uvIndex), "sun.max.fill",
+            note: DetailNotes.uv(hours: restOfToday, hourText: { TimeText.hour($0, tz) }))
         if let gusts = now.windGusts ?? hour?.windGusts {
             var text = WeatherFormat.wind(gusts)
             if let dir = WeatherFormat.compass(now.windDirection) { text = "\(dir), \(text)" }
-            add("Gusts", text, "wind")
+            add("Gusts", text, "wind", note: DetailNotes.gusts(gusts: gusts, wind: now.windSpeed))
+        }
+        let trend = forecast.pressureTrend()
+        add("Pressure", WeatherFormat.pressure(now.pressure ?? hour?.pressure), "gauge.with.dots.needle.33percent",
+            note: trend?.note ?? "", trend: trend?.symbolName)
+        if let humidity = now.humidity ?? hour?.humidity {
+            add("Humidity", WeatherFormat.percent(humidity), "humidity.fill",
+                note: DetailNotes.humidity(dewPoint: hour?.dewPoint))
+        }
+        if let km = hour?.visibility.map({ $0 / 1000 }) {
+            add("Visibility", WeatherFormat.distance(km), "eye", note: DetailNotes.visibility(km: km))
         }
         if let sunrise = day?.sunrise, let sunset = day?.sunset {
             let mins = Int(sunset.timeIntervalSince(sunrise) / 60)
-            add("Daylight", "\(mins / 60) hr \(mins % 60) min", "sun.max")
+            add("Daylight", "\(mins / 60) hr \(mins % 60) min", "sun.max",
+                note: "Sunset \(TimeText.time(sunset, tz)).")
         }
-        if let rain = day?.rainSum, let snow = day?.snowfallSum {
-            add("Today's total", WeatherFormat.precipitationTotals(rainMm: rain, snowCm: snow), "drop")
+        if let day, day.rainSum != nil || day.snowfallSum != nil {
+            let today = WeatherFormat.precipitationTotals(rainMm: day.rainSum, snowCm: day.snowfallSum) ?? "None"
+            let week = forecast.precipitationTotals(days: 7).map {
+                WeatherFormat.precipitationTotals(rainMm: $0.rainMm, snowCm: $0.snowCm) ?? "none"
+            }
+            add("Rain and snow today", today, "drop", note: week.map { "Next 7 days: \($0)." } ?? "")
         }
         return list
     }
@@ -581,6 +626,7 @@ struct TodayDetailsView: View {
             if let day = forecast.day(), let rise = day.sunrise, let set = day.sunset {
                 SunArcView(sunrise: rise, sunset: set, timeZone: forecast.timeZone)
             }
+            MoonRow(date: Date(), timeZone: forecast.timeZone)
             grid
         }
     }
@@ -592,9 +638,23 @@ struct TodayDetailsView: View {
                     Label(tile.title, systemImage: tile.systemImage)
                         .font(.footnote.weight(.medium))
                         .foregroundStyle(.white.opacity(0.82))
-                    Text(tile.value)
-                        .font(.body.weight(.semibold))
+                    HStack(spacing: 4) {
+                        Text(tile.value)
+                            .font(.body.weight(.semibold))
+                        if let trend = tile.trendImage {
+                            Image(systemName: trend)
+                                .font(.footnote.weight(.bold))
+                                .foregroundStyle(Brand.gold)
+                        }
+                    }
+                    if !tile.note.isEmpty {
+                        Text(tile.note)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.8))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
+                .frame(maxHeight: .infinity, alignment: .top)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
                 .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))

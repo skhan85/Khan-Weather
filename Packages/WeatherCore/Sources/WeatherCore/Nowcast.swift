@@ -24,6 +24,11 @@ public struct Nowcast: Equatable, Sendable {
     public var kind: Kind
     public var change: Change
 
+    public init(kind: Kind, change: Change) {
+        self.kind = kind
+        self.change = change
+    }
+
     public var text: String {
         switch change {
         case .starting(let m): return "\(kind.noun) starting in about \(Self.duration(m))"
@@ -68,14 +73,15 @@ public struct Nowcast: Equatable, Sendable {
 public extension Forecast {
     static let nowcastWindow: TimeInterval = 2 * 3600
 
-    /// What precipitation is doing over the next two hours, or nil when it stays dry
-    /// (or the 15-minute data is missing or stale).
-    func nowcast(at now: Date = Date()) -> Nowcast? {
+    /// The 15-minute slots of the next two hours that the nowcast reads, with live gauges and
+    /// radar folded into the current slot. Empty when the data is missing or stale. The bars on
+    /// the main screen draw these, so they always agree with the "Rain starting in" line.
+    func nowcastSlots(at now: Date = Date()) -> [PrecipitationSlot] {
         var slots = minutely
             .filter { $0.time.addingTimeInterval(900) > now && $0.time < now.addingTimeInterval(Self.nowcastWindow) }
             .sorted { $0.time < $1.time }
         // The first slot must cover "now", otherwise the data is old and we'd be guessing.
-        guard !slots.isEmpty, slots[0].time <= now else { return nil }
+        guard !slots.isEmpty, slots[0].time <= now else { return [] }
 
         // Bridge live PWS rain gauges and radar directly into the current 15-minute slot.
         // Home gauges aren't heated and miss snow, so they only overrule rain, above freezing
@@ -96,6 +102,14 @@ public extension Forecast {
             )
         }
 
+        return slots
+    }
+
+    /// What precipitation is doing over the next two hours, or nil when it stays dry
+    /// (or the 15-minute data is missing or stale).
+    func nowcast(at now: Date = Date()) -> Nowcast? {
+        let slots = nowcastSlots(at: now)
+        guard !slots.isEmpty else { return nil }
         let first = slots[0]
 
         if first.isWet {
