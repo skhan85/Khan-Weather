@@ -142,55 +142,11 @@ struct KhanWeatherWidgetView: View {
         if let current = entry.current {
             switch family {
             case .accessoryInline:
-                Label([entry.placeName, temp(current.temperature), current.condition.description]
-                        .compactMap { $0 }.joined(separator: " "),
-                      systemImage: current.condition.symbolName(isDay: current.isDay))
+                lockInline(current)
             case .accessoryCircular:
-                if let low = entry.low, let high = entry.high, high > low {
-                    Gauge(value: min(max(current.temperature, low), high), in: low...high) {
-                        Image(systemName: current.condition.symbolName(isDay: current.isDay))
-                    } currentValueLabel: {
-                        Text(temp(current.temperature))
-                            .font(.system(.title3, design: .rounded, weight: .bold))
-                    } minimumValueLabel: {
-                        Text(temp(low)).font(.system(size: 9, weight: .semibold, design: .rounded))
-                    } maximumValueLabel: {
-                        Text(temp(high)).font(.system(size: 9, weight: .semibold, design: .rounded))
-                    }
-                    .gaugeStyle(.accessoryCircular)
-                } else {
-                    VStack(spacing: 0) {
-                        Image(systemName: current.condition.symbolName(isDay: current.isDay))
-                        Text(temp(current.temperature)).font(.system(.headline, design: .rounded, weight: .bold))
-                    }
-                }
+                lockCircular(current)
             case .accessoryRectangular:
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 4) {
-                        Image(systemName: current.condition.symbolName(isDay: current.isDay))
-                        Text(temp(current.temperature))
-                            .font(.system(.title3, design: .rounded, weight: .bold))
-                        if let place = entry.placeName {
-                            Text(place)
-                                .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                        }
-                    }
-                    if let alert = entry.alert {
-                        Label(alert, systemImage: "exclamationmark.triangle.fill")
-                            .font(.system(.caption, design: .rounded, weight: .semibold))
-                            .lineLimit(1)
-                    } else {
-                        Text("\(current.condition.description) · feels \(temp(current.feelsLike))")
-                            .font(.system(.caption, design: .rounded, weight: .medium))
-                            .lineLimit(1)
-                    }
-                    Text(entry.nowcast ?? "High \(temp(entry.high)) · Low \(temp(entry.low))")
-                        .font(.system(.caption, design: .rounded, weight: .medium))
-                        .lineLimit(1)
-                }
-                .widgetAccentable()
+                lockRectangular(current)
             case .systemMedium:
                 HStack(spacing: 12) {
                     summary(current)
@@ -210,6 +166,94 @@ struct KhanWeatherWidgetView: View {
                 .font(.caption)
                 .foregroundStyle(.white)
         }
+    }
+
+    // MARK: Lock Screen
+    //
+    // Lock Screen widgets show the same numbers as the app's Now card: the current temperature
+    // and feels-like from `entry.current`, the condition, and the place name. iOS tints them to
+    // match the clock, so they use type weight and size for hierarchy, not colour.
+
+    private func feelsText(_ current: CurrentConditions) -> String {
+        "\(WeatherFormat.feelsLikeLabel(current.feelsLikeKind)) \(temp(current.feelsLike))"
+    }
+
+    /// One line above the clock: "Milton 7° · Feels like 5°", shortened when space is tight.
+    private func lockInline(_ current: CurrentConditions) -> some View {
+        let t = temp(current.temperature)
+        let f = temp(current.feelsLike)
+        let place = entry.placeName.map { "\($0) " } ?? ""
+        return ViewThatFits {
+            Label("\(place)\(t) · \(feelsText(current))", systemImage: current.condition.symbolName(isDay: current.isDay))
+            Label("\(place)\(t) · Feels \(f)", systemImage: current.condition.symbolName(isDay: current.isDay))
+            Label("\(t) · Feels \(f)", systemImage: current.condition.symbolName(isDay: current.isDay))
+        }
+    }
+
+    /// Condition icon, temperature, and feels-like in a disc.
+    private func lockCircular(_ current: CurrentConditions) -> some View {
+        ZStack {
+            AccessoryWidgetBackground()
+            VStack(spacing: -1) {
+                Image(systemName: current.condition.symbolName(isDay: current.isDay))
+                    .font(.system(size: 13, weight: .semibold))
+                    .symbolRenderingMode(.hierarchical)
+                Text(temp(current.temperature))
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+                Text("Feels \(temp(current.feelsLike))")
+                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .opacity(0.85)
+            }
+            .padding(.horizontal, 6)
+        }
+        .widgetAccentable()
+    }
+
+    /// City across the top; the temperature large on the left; the condition and feels-like
+    /// stacked beside it. An active alert adds a warning sign next to the city.
+    private func lockRectangular(_ current: CurrentConditions) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 3) {
+                Image(systemName: "location.fill")
+                    .font(.system(size: 9, weight: .bold))
+                Text(entry.placeName ?? "Current location")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Spacer(minLength: 2)
+                if entry.alert != nil {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .accessibilityLabel(entry.alert ?? "Weather alert")
+                }
+            }
+            HStack(alignment: .center, spacing: 8) {
+                Text(temp(current.temperature))
+                    .font(.system(size: 40, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .layoutPriority(1)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 4) {
+                        Image(systemName: current.condition.symbolName(isDay: current.isDay))
+                            .symbolRenderingMode(.hierarchical)
+                        Text(current.condition.description)
+                    }
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    Text(feelsText(current))
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .opacity(0.85)
+                }
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .widgetAccentable()
     }
 
     private func summary(_ current: CurrentConditions) -> some View {

@@ -14,6 +14,8 @@ struct DesignPreview: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                Text("Lock Screen").font(.headline)
+                lockScreen
                 Text("Widgets").font(.headline)
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 158), spacing: 12)], spacing: 12) {
                     ForEach(samples.indices, id: \.self) { i in
@@ -50,6 +52,61 @@ struct DesignPreview: View {
             }
             .padding()
         }
+    }
+
+    /// A mock Lock Screen with the inline, circular and rectangular widgets, drawn white the way
+    /// iOS tints them over a wallpaper.
+    private var lockScreen: some View {
+        let clear = lockEntry(.clear, isDay: true, temp: 7, feels: 5, place: "Milton")
+        let alert = lockEntry(.thunderstorm, isDay: true, temp: 24, feels: 29, place: "Milton",
+                              alert: "Severe thunderstorm warning")
+        let snow = lockEntry(.snow, isDay: false, temp: -12, feels: -21, place: "Campbellville")
+        let rain = lockEntry(.rainShowers, isDay: true, temp: 3, feels: -1, place: "Toronto")
+        return VStack(spacing: 14) {
+            VStack(spacing: 2) {
+                KhanWeatherWidgetView(entry: clear, family: .accessoryInline)
+                    .font(.system(size: 17, weight: .semibold))
+                    .lineLimit(1)
+                    .frame(width: 260, height: 22)
+                Text("7:45")
+                    .font(.system(size: 88, weight: .bold, design: .rounded))
+            }
+            HStack(spacing: 10) {
+                lockWidget(clear, .accessoryRectangular).frame(width: 170, height: 72)
+                lockWidget(clear, .accessoryCircular).frame(width: 72, height: 72)
+                lockWidget(snow, .accessoryCircular).frame(width: 72, height: 72)
+            }
+            HStack(spacing: 10) {
+                lockWidget(alert, .accessoryRectangular).frame(width: 170, height: 72)
+                lockWidget(snow, .accessoryRectangular).frame(width: 170, height: 72)
+            }
+            HStack(spacing: 10) {
+                lockWidget(rain, .accessoryRectangular).frame(width: 170, height: 72)
+                lockWidget(rain, .accessoryCircular).frame(width: 72, height: 72)
+            }
+        }
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+        .background(LinearGradient(colors: [Color(white: 0.62), Color(white: 0.45)],
+                                   startPoint: .top, endPoint: .bottom))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .environment(\.colorScheme, .dark)
+    }
+
+    private func lockWidget(_ entry: WeatherEntry, _ family: WidgetFamily) -> some View {
+        KhanWeatherWidgetView(entry: entry, family: family)
+    }
+
+    private func lockEntry(_ condition: WeatherCondition, isDay: Bool, temp: Double, feels: Double,
+                           place: String, alert: String? = nil) -> WeatherEntry {
+        let base = WeatherEntry.placeholder
+        return WeatherEntry(
+            date: base.date,
+            current: CurrentConditions(time: base.date, temperature: temp, feelsLike: feels,
+                                       feelsLikeKind: .apparent, condition: condition, isDay: isDay),
+            high: temp + 4, low: temp - 5, placeName: place, error: nil, alert: alert,
+            hours: base.hours, days: base.days)
     }
 
     private var iconGrid: some View {
