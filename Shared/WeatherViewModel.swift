@@ -115,22 +115,26 @@ final class WeatherViewModel: ObservableObject {
         }
         let fallbackName = usingFallbackLocation ? "Toronto" : nil
         let provider = self.provider, alertProvider = self.alertProvider
-        let observations: ObservationProvider = UserDefaults.standard.bool(forKey: "useHyperlocalPWS") ? HyperlocalObservationProvider() : self.observations
+        let observations = currentObservationProvider()
+        let spot = Self.spotKey(target)
+        let previous = lastObservation[spot]
 
-        // Everything starts at once.
+        // Everything starts at once. The station reading has a deadline so a slow station can't
+        // hold up the forecast, which waits for it to re-weight the blend (as the widget does).
         let nameTask = Task { await Self.name(for: place, at: target) }
-        let observedTask = Task { try? await observations.observation(near: target) }
+        let observedTask = Task {
+            await Deadline.run(8) { try? await observations.observation(near: target) }?
+                .smoothed(after: previous)
+        }
         let radarTask = Task { try? await ECCCRadarProvider().now(at: target) }
         let alertsTask = Task { try? await alertProvider.alerts(near: target) }
         let airTask = Task { try? await AirQualityProvider().airQuality(at: target) }
-        let spot = Self.spotKey(target)
-        let recentObservedTemp = lastObservation[spot]?.temperature
-        
+
         let base: Forecast
         do {
             if let om = provider as? OpenMeteoProvider {
-                       base = try await om.forecast(for: target, observedTemperature: recentObservedTemp)
-                } else {
+                base = try await om.forecast(for: target, anchor: { await observedTask.value?.blendAnchor })
+            } else {
                 base = try await provider.forecast(for: target)
             }
         } catch {
@@ -165,10 +169,9 @@ final class WeatherViewModel: ObservableObject {
                 self.airQuality = fresh
             }
             group.addTask { @MainActor in
-                let fresh = await observedTask.value ?? nil
+                let observed = await observedTask.value
                 let radar = await radarTask.value ?? nil
                 guard gen == self.generation else { return }
-                let observed = fresh?.smoothed(after: self.lastObservation[spot])
                 if let observed { self.lastObservation[spot] = observed }
                 self.state = .loaded(base.applying(observed).applyingRadar(radar))
             }
@@ -184,17 +187,17 @@ final class WeatherViewModel: ObservableObject {
             if let snap = cache[place.id], Date().timeIntervalSince(snap.at) < cacheAge / 2 { continue }
             try? await Task.sleep(nanoseconds: 600_000_000)
             let target = place.coordinate
-          let provider = self.provider, alertProvider = self.alertProvider
-            let observations: ObservationProvider = UserDefaults.standard.bool(forKey: "useHyperlocalPWS") ? HyperlocalObservationProvider() : self.observations
-            async let observed = try? observations.observation(near: target)
+            let provider = self.provider, alertProvider = self.alertProvider
+            let observations = currentObservationProvider()
+            async let observed = Deadline.run(8) { try? await observations.observation(near: target) }
             async let radar = try? ECCCRadarProvider().now(at: target)
             async let fetchedAlerts = try? alertProvider.alerts(near: target)
             async let air = try? AirQualityProvider().airQuality(at: target)
-           let obs = await observed ?? nil
+            let obs = await observed
             let base: Forecast?
             if let om = provider as? OpenMeteoProvider {
-                base = try? await om.forecast(for: target, observedTemperature: obs?.temperature)
-                } else {
+                base = try? await om.forecast(for: target, observedTemperature: obs?.blendAnchor)
+            } else {
                 base = try? await provider.forecast(for: target)
             }
             guard let base else { continue }
@@ -205,6 +208,12 @@ final class WeatherViewModel: ObservableObject {
             if let existing = cache[place.id], existing.at > snap.at { continue }
             cache[place.id] = snap
         }
+    }
+
+    /// Netatmo home stations through the relay when Settings has them on, otherwise official stations.
+    private func currentObservationProvider() -> ObservationProvider {
+        UserDefaults.standard.bool(forKey: ObservationSource.hyperlocalKey)
+            ? ObservationSource.provider(hyperlocal: true) : observations
     }
 
     private nonisolated static func name(for place: SavedPlace?, at target: Coordinate) async -> String? {

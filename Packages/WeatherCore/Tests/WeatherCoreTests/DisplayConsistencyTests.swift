@@ -1,0 +1,80 @@
+import XCTest
+@testable import WeatherCore
+
+/// Today's low, the blend anchor and the accuracy fallback: the pieces every screen and the widget share.
+final class DisplayConsistencyTests: XCTestCase {
+    let toronto = TimeZone(identifier: "America/Toronto")!
+
+    /// Midnight, 19 Nov 2026, Toronto.
+    var midnight: Date {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = toronto
+        return c.date(from: DateComponents(year: 2026, month: 11, day: 19))!
+    }
+
+    /// Hourly temperatures from midnight on the 19th for 48 hours: `temp(hoursFromMidnight)`.
+    func forecast(_ temp: (Int) -> Double) -> Forecast {
+        let hours = (0..<48).map { h in
+            HourlyForecast(time: midnight.addingTimeInterval(Double(h) * 3600), temperature: temp(h), condition: .overcast)
+        }
+        let current = CurrentConditions(time: midnight, temperature: temp(0), feelsLike: temp(0),
+                                        feelsLikeKind: .apparent, condition: .overcast, isDay: false)
+        let days = [
+            DailyForecast(date: midnight, high: 10, low: -3, condition: .overcast),
+            DailyForecast(date: midnight.addingTimeInterval(86400), high: 8, low: 1, condition: .overcast),
+        ]
+        return Forecast(location: Coordinate(latitude: 43.5, longitude: -79.9), timeZoneIdentifier: "America/Toronto",
+                        current: current, hourly: hours, daily: days, source: "test", fetchedAt: midnight)
+    }
+
+    func testTonightLowInTheEvening() {
+        // Coldest at 5 AM on the 19th (-3), then 2 at 6 AM on the 20th.
+        let f = forecast { h in h == 5 ? -3 : (h == 30 ? 2 : 6) }
+        let threePM = midnight.addingTimeInterval(15 * 3600)
+        XCTAssertEqual(f.tonightLow(from: threePM), 2)
+        XCTAssertEqual(f.displayDay(at: threePM)?.low, 2)
+        XCTAssertEqual(f.displayDaily(at: threePM).first?.low, 2)
+        // Tomorrow keeps its own low.
+        XCTAssertEqual(f.displayDaily(at: threePM)[1].low, 1)
+    }
+
+    func testTonightBeforeDawnIsTheNightWeAreIn() {
+        let f = forecast { h in h == 5 ? -3 : (h == 30 ? 2 : 6) }
+        let twoAM = midnight.addingTimeInterval(2 * 3600)
+        XCTAssertEqual(f.tonightLow(from: twoAM), -3)
+        XCTAssertEqual(f.displayDay(at: twoAM)?.low, -3)
+    }
+
+    func testDisplayLowNeverAboveHigh() {
+        let f = forecast { _ in 14 }
+        let noon = midnight.addingTimeInterval(12 * 3600)
+        XCTAssertEqual(f.displayDay(at: noon)?.low, 10)
+    }
+
+    func testBlendAnchorOnlyForLocalStations() {
+        let near = Observation(stationName: "Campbellville", observedAt: midnight, temperature: 4, distanceKm: 6)
+        let far = Observation(stationName: "Toronto Pearson", observedAt: midnight, temperature: 7, distanceKm: 28)
+        XCTAssertEqual(near.blendAnchor, 4)
+        XCTAssertNil(far.blendAnchor)
+    }
+
+    func testLocalRangeNeedsTheNightAndAFullDayOfWaiting() {
+        var r = AccuracyLog.LocalRange(day: "2026-11-17", temperature: 2, station: "Milton", isNight: true)
+        for t in [5.0, 8, 9, 7, 4] { r.add(t, station: "Milton", isNight: false) }
+        XCTAssertEqual(r.low, 2)
+        XCTAssertEqual(r.high, 9)
+        // The next morning the climate station may still post: wait.
+        XCTAssertFalse(r.usable(today: "2026-11-18"))
+        XCTAssertTrue(r.usable(today: "2026-11-19"))
+
+        // Afternoon looks only: never stands in for the day's low.
+        var afternoon = AccuracyLog.LocalRange(day: "2026-11-17", temperature: 8, station: "Milton", isNight: false)
+        for t in [9.0, 9, 8, 7, 7] { afternoon.add(t, station: "Milton", isNight: false) }
+        XCTAssertFalse(afternoon.usable(today: "2026-11-20"))
+    }
+
+    func testDayOffset() {
+        XCTAssertEqual(AccuracyLog.day("2026-11-01", offsetBy: -1), "2026-10-31")
+        XCTAssertNil(AccuracyLog.day("not a day", offsetBy: 1))
+    }
+}

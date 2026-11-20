@@ -21,7 +21,7 @@ struct SettingsView: View {
     @AppStorage(AlertNotifier.rainKey) private var rainNotifications = false
     @AppStorage(AlertNotifier.frostKey) private var frostNotifications = false
     @AppStorage(DisplaySettings.showAirQualityKey) private var showAirQuality = true
-    @AppStorage("useHyperlocalPWS") private var useHyperlocalPWS = false
+    @AppStorage(ObservationSource.hyperlocalKey) private var useHyperlocalPWS = false
     @State private var notificationsDenied = false
     @State private var permissionText = "Checking…"
     @State private var permissionOK = true
@@ -159,7 +159,7 @@ struct SettingsView: View {
             } header: {
                 Text("Observations")
             } footer: {
-                Text("Uses nearby personal weather stations when available, falling back to official stations.")
+                Text("Uses nearby personal weather stations when available, falling back to official stations. Widgets have their own switch: touch and hold a widget, choose Edit Widget, and set it the same way.")
             }
                 Section("Display") {
                     Picker("Appearance", selection: $appearance) {

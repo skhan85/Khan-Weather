@@ -39,6 +39,11 @@ struct WeatherWidgetIntent: WidgetConfigurationIntent {
     /// checks for alerts where you are and posts them as Khan Weather notifications.
     @Parameter(title: "Alert notifications", default: .all)
     var alertNotifications: WidgetAlertNotifications
+
+    /// Mirrors Settings > Hyperlocal PWS stations in the app. The widget can't read the app's
+    /// settings (no App Group on a free Apple ID), so it has its own switch; keep both the same.
+    @Parameter(title: "Hyperlocal PWS stations", default: false)
+    var useHyperlocalPWS: Bool
 }
 
 /// Alert notifications from the widget. The widget can't read the app's settings or memory (no
@@ -77,36 +82,22 @@ enum WidgetAlertNotifier {
 
 struct WeatherTimelineProvider: AppIntentTimelineProvider {
     private let provider = OpenMeteoProvider()
-    private let observations = WorldObservationProvider()
     private let alerts = WorldAlertProvider()
 
     func placeholder(in context: Context) -> WeatherEntry { .placeholder }
 
     func snapshot(for configuration: WeatherWidgetIntent, in context: Context) async -> WeatherEntry {
-        var entry: WeatherEntry = context.isPreview ? .placeholder : await loadEntry(notify: .off)
+        var entry: WeatherEntry = context.isPreview ? .placeholder : await loadEntry(notify: .off, hyperlocal: configuration.useHyperlocalPWS)
         entry.unit = configuration.temperatureUnit.unit
         return entry
     }
 
     func timeline(for configuration: WeatherWidgetIntent, in context: Context) async -> Timeline<WeatherEntry> {
-        var entry = await loadEntry(notify: configuration.alertNotifications)
+        var entry = await loadEntry(notify: configuration.alertNotifications,
+                                    hyperlocal: configuration.useHyperlocalPWS)
         entry.unit = configuration.temperatureUnit.unit
         // Ask iOS to refresh in about 30 minutes; it may wait longer to save battery.
         return Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(30 * 60)))
-    }
-
-    /// Runs `operation`, giving up with nil after `seconds`.
-    private static func withDeadline<T>(_ seconds: Double, _ operation: @escaping () async -> T?) async -> T? {
-        await withTaskGroup(of: T?.self) { group in
-            group.addTask { await operation() }
-            group.addTask {
-                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                return nil
-            }
-            let first = await group.next() ?? nil
-            group.cancelAll()
-            return first
-        }
     }
 
     /// The next 6 hours, with the first showing the same "now" as the app.
@@ -114,7 +105,7 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
         forecast.hoursStartingNow(count: 6)
     }
 
-    private func loadEntry(notify: WidgetAlertNotifications) async -> WeatherEntry {
+    private func loadEntry(notify: WidgetAlertNotifications, hyperlocal: Bool) async -> WeatherEntry {
         // Widgets can't show a permission prompt; they use the last location iOS knows,
         // which works once the app has been granted location access (NSWidgetWantsLocation).
         let known = CLLocationManager().location.map {
@@ -124,27 +115,28 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
         async let place = PlaceNameResolver.name(for: coordinate)
         // Extras get a hard deadline: if a station or alert service is slow, iOS would otherwise
         // give up on the whole refresh and keep showing an old widget.
-        let observations = self.observations
+        let observations = ObservationSource.provider(hyperlocal: hyperlocal)
         let alerts = self.alerts
-        async let observed = Self.withDeadline(8) { try? await observations.observation(near: coordinate) }
-        async let active = Self.withDeadline(8) { try? await alerts.alerts(near: coordinate) }
-        async let radarNow = Self.withDeadline(6) { try? await ECCCRadarProvider().now(at: coordinate) }
+        async let observed = Deadline.run(8) { try? await observations.observation(near: coordinate) }
+        async let active = Deadline.run(8) { try? await alerts.alerts(near: coordinate) }
+        async let radarNow = Deadline.run(6) { try? await ECCCRadarProvider().now(at: coordinate) }
         // Only for a real location: the Toronto fallback isn't where the person is.
         if known != nil, let found = await active {
             await WidgetAlertNotifier.notify(found, placeName: await place, setting: notify)
         }
         do {
-           let obs = await observed
-            let forecast = try await provider.forecast(for: coordinate, observedTemperature: obs?.temperature)
+            let obs = await observed
+            // Same order as the app: the station reading re-weights the blend only when it's local.
+            let forecast = try await provider.forecast(for: coordinate, observedTemperature: obs?.blendAnchor)
                 .applying(obs)
-            .applyingRadar(await radarNow)
-            let today = forecast.daily.first
-           let todayLow = forecast.tonightLow().map { min($0, today?.high ?? $0) } ?? today?.low
-           var days = Array(forecast.daily.prefix(5)); if !days.isEmpty, let todayLow { days[0].low = todayLow }
-            return WeatherEntry(date: Date(), current: forecast.current, high: today?.high, low: todayLow,
+                .applyingRadar(await radarNow)
+            let days = forecast.displayDaily()
+            let today = forecast.displayDay()
+            return WeatherEntry(date: Date(), current: forecast.current, high: today?.high, low: today?.low,
                                 placeName: await place, error: nil, nowcast: forecast.nowcast()?.shortText,
                                 alert: await active?.first?.title,
-                                hours: Self.hoursStartingNow(forecast), days: days,
+                                hours: Self.hoursStartingNow(forecast),
+                                days: Array(days.prefix(5)),
                                 timeZone: forecast.timeZone)
         } catch {
             return WeatherEntry(date: Date(), current: nil, high: nil, low: nil, placeName: await place,

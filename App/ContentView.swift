@@ -20,7 +20,7 @@ struct ContentView: View {
     @AppStorage(DisplaySettings.hourlyCountKey) private var hourlyCount = 24
     @AppStorage(DisplaySettings.showDetailsKey) private var showDetails = true
     @AppStorage(DisplaySettings.showAirQualityKey) private var showAirQuality = true
-    @AppStorage("useHyperlocalPWS") private var useHyperlocalPWS = false
+    @AppStorage(ObservationSource.hyperlocalKey) private var useHyperlocalPWS = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -173,10 +173,11 @@ private struct ForecastList: View {
     private var hoursStartingNow: [HourlyForecast] {
         forecast.hoursStartingNow(count: hourlyCount)
     }
-    private var todayDisplay: DailyForecast? { guard var d = forecast.day() else { return nil }; if let tonight = forecast.tonightLow() { d.low = min(tonight, d.high) }; return d }
-    
-    private var weekLow: Double { forecast.daily.enumerated().map { $0.offset == 0 ? min(forecast.tonightLow() ?? $0.element.low, $0.element.high) : $0.element.low }.min() ?? 0 }
-    private var weekHigh: Double { forecast.daily.map(\.high).max() ?? 0 }
+    /// Daily rows as displayed: today's low is tonight's low, the same on every screen and the widget.
+    private var days: [DailyForecast] { forecast.displayDaily() }
+    private var todayDisplay: DailyForecast? { forecast.displayDay() }
+    private var weekLow: Double { days.map(\.low).min() ?? 0 }
+    private var weekHigh: Double { days.map(\.high).max() ?? 0 }
 
     var body: some View {
         List {
@@ -218,13 +219,12 @@ private struct ForecastList: View {
             .glassRow()
 
             Section {
-                ForEach(Array(forecast.daily.enumerated()), id: \.element.id) { index, day in
-                    let displayDay: DailyForecast = { var d = day; if index == 0 { d.low = min(forecast.tonightLow() ?? day.low, day.high) }; return d }()
-                                                                               NavigationLink {
+                ForEach(Array(days.enumerated()), id: \.element.id) { index, day in
+                    NavigationLink {
                         DayDetailView(day: day, hours: forecast.hours(on: day), timeZone: forecast.timeZone,
                                       location: forecast.location)
                     } label: {
-                        DailyRow(day: displayDay, isToday: index == 0, timeZone: forecast.timeZone,
+                        DailyRow(day: day, isToday: index == 0, timeZone: forecast.timeZone,
                                  weekLow: weekLow, weekHigh: weekHigh,
                                  current: index == 0 ? forecast.current.temperature : nil)
                     }
@@ -293,7 +293,8 @@ private struct ForecastList: View {
             // Keep score of the models for where the user actually is, not saved places.
             guard !isSavedPlace, !usingFallbackLocation else { return }
             await AccuracyTracker.update(location: forecast.location, timeZone: forecast.timeZone,
-                                        observation: forecast.observation)
+                                        observation: forecast.observation,
+                                        shownTemperature: forecast.current.temperature)
         }
         .fontDesign(.rounded)
     }

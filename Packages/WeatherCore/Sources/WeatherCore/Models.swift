@@ -283,19 +283,54 @@ public struct Forecast: Equatable, Codable, Sendable {
         return daily.first { calendar.isDate($0.date, inSameDayAs: date) } ?? daily.first
     }
 
-    /// Lowest forecast temperature from tonight (6 PM or `date`, whichever is later) through 9 AM tomorrow.
+    /// Lowest forecast temperature tonight: from 6 PM (or `date`, if later) through 9 AM tomorrow.
+    /// Before 6 AM "tonight" is the night we're in, so the window is `date` through 9 AM today.
     public func tonightLow(from date: Date = Date()) -> Double? {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
         let startOfToday = calendar.startOfDay(for: date)
-        guard let sixPM = calendar.date(byAdding: .hour, value: 18, to: startOfToday),
-              let nineAMTomorrow = calendar.date(byAdding: .hour, value: 33, to: startOfToday) else { return nil }
-        let windowStart = max(date, sixPM)
+        let start: Date, end: Date
+        if calendar.component(.hour, from: date) < 6 {
+            guard let nineAM = calendar.date(byAdding: .hour, value: 9, to: startOfToday) else { return nil }
+            start = date
+            end = nineAM
+        } else {
+            guard let sixPM = calendar.date(byAdding: .hour, value: 18, to: startOfToday),
+                  let nineAMTomorrow = calendar.date(byAdding: .hour, value: 33, to: startOfToday) else { return nil }
+            start = max(date, sixPM)
+            end = nineAMTomorrow
+        }
+        // From the hour that contains `start`, so 7:40 PM still counts the 7 PM hour.
+        let from = start.addingTimeInterval(-3599)
         return hourly
-            .filter { $0.time >= windowStart && $0.time <= nineAMTomorrow }
+            .filter { $0.time >= from && $0.time <= end }
             .map(\.temperature)
             .min()
-    }        
+    }
+
+    /// The daily rows as every screen and the widget show them: today's low is tonight's low
+    /// (like The Weather Network), never above today's high. Use this instead of `daily` for
+    /// anything displayed, so the list, the Now card, the day screen and the widget agree.
+    public func displayDaily(at date: Date = Date()) -> [DailyForecast] {
+        guard let todayIndex = todayIndex(at: date) else { return daily }
+        var rows = daily
+        if let tonight = tonightLow(from: date) {
+            rows[todayIndex].low = min(tonight, rows[todayIndex].high)
+        }
+        return rows
+    }
+
+    /// Today's row as displayed (see `displayDaily`).
+    public func displayDay(at date: Date = Date()) -> DailyForecast? {
+        let rows = displayDaily(at: date)
+        return todayIndex(at: date).map { rows[$0] } ?? rows.first
+    }
+
+    private func todayIndex(at date: Date) -> Int? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        return daily.firstIndex { calendar.isDate($0.date, inSameDayAs: date) }
+    }
 }
 
 public enum ForecastError: Error, Equatable, LocalizedError {
