@@ -1,6 +1,8 @@
 name: Forecast log
 
-# Every hour (GitHub runs schedules loosely), saves the next 120 hours of forecasts for Milton from Open-Meteo's models,
+# The hourly snapshots are taken on the VPS (cron, tools/log_forecasts.py) because GitHub ran this
+# schedule only about every 8 hours. This job copies them from the relay into the branch; if the relay
+# can't be reached it takes one snapshot itself, as before. Each snapshot saves the next 120 hours of forecasts for Milton from Open-Meteo's models,
 # Pirate Weather and Google Weather, plus every Netatmo station near Milton, to forecast-log.jsonl on the forecast-log branch, so they can
 # be scored against Environment Canada observations later (tools/score_forecast_log.py).
 
@@ -33,7 +35,12 @@ jobs:
           else
             git worktree add --orphan -b forecast-log log
           fi
+      - name: Copy snapshots from the relay
+        id: relay
+        continue-on-error: true
+        run: python3 tools/pull_relay_log.py log/forecast-log.jsonl
       - name: Fetch forecasts
+        if: steps.relay.outcome != 'success'
         env:
           PIRATE_WEATHER_KEY: ${{ secrets.PIRATE_WEATHER_KEY }}
           GOOGLE_WEATHER_KEY: ${{ secrets.GOOGLE_WEATHER_KEY }}
@@ -42,5 +49,6 @@ jobs:
         run: |
           cd log
           git add forecast-log.jsonl
+          git diff --cached --quiet && exit 0
           git commit -q -m "Forecast snapshot $(date -u +%Y-%m-%dT%H:%MZ)"
           git push origin forecast-log
