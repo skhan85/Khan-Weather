@@ -499,8 +499,9 @@ extension Forecast {
             let spreads = hours.compactMap { h in h.modelHigh.flatMap { hi in h.modelLow.map { hi - $0 } } }
             if !spreads.isEmpty { d.modelSpread = spreads.reduce(0, +) / Double(spreads.count) }
             guard hours.count >= 18 else { return d }  // ensure blended daily high/low match the 8-model hourly curve
-            d.high = hours.map(\.temperature).max()!
-            d.low = hours.map(\.temperature).min()!
+            // The real high and low fall between hours, beyond the warmest and coldest hour.
+            d.high = hours.map(\.temperature).max()! + ModelBlend.highAllowance
+            d.low = hours.map(\.temperature).min()! - ModelBlend.lowAllowance
             let feels = hours.compactMap(\.feelsLike)
             if feels.count == hours.count {
                 d.feelsLikeHigh = feels.max()
@@ -514,6 +515,7 @@ extension Forecast {
         if let now = Self.blendedTemperature(temps, at: current.time) {
             copy.current.temperature = now
         }
+        copy.extremesIncludePeak = true
         // A day whose chance fell may no longer be headlined as rain.
         return copy.withDailyHeadlines().withStandardFeelsLike()
     }
