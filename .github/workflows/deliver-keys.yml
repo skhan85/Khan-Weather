@@ -1,0 +1,30 @@
+name: Deliver keys to the VPS
+
+# Encrypts the forecast-log API keys with the VPS's public key (tools/vps-deliver.pub) so only the
+# VPS can read them, and prints the ciphertext. Run when that key file changes or by hand.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - tools/vps-deliver.pub
+
+permissions:
+  contents: read
+
+jobs:
+  encrypt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Encrypt
+        env:
+          PIRATE_WEATHER_KEY: ${{ secrets.PIRATE_WEATHER_KEY }}
+          GOOGLE_WEATHER_KEY: ${{ secrets.GOOGLE_WEATHER_KEY }}
+        run: |
+          printf 'PIRATE_WEATHER_KEY=%s\nGOOGLE_WEATHER_KEY=%s\n' "$(echo "$PIRATE_WEATHER_KEY" | tr -d '[:space:]')" "$(echo "$GOOGLE_WEATHER_KEY" | tr -d '[:space:]')" \
+            | openssl pkeyutl -encrypt -pubin -inkey tools/vps-deliver.pub -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 \
+            | base64 -w0 > ct.txt
+          echo "pirate key length: ${#PIRATE_WEATHER_KEY}, google key length: ${#GOOGLE_WEATHER_KEY}"
+          echo "CIPHERTEXT-BEGIN"; cat ct.txt; echo; echo "CIPHERTEXT-END"
