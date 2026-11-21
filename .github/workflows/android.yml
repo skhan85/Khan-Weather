@@ -1,0 +1,131 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+    paths: ["android/**", ".github/workflows/android.yml"]
+  pull_request:
+    paths: ["android/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write # lets builds on main publish the APK as a GitHub Release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Test the forecast logic (same tests as the iPhone app)
+        run: ./gradlew :core:test --console=plain
+
+      - name: Set up the signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            echo "KW_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "Signing with the release key."
+          else
+            echo "::warning::ANDROID_KEYSTORE_B64 is not set, so this APK is signed with a throwaway debug key. Phones will need to uninstall before installing a build signed with the real key."
+          fi
+
+      - name: Build the APK
+        env:
+          KW_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleRelease -PbuildNumber=${{ github.run_number }} --console=plain 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          grep -E "^e: " build.log | head -40 | while read -r line; do echo "::error::$line"; done
+          exit $status
+
+      - name: Collect the APK
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk KhanWeather.apk
+          ls -lh KhanWeather.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: KhanWeather-apk
+          path: android/KhanWeather.apk
+          retention-days: 30
+
+      - name: Publish the APK (main only)
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A fixed tag so the download link never changes. --latest=false keeps the iPhone
+          # build as the repository's "latest" release.
+          gh release delete android-latest --cleanup-tag -y || true
+          gh release create android-latest KhanWeather.apk \
+            --target "${{ github.sha }}" \
+            --title "Khan Weather for Android (build ${{ github.run_number }})" \
+            --notes "Android build ${{ github.run_number }} of ${{ github.sha }}. On your phone, open this page, tap KhanWeather.apk, then allow your browser to install apps when asked." \
+            --latest=false
+
+  # Pull requests: run the app in an Android emulator at Milton and save screenshots.
+  screenshots:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: KhanWeather-apk
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run in the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: bash android/ci/screenshots.sh
+
+      - name: Publish screenshots to the ci-screenshots-android branch
+        if: always()
+        run: |
+          [ -n "$(ls shots 2>/dev/null)" ] || exit 0
+          cd shots
+          git init -q -b ci-screenshots-android
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A
+          git commit -qm "Android screenshots for ${{ github.sha }}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-screenshots-android
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-screenshots
+          path: shots
+          retention-days: 14
