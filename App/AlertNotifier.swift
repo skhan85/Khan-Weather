@@ -2,6 +2,7 @@ import BackgroundTasks
 import CoreLocation
 import Foundation
 import UserNotifications
+import WidgetKit
 import WeatherCore
 
 /// Severe weather notifications without a server: iOS wakes the app now and then, the app asks
@@ -138,6 +139,9 @@ enum AlertNotifier {
         async let alerts: Void = check()
         async let rain: Void = checkForecast()
         _ = await (alerts, rain)
+        // iOS woke the app (background refresh, or the phone moved): a good moment to let the
+        // widgets refresh too, especially after a move, since they follow the phone's location.
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     static func check(provider: AlertProvider = WorldAlertProvider()) async {

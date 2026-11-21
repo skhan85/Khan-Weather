@@ -88,25 +88,59 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> WeatherEntry { .placeholder }
 
     func snapshot(for configuration: WeatherWidgetIntent, in context: Context) async -> WeatherEntry {
-        var entry: WeatherEntry = context.isPreview ? .placeholder : await loadEntry(notify: .off, hyperlocal: configuration.useHomeStations)
-        entry.unit = configuration.temperatureUnit.unit
-        return entry
+        if context.isPreview { return .placeholder }
+        let loaded = await load(notify: .off, hyperlocal: configuration.useHomeStations)
+        return loaded.entries(unit: configuration.temperatureUnit.unit).first ?? .placeholder
     }
 
     func timeline(for configuration: WeatherWidgetIntent, in context: Context) async -> Timeline<WeatherEntry> {
-        var entry = await loadEntry(notify: configuration.alertNotifications,
-                                    hyperlocal: configuration.useHomeStations)
-        entry.unit = configuration.temperatureUnit.unit
-        // Ask iOS to refresh in about 30 minutes; it may wait longer to save battery.
-        return Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(30 * 60)))
+        let loaded = await load(notify: configuration.alertNotifications,
+                                hyperlocal: configuration.useHomeStations)
+        let entries = loaded.entries(unit: configuration.temperatureUnit.unit)
+        // iOS gives a widget roughly 40 to 70 refreshes a day and decides the actual times; asking
+        // for 15 minutes gets the most it allows. After a failed fetch, ask again sooner.
+        let next = loaded.fresh ? WidgetRefresh.interval : WidgetRefresh.retryInterval
+        return Timeline(entries: entries, policy: .after(Date().addingTimeInterval(next)))
     }
 
-    /// The next 6 hours, with the first showing the same "now" as the app.
-    private static func hoursStartingNow(_ forecast: Forecast) -> [HourlyForecast] {
-        forecast.hoursStartingNow(count: 6)
+    /// What one refresh fetched: the forecast (with the station reading and radar applied, exactly
+    /// as the app does) and the extras around it.
+    struct Loaded {
+        var forecast: Forecast?
+        /// False when the fetch failed and `forecast` is the last good one from an earlier refresh.
+        var fresh: Bool
+        var placeName: String?
+        var alert: String?
+        var error: String?
+
+        /// One entry now, then one every 5 minutes for half an hour. Each keeps the same "now"
+        /// (the latest reading, like the app until it fetches again) but moves the clock-driven
+        /// parts on: the rain countdown, the hours starting with the current one, and today's
+        /// high and low after midnight. So "Rain in 10 min" doesn't sit there after the rain starts,
+        /// even when iOS waits a while before the next refresh.
+        func entries(unit: TemperatureUnit, from start: Date = Date()) -> [WeatherEntry] {
+            guard let forecast else {
+                var e = WeatherEntry(date: start, current: nil, high: nil, low: nil, placeName: placeName, error: error)
+                e.unit = unit
+                return [e]
+            }
+            return stride(from: 0, through: WidgetRefresh.entrySpan, by: WidgetRefresh.entryStep).map { offset in
+                let date = start.addingTimeInterval(offset)
+                let today = forecast.displayDay(at: date)
+                var e = WeatherEntry(date: date, current: forecast.current, high: today?.high, low: today?.low,
+                                     placeName: placeName, error: nil, nowcast: forecast.nowcast(at: date)?.shortText,
+                                     alert: alert,
+                                     hours: forecast.hoursStartingNow(from: date, count: 6),
+                                     days: Array(forecast.displayDaily(at: date).prefix(5)),
+                                     timeZone: forecast.timeZone)
+                e.unit = unit
+                e.updatedAt = forecast.fetchedAt
+                return e
+            }
+        }
     }
 
-    private func loadEntry(notify: WidgetAlertNotifications, hyperlocal: Bool) async -> WeatherEntry {
+    private func load(notify: WidgetAlertNotifications, hyperlocal: Bool) async -> Loaded {
         // Widgets can't show a permission prompt; they use the last location iOS knows,
         // which works once the app has been granted location access (NSWidgetWantsLocation).
         let known = CLLocationManager().location.map {
@@ -127,6 +161,7 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
         if known != nil, let found = await active {
             await WidgetAlertNotifier.notify(found, placeName: await place, setting: notify)
         }
+        let alertTitle = await active?.first?.title
         do {
             let obs = await observed
             if let obs { WidgetObservationMemory.remember(obs, near: coordinate) }
@@ -134,18 +169,45 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
             let forecast = try await provider.forecast(for: coordinate, anchor: obs?.blendAnchor)
                 .applying(obs)
                 .applyingRadar(await radarNow)
-            let days = forecast.displayDaily()
-            let today = forecast.displayDay()
-            return WeatherEntry(date: Date(), current: forecast.current, high: today?.high, low: today?.low,
-                                placeName: await place, error: nil, nowcast: forecast.nowcast()?.shortText,
-                                alert: await active?.first?.title,
-                                hours: Self.hoursStartingNow(forecast),
-                                days: Array(days.prefix(5)),
-                                timeZone: forecast.timeZone)
+            WidgetForecastMemory.remember(forecast)
+            return Loaded(forecast: forecast, fresh: true, placeName: await place, alert: alertTitle)
         } catch {
-            return WeatherEntry(date: Date(), current: nil, high: nil, low: nil, placeName: await place,
-                                error: error.localizedDescription)
+            // A failed fetch (no signal, a busy server) keeps showing the last good forecast for this
+            // spot rather than "Weather unavailable", and asks iOS to try again soon.
+            if let last = WidgetForecastMemory.last(near: coordinate) {
+                return Loaded(forecast: last, fresh: false, placeName: await place, alert: alertTitle)
+            }
+            return Loaded(forecast: nil, fresh: false, placeName: await place, alert: alertTitle,
+                          error: error.localizedDescription)
         }
+    }
+}
+
+/// How often the widget asks to refresh, and how far ahead each refresh lays out entries.
+enum WidgetRefresh {
+    static let interval: TimeInterval = 15 * 60
+    static let retryInterval: TimeInterval = 5 * 60
+    static let entryStep: TimeInterval = 5 * 60
+    static let entrySpan: TimeInterval = 30 * 60
+}
+
+/// The widget's last good forecast, shown when a refresh can't reach the servers. Only used for
+/// the same spot (within about 3 km) and for 3 hours; older than that it says it's unavailable.
+enum WidgetForecastMemory {
+    private static let key = "widgetLastForecast"
+    static let maxAge: TimeInterval = 3 * 3600
+
+    static func remember(_ f: Forecast) {
+        guard let data = try? JSONEncoder().encode(f) else { return }
+        UserDefaults.standard.set(data, forKey: key)
+    }
+
+    static func last(near c: Coordinate, now: Date = Date()) -> Forecast? {
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let f = try? JSONDecoder().decode(Forecast.self, from: data),
+              now.timeIntervalSince(f.fetchedAt) < maxAge,
+              EnvironmentCanadaProvider.distanceKm(f.location, c) < 3 else { return nil }
+        return f
     }
 }
 

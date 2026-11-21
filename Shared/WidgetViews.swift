@@ -22,6 +22,8 @@ struct WeatherEntry: TimelineEntry {
     /// The next few days, for the large widget.
     var days: [DailyForecast] = []
     var timeZone: TimeZone = .current
+    /// When the numbers were fetched. Shown small on the Lock Screen so it's clear how fresh they are.
+    var updatedAt: Date? = nil
 
     static let placeholder: WeatherEntry = {
         let now = Date()
@@ -225,6 +227,13 @@ struct KhanWeatherWidgetView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                 Spacer(minLength: 2)
+                if let updated = entry.updatedAt {
+                    Text(updated, format: .dateTime.hour().minute())
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .lineLimit(1)
+                        .opacity(0.7)
+                        .accessibilityLabel("Updated \(updated.formatted(date: .omitted, time: .shortened))")
+                }
                 if entry.alert != nil {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 12, weight: .bold))
