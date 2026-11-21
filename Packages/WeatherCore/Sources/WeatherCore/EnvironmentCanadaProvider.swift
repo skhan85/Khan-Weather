@@ -324,10 +324,11 @@ public extension Forecast {
         guard var o = observation else { return self }
         var copy = self
         var c = current
-        // Rain reported by a station far away (Pearson, 25 km from Milton) says nothing about
-        // whether it's raining here: drop it and keep the forecast's sky, which the radar can still
-        // turn wet below. Cloud from far away is harmless and kept.
-        if !o.skyIsLocal, o.condition?.isPrecipitation == true || o.condition == .thunderstorm {
+        // A sky reported by a station far away (Pearson, 25 km from Milton) says nothing about
+        // the sky here: it can be raining, snowing, foggy, cloudy or sunny there and not here.
+        // Drop it and keep the forecast's sky for this spot, which the radar over this spot can
+        // still turn wet below.
+        if !o.skyIsLocal {
             o.condition = nil
             o.conditionText = nil
         }
