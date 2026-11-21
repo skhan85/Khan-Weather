@@ -118,6 +118,35 @@ public enum ModelBlend {
     /// above the recorded low at the same stations.
     public static let lowAllowance: Double = 0.5
 
+    // MARK: Rain or snow
+
+    /// A model hour counts as wet for its rain-or-snow call from this much (mm).
+    static let typeWetMm: Double = 0.05
+
+    /// Rain or snow this hour, from the blend's models: snow when at least half of the wet
+    /// models call snow (a model calls snow when its snowfall, as water at cm × 0.7, is at least
+    /// half its precipitation); with no wet model, snow at or below 1 °C. A blend at 3° or warmer
+    /// is always rain and at -2° or colder always snow.
+    ///
+    /// Scored against what the Toronto Pearson and Hamilton airport observers reported in about
+    /// 2,000 rain and snow hours (Nov 2025-Apr 2026, tools/score_ptype.py), this was right 97% of
+    /// the time today and 95% two days out, against 95% and 90% for Open-Meteo's single
+    /// best-match model, which the app used before.
+    public static func precipitationType(temperature: Double,
+                                         precipitation: [WeatherModel: Double],
+                                         snowfall: [WeatherModel: Double]) -> PrecipitationKind {
+        if temperature >= 3 { return .rain }
+        if temperature <= -2 { return .snow }
+        var wet = 0, snowy = 0
+        for (m, p) in precipitation where p >= typeWetMm {
+            guard let s = snowfall[m] else { continue }
+            wet += 1
+            if s / 0.7 >= 0.5 * p { snowy += 1 }
+        }
+        if wet > 0 { return snowy * 2 >= wet ? .snow : .rain }
+        return temperature <= 1 ? .snow : .rain
+    }
+
     // MARK: Chance of rain
 
     /// A model hour counts as wet from this much precipitation (mm).

@@ -123,3 +123,17 @@ public enum WeatherFormat {
         return place + " about " + (distance(km.rounded()) ?? "") + " away"
     }
 }
+
+extension WeatherCondition {
+    /// The same kind of weather as rain or as snow: snow showers become rain showers and so on.
+    /// Freezing rain and drizzle, thunderstorms and dry skies stay as they are.
+    func converted(to type: PrecipitationKind) -> WeatherCondition {
+        switch (self, type) {
+        case (.rain, .snow), (.drizzle, .snow): return .snow
+        case (.rainShowers, .snow): return .snowShowers
+        case (.snow, .rain), (.snowGrains, .rain): return .rain
+        case (.snowShowers, .rain): return .rainShowers
+        default: return self
+        }
+    }
+}
