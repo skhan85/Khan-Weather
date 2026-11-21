@@ -144,9 +144,9 @@ final class OpenMeteoProviderTests: XCTestCase {
         temps.hourly[t0] = .init(temperature: 4, feelsLike: nil, low: 4, high: 4, count: 6, wet: 0, freezing: 0)
         temps.hourly[t0 + 3600] = .init(temperature: 6, feelsLike: nil, low: 6, high: 6, count: 6, wet: 0, freezing: 0)
         let quarterPast = Date(timeIntervalSince1970: TimeInterval(t0 + 900))
-        XCTAssertEqual(try XCTUnwrap(OpenMeteoProvider.blendedTemperature(temps, at: quarterPast)), 4.5, accuracy: 0.001)
-        XCTAssertEqual(OpenMeteoProvider.blendedTemperature(temps, at: Date(timeIntervalSince1970: TimeInterval(t0))), 4)
-        XCTAssertNil(OpenMeteoProvider.blendedTemperature(temps, at: Date(timeIntervalSince1970: TimeInterval(t0 + 4500))))
+        XCTAssertEqual(try XCTUnwrap(Forecast.blendedTemperature(temps, at: quarterPast)), 4.5, accuracy: 0.001)
+        XCTAssertEqual(Forecast.blendedTemperature(temps, at: Date(timeIntervalSince1970: TimeInterval(t0))), 4)
+        XCTAssertNil(Forecast.blendedTemperature(temps, at: Date(timeIntervalSince1970: TimeInterval(t0 + 4500))))
 
         var forecast = try OpenMeteoProvider.parse(Self.sample, fetchedAt: Date())
         forecast.current.time = quarterPast
