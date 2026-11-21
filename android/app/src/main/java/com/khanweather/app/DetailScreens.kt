@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -70,7 +71,7 @@ fun HourScreen(hour: HourlyForecast, zone: String) {
         DetailHero(TimeText.weekdayHour(hour.time, zone), hour.condition, hour.isDay, WeatherFormat.temperature(hour.temperature),
             hour.condition.description, hour.feelsLike?.let { "Feels like ${WeatherFormat.temperature(it)}" })
         Spacer(Modifier.height(14.dp))
-        Section("Details", Icons.Filled.List, PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
+        Section("Details", Icons.AutoMirrored.Filled.List, PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
             DetailRow("Precipitation", chanceText(hour.precipitationProbability, hour.precipitationKind), precipIcon(hour.precipitationKind))
             DetailRow("Amount", WeatherFormat.precipitationTotals(hour.rain, hour.snowfall), Icons.Filled.Opacity)
             DetailRow("Wind", windText(hour.windSpeed, hour.windGusts, hour.windDirection), Icons.Filled.Air)
@@ -96,7 +97,7 @@ fun DayScreen(day: DailyForecast, forecast: Forecast, normals: ClimateNormals?, 
         if (hours.isNotEmpty()) Section("Hour by hour", Icons.Filled.Schedule, PaddingValues(vertical = 8.dp)) {
             HourlyCurve(hours, zone, firstIsNow = false) { nav(Screen.Hour(it, zone)) }
         }
-        Section("Details", Icons.Filled.List, PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
+        Section("Details", Icons.AutoMirrored.Filled.List, PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
             DetailRow("Precipitation", chanceText(day.precipitationProbability, day.precipitationKind), precipIcon(day.precipitationKind))
             DetailRow("Total", WeatherFormat.precipitationTotals(day.rainSum, day.snowfallSum), Icons.Filled.Opacity)
             DetailRow("Hours of precipitation", day.precipitationHours?.takeIf { it > 0 }?.let { "${it.rndInt()} h" }, Icons.Filled.Schedule)

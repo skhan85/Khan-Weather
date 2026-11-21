@@ -9,6 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -348,7 +349,7 @@ fun TodayDetails(forecast: Forecast) {
                             Text(t.value, style = style(17.sp, FontWeight.SemiBold))
                             if (t.trend != null) {
                                 Spacer(Modifier.width(4.dp))
-                                Icon(when { t.trend > 0 -> Icons.Filled.ArrowUpward; t.trend < 0 -> Icons.Filled.ArrowDownward; else -> Icons.Filled.ArrowForward },
+                                Icon(when { t.trend > 0 -> Icons.Filled.ArrowUpward; t.trend < 0 -> Icons.Filled.ArrowDownward; else -> Icons.AutoMirrored.Filled.ArrowForward },
                                     null, tint = Gold, modifier = Modifier.size(14.dp))
                             }
                         }

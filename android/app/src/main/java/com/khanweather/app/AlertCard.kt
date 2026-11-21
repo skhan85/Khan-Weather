@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -68,7 +69,7 @@ fun AlertCard(alert: WeatherAlert, zone: String, startExpanded: Boolean = false)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(footer(alert), style = style(13.sp, color = Color.White.copy(alpha = 0.75f)), modifier = Modifier.weight(1f),
                 maxLines = if (expanded) 4 else 1, overflow = TextOverflow.Ellipsis)
-            Icon(if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowRight, null,
+            Icon(if (expanded) Icons.Filled.KeyboardArrowUp else Icons.AutoMirrored.Filled.KeyboardArrowRight, null,
                 tint = Color.White.copy(alpha = 0.75f), modifier = Modifier.size(18.dp))
         }
         val issued = alert.issuedAt
