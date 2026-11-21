@@ -321,7 +321,7 @@ public struct OpenMeteoProvider: ForecastProvider {
             minutely: minutely
         )
         forecast.recentHours = recentHours
-        return forecast.withDailyHeadlines()
+        return forecast.withDailyHeadlines().withStandardFeelsLike()
     }
 
     /// Adds two optional amounts; nil only when both are missing.
@@ -508,8 +508,26 @@ extension Forecast {
             }
             return d
         }
+        // "Now" from the same blend as the hourly curve, read at the minute of the current
+        // conditions. Open-Meteo's own "current" is its single best-match model, so without a
+        // nearby station the Now card could say 5° while the curve said 6° at the same time.
+        if let now = Self.blendedTemperature(temps, at: current.time) {
+            copy.current.temperature = now
+        }
         // A day whose chance fell may no longer be headlined as rain.
-        return copy.withDailyHeadlines()
+        return copy.withDailyHeadlines().withStandardFeelsLike()
+    }
+
+    /// The blended temperature at `time`, read between the two hours around it; nil when the
+    /// blend doesn't cover both.
+    static func blendedTemperature(_ temps: OpenMeteoProvider.ModelTemperatures, at time: Date) -> Double? {
+        let epoch = time.timeIntervalSince1970
+        let start = Int(floor(epoch / 3600)) * 3600
+        guard let a = temps.hourly[start]?.temperature else { return nil }
+        let f = (epoch - Double(start)) / 3600
+        guard f > 0 else { return a }
+        guard let b = temps.hourly[start + 3600]?.temperature else { return nil }
+        return a + (b - a) * f
     }
 }
 

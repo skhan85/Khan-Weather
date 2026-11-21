@@ -43,8 +43,9 @@ final class OpenMeteoProviderTests: XCTestCase {
         let forecast = try OpenMeteoProvider.parse(Self.sample, fetchedAt: Date(timeIntervalSince1970: 0))
         XCTAssertEqual(forecast.timeZoneIdentifier, "America/Toronto")
         XCTAssertEqual(forecast.current.temperature, -2.4)
-        XCTAssertEqual(forecast.current.feelsLike, -7.9)
-        XCTAssertEqual(forecast.current.feelsLikeKind, .apparent)
+        // Environment Canada's wind chill from -2.4° and 19.4 km/h, not Open-Meteo's -7.9.
+        XCTAssertEqual(forecast.current.feelsLike, -8.2, accuracy: 0.05)
+        XCTAssertEqual(forecast.current.feelsLikeKind, .windChill)
         XCTAssertEqual(forecast.current.condition, .snow)
         XCTAssertFalse(forecast.current.isDay)
         XCTAssertEqual(forecast.current.humidity, 81)
@@ -135,6 +136,39 @@ final class OpenMeteoProviderTests: XCTestCase {
         XCTAssertEqual(forecast.daily[0].confidence, .sure)
         XCTAssertEqual(forecast.hourly[1].temperature, -2.4, "keeps the default where no model has a value")
         XCTAssertEqual(forecast.daily[0].high, 1.2, "a day the blend doesn't fully cover keeps its own high")
+    }
+
+    func testNowComesFromTheBlendBetweenHours() throws {
+        let t0 = 1762952400
+        var temps = OpenMeteoProvider.ModelTemperatures()
+        temps.hourly[t0] = .init(temperature: 4, feelsLike: nil, low: 4, high: 4, count: 6, wet: 0, freezing: 0)
+        temps.hourly[t0 + 3600] = .init(temperature: 6, feelsLike: nil, low: 6, high: 6, count: 6, wet: 0, freezing: 0)
+        let quarterPast = Date(timeIntervalSince1970: TimeInterval(t0 + 900))
+        XCTAssertEqual(try XCTUnwrap(Forecast.blendedTemperature(temps, at: quarterPast)), 4.5, accuracy: 0.001)
+        XCTAssertEqual(Forecast.blendedTemperature(temps, at: Date(timeIntervalSince1970: TimeInterval(t0))), 4)
+        XCTAssertNil(Forecast.blendedTemperature(temps, at: Date(timeIntervalSince1970: TimeInterval(t0 + 4500))))
+
+        var forecast = try OpenMeteoProvider.parse(Self.sample, fetchedAt: Date())
+        forecast.current.time = quarterPast
+        let blended = forecast.applying(temps)
+        XCTAssertEqual(blended.current.temperature, 4.5, accuracy: 0.001)
+        XCTAssertEqual(blended.current.feelsLikeKind, .windChill, "feels like follows the blended temperature")
+        XCTAssertEqual(blended.current.feelsLike,
+                       try XCTUnwrap(EnvironmentCanadaProvider.windChill(temperature: 4.5, windKmh: 19.4)), accuracy: 0.001)
+    }
+
+    func testFeelsLikeFollowsEnvironmentCanada() throws {
+        // Winter breeze: wind chill.
+        let chill = try XCTUnwrap(FeelsLike.value(temperature: 0, windKmh: 20, dewPoint: -3))
+        XCTAssertEqual(chill.kind, .windChill)
+        XCTAssertEqual(chill.value, -5.2, accuracy: 0.1)
+        // Muggy summer day: humidex (Open-Meteo's apparent temperature said about 27°).
+        let muggy = try XCTUnwrap(FeelsLike.value(temperature: 25, windKmh: 8, dewPoint: 19))
+        XCTAssertEqual(muggy.kind, .humidex)
+        XCTAssertEqual(muggy.value, 31.8, accuracy: 0.2)
+        // Mild and calm: the air temperature.
+        XCTAssertEqual(FeelsLike.value(temperature: 15, windKmh: 3, dewPoint: 5)?.value, 15)
+        XCTAssertNil(FeelsLike.value(temperature: 15, windKmh: nil, dewPoint: nil))
     }
 
     func testBlendWeightsShiftWithLeadTime() throws {

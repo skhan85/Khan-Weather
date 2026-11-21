@@ -84,7 +84,8 @@ def netatmo():
     """Every Netatmo station within 8 km of Milton as [km, °C, minutes old], nearest first, so
     their bias against Environment Canada and the models can be measured later."""
     import math
-    d = get(f"https://raspberrypi.tailf30d3.ts.net/v1/netatmo?lat={LAT}&lon={LON}")
+    relay = os.environ.get("RELAY_URL", "https://weather-relay.khanofmilton.ca")
+    d = get(f"{relay}/v1/netatmo?lat={LAT}&lon={LON}")
     now = dt.datetime.now(dt.timezone.utc).timestamp()
     rows = []
     for s in d.get("stations", []):
