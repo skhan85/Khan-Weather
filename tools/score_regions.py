@@ -480,13 +480,22 @@ def main():
         won = sum(1 for v in res["vs_best_match"].values() if v["blend"] < v["best_match"])
         res["blend_beats_best_match"] = won >= 2
 
+    def covering(rid):
+        """Models that cover the region (asked for there; all vote on rain or snow)."""
+        ms = set()
+        for day in report["regions"].get(rid, {}).get("days", []):
+            ms.update(day.get("members", []))
+        return [NAMES[m] for m in ALL if m in ms] or [NAMES[m] for m in CORE]
+
     out = {"regions": [], "global": {"useBlend": report["regions"].get("global", {}).get("blend_beats_best_match", False),
+                                     "models": [NAMES[m] for m in CORE],
                                      "byDay": [{NAMES[m]: round(w, 3) for m, w in d.items()} for d in global_w]}}
     for rid, name, boxes in REGIONS:
         rr = report["regions"].get(rid, {})
         out["regions"].append({"id": rid, "name": name, "boxes": boxes,
                                "ownWeights": rr.get("own_weights", False),
                                "useBlend": rr.get("blend_beats_best_match", False),
+                               "models": covering(rid),
                                "byDay": [{NAMES[m]: round(w, 3) for m, w in d.items()} for d in table[rid]]})
     with open("region-weights.json", "w") as f:
         json.dump(out, f, indent=1)

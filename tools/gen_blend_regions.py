@@ -5,12 +5,13 @@ Writes Packages/WeatherCore/blend-regions.json (the plain table, easy to read fr
 the Android port included) and Packages/WeatherCore/Sources/WeatherCore/BlendRegionTable.swift
 (the same numbers as Swift). A test checks the two match.
 
-  python3 gen_blend_regions.py region-weights.json
+  python3 gen_blend_regions.py region-weights.json [region-report.json]
 """
 import json, os, sys
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Packages", "WeatherCore")
-ORDER = ["germany", "europeAI", "europe", "uk", "canada", "canadaHighRes", "us", "usHighRes"]
+ORDER = ["germany", "europeAI", "europe", "uk", "canada", "canadaHighRes", "us", "usHighRes", "usBlend",
+         "europeHighRes", "france", "netherlands", "denmark", "japan", "china"]
 
 
 def day(d):
@@ -24,14 +25,31 @@ def region(r, indent):
     return (f'BlendRegion(\n{indent}    id: "{r["id"]}", name: "{r["name"]}",\n'
             f'{indent}    boxes: [{boxes}],\n'
             f'{indent}    useBlend: {"true" if r["useBlend"] else "false"},\n'
+            f'{indent}    models: [{", ".join("." + m for m in r["models"])}],\n'
             f'{indent}    byDay: [\n{days}{indent}    ])')
+
+
+NAMES = {"ncep_nbm_conus": "usBlend", "ecmwf_ifs": "europeHighRes", "meteofrance_seamless": "france",
+         "knmi_seamless": "netherlands", "dmi_seamless": "denmark", "jma_seamless": "japan",
+         "cma_grapes_global": "china", "gem_seamless": "canada", "gem_hrdps_continental": "canadaHighRes",
+         "gfs_seamless": "us", "gfs_hrrr": "usHighRes", "ecmwf_ifs025": "europe",
+         "ecmwf_aifs025_single": "europeAI", "icon_seamless": "germany", "ukmo_seamless": "uk"}
+CORE = ["canada", "us", "europe", "europeAI", "germany", "uk"]
 
 
 def main():
     src = json.load(open(sys.argv[1]))
-    table = {"regions": [{k: r[k] for k in ("id", "name", "boxes", "useBlend", "byDay")} for r in src["regions"]],
+    # Older results have no model list: take the models that covered each region from the report.
+    if len(sys.argv) > 2:
+        rep = json.load(open(sys.argv[2]))["regions"]
+        for r in src["regions"]:
+            if "models" not in r:
+                ms = {NAMES[m] for d in rep.get(r["id"], {}).get("days", []) for m in d.get("members", [])}
+                r["models"] = [m for m in ORDER if m in ms] or CORE
+        src["global"].setdefault("models", CORE)
+    table = {"regions": [{k: r[k] for k in ("id", "name", "boxes", "useBlend", "models", "byDay")} for r in src["regions"]],
              "global": {"id": "global", "name": "Elsewhere", "boxes": [],
-                        "useBlend": src["global"]["useBlend"], "byDay": src["global"]["byDay"]}}
+                        "useBlend": src["global"]["useBlend"], "models": src["global"]["models"], "byDay": src["global"]["byDay"]}}
     with open(os.path.join(ROOT, "blend-regions.json"), "w") as f:
         json.dump(table, f, indent=1)
         f.write("\n")
