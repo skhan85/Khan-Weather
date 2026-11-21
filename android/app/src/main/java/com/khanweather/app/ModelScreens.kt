@@ -9,6 +9,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.TrackChanges
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -102,6 +103,12 @@ fun ModelComparisonScreen(day: DailyForecast, forecast: Forecast, nav: (Screen) 
                 Icon(Icons.Filled.GridView, null, tint = Gold, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(12.dp))
                 Text("All models, all 10 days", style = style(15.sp, FontWeight.SemiBold))
+            }
+            RowDivider()
+            LinkRow({ nav(Screen.Accuracy) }) {
+                Icon(Icons.Filled.TrackChanges, null, tint = Gold, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(12.dp))
+                Text("Which model has been most accurate?", style = style(15.sp, FontWeight.SemiBold))
             }
         }
     }

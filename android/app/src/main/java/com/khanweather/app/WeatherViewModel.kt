@@ -120,7 +120,10 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
         val radar = radarTask.await()
         if (gen != generation) return@coroutineScope
         observed?.let { ObservationMemory.remember(target, it) }
-        state = LoadState.Loaded(base.applying(observed).applyingRadar(radar))
+        val loaded = base.applying(observed).applyingRadar(radar)
+        state = LoadState.Loaded(loaded)
+        // Keep score of the models for where the user actually is, not saved places.
+        if (place == null && !usingFallbackLocation) launch { runCatching { AccuracyTracker.update(loaded) } }
         // Wait for the rest, then keep a copy.
         nameTask.await(); alertsTask.await(); airTask.await()
         delay(50)
