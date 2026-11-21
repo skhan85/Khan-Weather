@@ -1,0 +1,156 @@
+package com.khanweather.app
+
+import android.app.Application
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.khanweather.app.widget.Widgets
+import com.khanweather.core.*
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+sealed class LoadState {
+    data object Loading : LoadState()
+    data class Loaded(val forecast: Forecast) : LoadState()
+    data class Failed(val message: String) : LoadState()
+}
+
+/**
+ * Loads the forecast for the current location or a saved place, in the same order as the iPhone
+ * app: the model forecast shows first, then the station reading, radar, alerts and air quality
+ * fill in as each answers.
+ */
+class WeatherViewModel(app: Application) : AndroidViewModel(app) {
+    var state by mutableStateOf<LoadState>(LoadState.Loading); private set
+    var usingFallbackLocation by mutableStateOf(false); private set
+    var placeName by mutableStateOf<String?>(null); private set
+    var alerts by mutableStateOf<List<WeatherAlert>>(emptyList()); private set
+    var airQuality by mutableStateOf<AirQuality?>(null); private set
+    var normals by mutableStateOf<ClimateNormals?>(null); private set
+    var refreshing by mutableStateOf(false); private set
+    var lastReload = 0.0; private set
+
+    private var generation = 0
+    private var lastPlaceKey: String? = "unset"
+    private val cache = mutableMapOf<String?, Snapshot>()
+    private val cacheAge = 45 * 60.0
+
+    private val context get() = getApplication<Application>()
+
+    fun reload(place: SavedPlace?) {
+        lastReload = nowEpoch()
+        viewModelScope.launch {
+            refreshing = true
+            try { refresh(place) } finally { refreshing = false }
+            val s = state
+            if (s is LoadState.Loaded) {
+                Notifier.markSeen(alerts)
+                if (place == null) {
+                    Notifier.markRainSeen(s.forecast.nowcast())
+                    Widgets.updateAll(context)
+                }
+                prefetch(Prefs.places)
+            }
+        }
+    }
+
+    private suspend fun refresh(place: SavedPlace?) = coroutineScope {
+        generation += 1
+        val gen = generation
+        val key = place?.id
+        if (lastPlaceKey != key) {
+            lastPlaceKey = key
+            val snap = cache[key]
+            if (snap != null && nowEpoch() - snap.savedAt < cacheAge) {
+                state = LoadState.Loaded(snap.forecast)
+                placeName = snap.placeName; alerts = snap.alerts; airQuality = snap.airQuality
+            } else {
+                state = LoadState.Loading
+                placeName = place?.name; alerts = emptyList(); airQuality = null
+            }
+        }
+        val target: Coordinate
+        if (place != null) {
+            target = place.coordinate
+            usingFallbackLocation = false
+        } else {
+            val c = LocationHelper.current(context)
+            if (gen != generation) return@coroutineScope
+            usingFallbackLocation = c == null
+            target = c ?: Coordinate.fallback
+        }
+        val fallbackName = if (usingFallbackLocation) "Toronto" else null
+
+        val nameTask = async { place?.name ?: PlaceNames.name(context, target) }
+        val observedTask = async { WeatherLoader.observation(target) }
+        val radarTask = async { WeatherLoader.radar(target) }
+        val alertsTask = async { WeatherLoader.alerts(target) }
+        val normalsTask = async { WeatherLoader.normals(context, target) }
+
+        val base = try {
+            WeatherLoader.forecastProvider.forecast(target) { observedTask.await()?.blendAnchor }
+        } catch (e: Exception) {
+            if (gen != generation) return@coroutineScope
+            if (state is LoadState.Loaded) return@coroutineScope
+            val cached = SnapshotStore.load(context, key)
+            if (cached != null) {
+                state = LoadState.Loaded(cached.forecast.rolledForward())
+                placeName = cached.placeName; alerts = cached.alerts
+                return@coroutineScope
+            }
+            state = LoadState.Failed(e.message ?: "The forecast service didn't answer.")
+            return@coroutineScope
+        }
+        if (gen != generation) return@coroutineScope
+        if (state !is LoadState.Loaded) state = LoadState.Loaded(base)
+        val airTask = async { WeatherLoader.airQuality(target, base.timeZoneIdentifier) }
+
+        launch {
+            val n = nameTask.await() ?: fallbackName
+            if (gen == generation && (n != null || placeName == null)) placeName = n
+        }
+        launch { val a = alertsTask.await(); if (a != null && gen == generation) alerts = a }
+        launch { val a = airTask.await(); if (a != null && gen == generation) airQuality = a }
+        launch { val n = normalsTask.await(); if (n != null && gen == generation) normals = n }
+        val observed = observedTask.await()
+        val radar = radarTask.await()
+        if (gen != generation) return@coroutineScope
+        observed?.let { ObservationMemory.remember(target, it) }
+        state = LoadState.Loaded(base.applying(observed).applyingRadar(radar))
+        // Wait for the rest, then keep a copy.
+        nameTask.await(); alertsTask.await(); airTask.await()
+        delay(50)
+        if (gen != generation) return@coroutineScope
+        val shown = (state as? LoadState.Loaded)?.forecast ?: return@coroutineScope
+        val snap = Snapshot(shown, placeName, alerts, airQuality, nowEpoch(), !usingFallbackLocation)
+        cache[key] = snap
+        SnapshotStore.save(context, key, snap)
+    }
+
+    /** Fetches saved places in the background so the first switch to each one is quick. */
+    private suspend fun prefetch(places: List<SavedPlace>) {
+        for (place in places.take(3)) {
+            val existing = cache[place.id]
+            if (existing != null && nowEpoch() - existing.savedAt < cacheAge / 2) continue
+            delay(600)
+            val target = place.coordinate
+            val snap = runCatching {
+                coroutineScope {
+                    val obs = async { WeatherLoader.observation(target) }
+                    val radar = async { WeatherLoader.radar(target) }
+                    val al = async { WeatherLoader.alerts(target) }
+                    val f = WeatherLoader.full(target, obs.await(), radar.await())
+                    val air = WeatherLoader.airQuality(target, f.timeZoneIdentifier)
+                    Snapshot(f, place.name, al.await() ?: emptyList(), air, nowEpoch())
+                }
+            }.getOrNull() ?: continue
+            val now = cache[place.id]
+            if (now != null && now.savedAt > snap.savedAt) continue
+            cache[place.id] = snap
+        }
+    }
+}
