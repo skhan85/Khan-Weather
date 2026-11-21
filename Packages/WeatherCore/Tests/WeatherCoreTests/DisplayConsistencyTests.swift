@@ -27,6 +27,23 @@ final class DisplayConsistencyTests: XCTestCase {
                         current: current, hourly: hours, daily: days, source: "test", fetchedAt: midnight)
     }
 
+    func testBlendedHighAndLowIncludeTheBetweenHoursPeak() {
+        // A full blended day: warmest hour 9.0 at 2 PM, coldest 1.0 at 6 AM.
+        var f = forecast { h in h == 14 ? 9 : (h == 6 ? 1 : 5) }
+        var temps = OpenMeteoProvider.ModelTemperatures()
+        for h in f.hourly {
+            temps.hourly[Int(h.time.timeIntervalSince1970)] = .init(temperature: h.temperature, feelsLike: nil,
+                                                                    low: h.temperature, high: h.temperature,
+                                                                    count: 6, wet: 0, freezing: 0)
+        }
+        f = f.applying(temps)
+        XCTAssertEqual(f.daily[0].high, 9.4, accuracy: 0.001)
+        XCTAssertEqual(f.daily[0].low, 0.5, accuracy: 0.001)
+        // Tonight's low on the Now card gets the same allowance (coldest hour tonight is 5.0).
+        let threePM = midnight.addingTimeInterval(15 * 3600)
+        XCTAssertEqual(try XCTUnwrap(f.displayDay(at: threePM)?.low), 4.5, accuracy: 0.001)
+    }
+
     func testTonightLowInTheEvening() {
         // Coldest at 5 AM on the 19th (-3), then 2 at 6 AM on the 20th.
         let f = forecast { h in h == 5 ? -3 : (h == 30 ? 2 : 6) }

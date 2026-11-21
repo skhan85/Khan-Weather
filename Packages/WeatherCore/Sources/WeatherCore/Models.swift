@@ -216,6 +216,9 @@ public struct Forecast: Equatable, Codable, Sendable {
     /// The model's own hours from yesterday 00:00 through today, before any blending or station
     /// changes, for like-for-like "than yesterday" comparisons. nil when the provider has no past hours.
     public var recentHours: [HourlyForecast]?
+    /// True when the daily highs and lows include `ModelBlend.highAllowance` / `lowAllowance` for
+    /// the peak that falls between hours, so tonight's low gets the same allowance.
+    public var extremesIncludePeak: Bool?
 
     public init(location: Coordinate, timeZoneIdentifier: String, current: CurrentConditions,
                 hourly: [HourlyForecast], daily: [DailyForecast], source: String, fetchedAt: Date,
@@ -355,7 +358,8 @@ public struct Forecast: Equatable, Codable, Sendable {
         guard let todayIndex = todayIndex(at: date) else { return daily }
         var rows = daily
         if let tonight = tonightLow(from: date) {
-            rows[todayIndex].low = min(tonight, rows[todayIndex].high)
+            let allowance = extremesIncludePeak == true ? ModelBlend.lowAllowance : 0
+            rows[todayIndex].low = min(tonight - allowance, rows[todayIndex].high)
         }
         return rows
     }

@@ -105,6 +105,19 @@ public enum ModelBlend {
         return present.values.reduce(0, +) / Double(present.count)
     }
 
+    // MARK: Daily high and low
+
+    /// Added to the warmest blended hour for the day's high. A day's real high usually falls
+    /// between two hours: at six ECCC stations around Milton (Nov 2025-Oct 2026,
+    /// tools/score_extremes.py) the warmest hourly reading was 0.27-0.42° below the recorded high
+    /// at every one of them, and the app's highs ran about 0.5-0.75° low. Only this between-hours
+    /// part is added, since it was the same everywhere; held out per station it cut today's
+    /// high error from 1.02 to about 0.9°.
+    public static let highAllowance: Double = 0.4
+    /// Taken off the coldest blended hour for the low: the coldest hourly reading was 0.37-0.66°
+    /// above the recorded low at the same stations.
+    public static let lowAllowance: Double = 0.5
+
     // MARK: Chance of rain
 
     /// A model hour counts as wet from this much precipitation (mm).
