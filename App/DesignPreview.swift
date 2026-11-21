@@ -11,9 +11,31 @@ struct DesignPreview: View {
         (.thunderstorm, true), (.overcast, true), (.clear, false), (.rainShowers, false),
     ]
 
+    private var alertSamples: some View {
+        let fog = WeatherAlert(
+            id: "sample-fog", title: "Fog advisory", kind: .advisory, risk: .yellow,
+            text: "Locally dense fog will dissipate later this morning.\n\nTravel will likely be hazardous in some locations.\n\nBe prepared for areas of near-zero visibility and allow extra time to reach your destination.\n\nPlease continue to monitor alerts and forecasts issued by Environment Canada. To report severe weather, send an email to ONstorm@ec.gc.ca or post reports on social media using #ONStorm.",
+            area: "Halton Hills - Milton", issuedAt: Date().addingTimeInterval(-3600),
+            eventEndsAt: Date().addingTimeInterval(3 * 3600))
+        let storm = WeatherAlert(
+            id: "sample-storm", title: "Severe thunderstorm warning", kind: .warning, risk: .orange,
+            text: "Conditions are favourable for the development of dangerous thunderstorms that may be capable of producing very strong wind gusts, large hail and heavy rain.\n\nLarge hail can damage property and cause injury. Strong wind gusts can toss loose objects.\n\nSevere thunderstorm warnings are issued when imminent or occurring thunderstorms are likely to produce or are producing one or more of the following: large hail, damaging winds, torrential rainfall.",
+            area: "Halton Hills - Milton", issuedAt: Date().addingTimeInterval(-20 * 60))
+        return VStack(spacing: 10) {
+            AlertBanner(alert: fog)
+            AlertBanner(alert: storm)
+            AlertBanner(alert: fog, expanded: true)
+        }
+        .padding(12)
+        .background(SkyBackground(condition: .fog, isDay: true))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                Text("Alerts").font(.headline)
+                alertSamples
                 Text("New details").font(.headline)
                 newSamples
                 Text("Today").font(.headline)

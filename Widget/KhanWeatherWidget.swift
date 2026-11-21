@@ -72,8 +72,7 @@ enum WidgetAlertNotifier {
             if delivered.contains(a.id) { continue }
             let content = UNMutableNotificationContent()
             content.title = "\(a.title) for \(placeName ?? "your location")"
-            let first = a.text.components(separatedBy: "\n\n").first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? a.text
-            content.body = String(first.trimmingCharacters(in: .whitespacesAndNewlines).prefix(240))
+            content.body = a.notificationBody
             content.sound = .default
             content.threadIdentifier = "your location"
             try? await center.add(UNNotificationRequest(identifier: a.id, content: content, trigger: nil))

@@ -217,7 +217,12 @@ private struct ForecastList: View {
 
             if !alerts.isEmpty {
                 Section {
-                    ForEach(alerts) { AlertBanner(alert: $0, timeZone: forecast.timeZone) }
+                    ForEach(alerts) {
+                        AlertBanner(alert: $0, timeZone: forecast.timeZone)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                    }
                 }
             }
 
