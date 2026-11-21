@@ -88,6 +88,16 @@ public struct ECCCRadarProvider: Sendable {
         return RadarNow(rainMmPerHour: r?.value ?? 0, snowCmPerHour: s?.value ?? 0, time: time)
     }
 
+    /// Environment Canada's mosaic covers Canada and the northern US.
+    public static func covers(_ c: Coordinate) -> Bool {
+        (35...75).contains(c.latitude) && (-145 ... -50).contains(c.longitude)
+    }
+
+    /// One layer's reading at one point: rain in mm/h (RADAR_1KM_RRAI) or snow in cm/h (RADAR_1KM_RSNO).
+    public func reading(_ layer: String, at coordinate: Coordinate) async throws -> (value: Double, time: Date)? {
+        try await sample(layer, at: coordinate)
+    }
+
     private func sample(_ layer: String, at coordinate: Coordinate) async throws -> (value: Double, time: Date)? {
         let (data, response) = try await loader(URLRequest(url: Self.url(layer: layer, at: coordinate), timeoutInterval: 15))
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {

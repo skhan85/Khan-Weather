@@ -159,11 +159,11 @@ private struct ForecastList: View {
     @AppStorage(DisplaySettings.hourlyCountKey) private var hourlyCount = 24
     @AppStorage(DisplaySettings.showDetailsKey) private var showDetails = true
     @AppStorage(DisplaySettings.showAirQualityKey) private var showAirQuality = true
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
-    /// Environment Canada's mosaic covers Canada and the northern US.
-    static func radarCovers(_ c: Coordinate) -> Bool {
-        (35...75).contains(c.latitude) && (-145 ... -50).contains(c.longitude)
-    }
+    /// iPad (and other wide windows): two columns side by side, each scrolling on its own.
+    /// In Split View or Slide Over the window turns compact and goes back to one column.
+    private var twoColumns: Bool { sizeClass == .regular }
 
     /// Short credit line; the full credits are one tap away.
     private var sourceNames: String {
@@ -196,7 +196,47 @@ private struct ForecastList: View {
     }
 
     var body: some View {
-        List {
+        Group {
+            if twoColumns {
+                HStack(alignment: .top, spacing: 0) {
+                    column { nowSections; radarSection }
+                    column { forecastSections }
+                }
+            } else {
+                column { nowSections; forecastSections }
+            }
+        }
+        .task(id: forecast.observation?.observedAt ?? forecast.fetchedAt) {
+            // Keep score of the models for where the user actually is, not saved places.
+            guard !isSavedPlace, !usingFallbackLocation else { return }
+            await AccuracyTracker.update(location: forecast.location, timeZone: forecast.timeZone,
+                                        observation: forecast.observation,
+                                        shownTemperature: forecast.current.temperature)
+        }
+        .fontDesign(.rounded)
+    }
+
+    private func column<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        List { content() }
+            .listSectionSpacing(14)
+    }
+
+    /// Live radar loop, with any storm heading this way.
+    private var radarSection: some View {
+        Section {
+            NavigationLink {
+                RadarMapView(center: forecast.location, timeZone: forecast.timeZone)
+            } label: {
+                RadarPreviewCard(center: forecast.location, timeZone: forecast.timeZone, refreshKey: forecast.fetchedAt)
+            }
+        } header: {
+            SkySectionHeader(title: "Radar", systemImage: "dot.radiowaves.left.and.right")
+        }
+        .glassRow()
+    }
+
+    /// Alerts, now, the next hours: the left column on iPad.
+    @ViewBuilder private var nowSections: some View {
             if usingFallbackLocation {
                 Section {
                     Label("Location is off, so this shows Toronto. Turn on location in Settings for weather where you are.",
@@ -270,7 +310,10 @@ private struct ForecastList: View {
                 SkySectionHeader(title: "Next \(hourlyCount) hours", systemImage: "clock")
             }
             .glassRow()
+    }
 
+    /// Days, details, air and sources: the right column on iPad.
+    @ViewBuilder private var forecastSections: some View {
             Section {
                 ForEach(Array(days.enumerated()), id: \.element.id) { index, day in
                     NavigationLink {
@@ -298,6 +341,8 @@ private struct ForecastList: View {
             }
             .glassRow()
 
+            if !twoColumns { radarSection }
+
             if showDetails {
                 Section {
                     TodayDetailsView(forecast: forecast)
@@ -316,18 +361,6 @@ private struct ForecastList: View {
                 .glassRow()
             }
 
-            if Self.radarCovers(forecast.location) {
-                Section {
-                    NavigationLink {
-                        RadarMapView(center: forecast.location)
-                    } label: {
-                        Label("Radar, temperature, wind and cloud maps", systemImage: "dot.radiowaves.left.and.right")
-                            .font(.body.weight(.medium))
-                    }
-                }
-                .glassRow()
-            }
-
             Section {
                 NavigationLink {
                     SourcesView(forecast: forecast, alerts: alerts, isSavedPlace: isSavedPlace)
@@ -342,16 +375,6 @@ private struct ForecastList: View {
                 }
             }
             .glassRow()
-        }
-        .listSectionSpacing(14)
-        .task(id: forecast.observation?.observedAt ?? forecast.fetchedAt) {
-            // Keep score of the models for where the user actually is, not saved places.
-            guard !isSavedPlace, !usingFallbackLocation else { return }
-            await AccuracyTracker.update(location: forecast.location, timeZone: forecast.timeZone,
-                                        observation: forecast.observation,
-                                        shownTemperature: forecast.current.temperature)
-        }
-        .fontDesign(.rounded)
     }
 }
 
