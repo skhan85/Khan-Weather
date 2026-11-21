@@ -3,7 +3,7 @@ import Foundation
 /// Heads-ups that fire only when most of the blended models agree.
 public enum ModelAgreement {
     /// True when at least half the models have rain or snow in one of the next `hours` hours,
-    /// or when there are no model counts to go on (outside North America).
+    /// or when there are no model counts to go on (where the blend isn't used).
     public static func wetAgrees(_ hourly: [HourlyForecast], now: Date = Date(), hours: Int = 2) -> Bool {
         let window = hourly.filter { $0.time.addingTimeInterval(3600) > now && $0.time < now.addingTimeInterval(Double(hours) * 3600) }
         let counted = window.compactMap { h -> Double? in

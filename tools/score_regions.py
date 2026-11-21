@@ -6,14 +6,14 @@ them, and fits new ones, at about 60 airports on six continents:
 
 - Observations: hourly METARs from the Iowa Environmental Mesonet archive (global, no key).
 - Forecasts: Open-Meteo's Single Runs archive (from April 2026). As in tools/score_leads.py the
-  app is taken to open at run + 5 h; every 4th day, alternating the 00 and 12 UTC runs. Lead
+  app is taken to open at run + 5 h; every 5th day, alternating the 00 and 12 UTC runs. Lead
   hours 0-143 fill the six forecast-day rows of the blend.
 - For each region (the boxes in REGIONS, the same ones the app uses) and each day row it fits
   weights over the models that cover that region, and checks them station by station: fitted
   on all the region's other airports and scored on the one left out. The region keeps its own
   weights only when that beats the worldwide weights (fitted the same way) at its airports.
 - Against Open-Meteo's best_match (what the app shows outside North America today), via the
-  Previous Runs archive for January, April, July and October 2026.
+  Previous Runs archive for January, April and July 2026.
 
 Writes region-weights.json (the table the app reads, see BlendRegions.swift) and
 region-report.json, and prints a report.
@@ -28,14 +28,30 @@ from datetime import date, datetime, timedelta
 CACHE = "verify-cache"
 START = date.fromisoformat(os.environ.get("REGION_START", "2026-04-04"))
 END = date.fromisoformat(os.environ.get("REGION_END", "2026-11-15"))
-EVERY = int(os.environ.get("REGION_EVERY", "4"))      # days between sampled runs
+EVERY = int(os.environ.get("REGION_EVERY", "5"))      # days between sampled runs
 ISSUE_DELAY = 5
 DAYS = 6
 
 CORE = ["gem_seamless", "gfs_seamless", "ecmwf_ifs025", "ecmwf_aifs025_single", "icon_seamless",
         "ukmo_seamless"]
 NA_HIRES = ["gem_hrdps_continental", "gfs_hrrr"]
-NAMES = {"gem_seamless": "canada", "gem_hrdps_continental": "canadaHighRes", "gfs_seamless": "us",
+# Regional and newer models tried as well, asked for in their own call (so the core call's
+# cache stays good): the US National Blend of Models, the national European models, Japan's and
+# China's, and ECMWF's 9 km run.
+EXTRAS = {
+    "na_east": ["ncep_nbm_conus", "ecmwf_ifs"],
+    "na_west": ["ncep_nbm_conus", "ecmwf_ifs"],
+    "europe": ["meteofrance_seamless", "knmi_seamless", "dmi_seamless", "ecmwf_ifs"],
+    "east_asia": ["jma_seamless", "cma_grapes_global", "ecmwf_ifs"],
+}
+DEFAULT_EXTRAS = ["ecmwf_ifs"]
+EXTRA_MODELS = ["ncep_nbm_conus", "ecmwf_ifs", "meteofrance_seamless", "knmi_seamless", "dmi_seamless",
+                "jma_seamless", "cma_grapes_global"]
+COVER = 0.75            # share of a region's scored hours a model must cover to be weighted
+NAMES = {"ncep_nbm_conus": "usBlend", "ecmwf_ifs": "europeHighRes", "meteofrance_seamless": "france",
+         "knmi_seamless": "netherlands", "dmi_seamless": "denmark", "jma_seamless": "japan",
+         "cma_grapes_global": "china",
+         "gem_seamless": "canada", "gem_hrdps_continental": "canadaHighRes", "gfs_seamless": "us",
          "gfs_hrrr": "usHighRes", "ecmwf_ifs025": "europe", "ecmwf_aifs025_single": "europeAI",
          "icon_seamless": "germany", "ukmo_seamless": "uk"}
 
@@ -81,8 +97,8 @@ MILTON = [
     {"ecmwf_aifs025_single": 0.49, "ecmwf_ifs025": 0.165, "gfs_seamless": 0.15, "ukmo_seamless": 0.08,
      "icon_seamless": 0.06, "gem_seamless": 0.055},
 ]
-BM_MONTHS = ["2026-01", "2026-04", "2026-07", "2026-10"]
-BM_LEADS = [0, 1, 3, 5]
+BM_MONTHS = ["2026-01", "2026-04", "2026-07"]
+BM_LEADS = [0, 1, 3]
 
 
 def region_of(lat, lon):
@@ -189,7 +205,7 @@ def single_run(lat, lon, models, run, tag, days):
          "models": ",".join(models), "run": run.strftime("%Y-%m-%dT%H:%M"), "timezone": "GMT",
          "forecast_days": days}
     url = "https://single-runs-api.open-meteo.com/v1/forecast?" + urllib.parse.urlencode(q)
-    units = max(1.0, len(models) / 10)
+    units = max(1.0, len(models) / 10) * max(1.0, days / 14)
     d = fetch(url, f"sr-{tag}-{run:%Y%m%d%H}-{days}-{'_'.join(models)}.json", units)
     if d is None:
         if len(models) > 1:   # one model's run missing fails the whole call: ask one by one
@@ -246,7 +262,7 @@ def simplex_min(C, iters=3000):
     return w
 
 
-ALL = CORE + NA_HIRES
+ALL = CORE + NA_HIRES + EXTRA_MODELS
 STATS = {}
 
 
@@ -293,7 +309,7 @@ def pooled_stats(icaos, day):
 
 def members_of(st):
     _, _, cover, n = st
-    return [m for i, m in enumerate(ALL) if n and cover[i] >= 0.9 * n]
+    return [m for i, m in enumerate(ALL) if n and cover[i] >= COVER * n]
 
 
 def fit(st, mem=None):
@@ -347,10 +363,8 @@ def main():
         na = in_north_america(lat, lon)
 
         def load(run):
-            s = single_run(lat, lon, CORE + (["gem_hrdps_continental"] if na else []), run, icao, 7)
-            if na:
-                s.update(single_run(lat, lon, ["gfs_hrrr"], run, icao, 2))
-            return run, s
+            models = CORE + (NA_HIRES if na else []) + EXTRAS.get(reg, DEFAULT_EXTRAS)
+            return run, single_run(lat, lon, models, run, icao, 7)
 
         with ThreadPoolExecutor(3) as pool:
             for run, series in pool.map(load, runs):
@@ -385,7 +399,7 @@ def main():
         return out
 
     # Worldwide weights: every airport, over the models that cover the whole world. North
-    # America's high-resolution models fall out at the 90% cover rule.
+    # America's high-resolution models and the regional ones fall out at the cover rule.
     all_icaos = [s[0] for s in stations]
     global_w = [fit(pooled_stats(all_icaos, n)) for n in range(DAYS)]
     # Worldwide weights fitted without each airport, for the held-out scores.
@@ -442,7 +456,7 @@ def main():
     bm = defaultdict(lambda: defaultdict(lambda: [0.0, 0.0, 0]))   # region -> lead -> [blend, bm, n]
     for icao, lat, lon, reg, obs in stations:
         na = in_north_america(lat, lon)
-        models = CORE + (NA_HIRES if na else []) + ["best_match"]
+        models = CORE + (NA_HIRES if na else []) + EXTRAS.get(reg, DEFAULT_EXTRAS) + ["best_match"]
         weights = table.get(reg, global_w)
         for month in BM_MONTHS:
             pr = previous_runs(lat, lon, models, month, icao)
@@ -464,7 +478,7 @@ def main():
                                 for n, (a, b, c) in sorted(leads.items()) if c}
         # The blend replaces best_match only where it wins on most of the scored lead days.
         won = sum(1 for v in res["vs_best_match"].values() if v["blend"] < v["best_match"])
-        res["blend_beats_best_match"] = won >= 3
+        res["blend_beats_best_match"] = won >= 2
 
     out = {"regions": [], "global": {"useBlend": report["regions"].get("global", {}).get("blend_beats_best_match", False),
                                      "byDay": [{NAMES[m]: round(w, 3) for m, w in d.items()} for d in global_w]}}

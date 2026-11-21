@@ -1,0 +1,38 @@
+{
+ "regions": [
+  {
+   "id": "na_east",
+   "name": "Eastern North America",
+   "boxes": [
+    [
+     24,
+     75,
+     -100,
+     -50
+    ]
+   ],
+   "useBlend": true,
+   "byDay": [
+    {
+     "germany": 0.3,
+     "europe": 0.2,
+     "usHighRes": 0.15,
+     "canada": 0.15,
+     "uk": 0.1,
+     "europeAI": 0.1
+    }
+   ]
+  }
+ ],
+ "global": {
+  "id": "global",
+  "name": "Elsewhere",
+  "boxes": [],
+  "useBlend": false,
+  "byDay": [
+   {
+    "germany": 0.3
+   }
+  ]
+ }
+}

@@ -81,11 +81,13 @@ public struct ModelComparisonProvider: Sendable {
             URLQueryItem(name: "timeformat", value: "unixtime"),
             URLQueryItem(name: "forecast_days", value: String(forecastDays)),
         ]
-        return try Self.parse(try await fetch(parts.url!, loader: loader), models: models)
+        return try Self.parse(try await fetch(parts.url!, loader: loader), models: models,
+                              region: BlendRegion.at(coordinate))
     }
 
     /// With several models, Open-Meteo suffixes each field: "temperature_2m_max_gem_seamless".
-    static func parse(_ data: Data, models: [WeatherModel] = WeatherModel.requested) throws -> [ModelDay] {
+    static func parse(_ data: Data, models: [WeatherModel] = WeatherModel.requested,
+                      region: BlendRegion = .home) throws -> [ModelDay] {
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let daily = root["daily"] as? [String: Any],
               let times = daily["time"] as? [NSNumber] else { throw ForecastError.missingData("daily") }
@@ -107,7 +109,7 @@ public struct ModelComparisonProvider: Sendable {
                                     rainMm: OpenMeteoProvider.sum(at(rain), at(showers)), snowCm: at(snow)))
             }
         }
-        return out + blendRows(out)
+        return out + blendRows(out, region: region)
     }
 
     /// The row for the model Khan Weather uses shows the app's own high and low for the day
@@ -131,14 +133,14 @@ public struct ModelComparisonProvider: Sendable {
     }
 
     /// One "Khan Weather blend" row per day, weighted the same way as the app's temperatures.
-    static func blendRows(_ days: [ModelDay]) -> [ModelDay] {
+    static func blendRows(_ days: [ModelDay], region: BlendRegion = .home) -> [ModelDay] {
         let dates = Array(Set(days.map(\.date))).sorted()
         return dates.enumerated().compactMap { index, date in
             let sameDay = days.filter { $0.date == date && ModelBlend.members.contains($0.model) }
             let lead = Double(index) * 24 + 12
             func blend(_ value: (ModelDay) -> Double?) -> Double? {
                 ModelBlend.blend(Dictionary(sameDay.compactMap { d in value(d).map { (d.model, $0) } },
-                                            uniquingKeysWith: { a, _ in a }), leadHours: lead)
+                                            uniquingKeysWith: { a, _ in a }), leadHours: lead, region: region)
             }
             guard let high = blend(\.high), let low = blend(\.low) else { return nil }
             let condition = days.first { $0.date == date && $0.model == .bestMatch }?.condition
