@@ -217,7 +217,8 @@ struct RadarPreviewCard: View {
                              span: 160_000, interactive: false)
                         .frame(height: 210)
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .overlay(alignment: .bottomLeading) {
+                        .overlay(alignment: .topLeading) {
+                            // Top corner: the bottom one holds the Maps logo and Legal link.
                             let frame = frames[min(index, frames.count - 1)]
                             HStack(spacing: 4) {
                                 if frame.isForecast { Image(systemName: "clock.arrow.circlepath") }
