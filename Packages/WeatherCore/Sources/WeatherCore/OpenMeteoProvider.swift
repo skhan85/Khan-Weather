@@ -74,7 +74,7 @@ public struct OpenMeteoProvider: ForecastProvider {
         components.queryItems = [
             URLQueryItem(name: "latitude", value: String(c.latitude)),
             URLQueryItem(name: "longitude", value: String(c.longitude)),
-            URLQueryItem(name: "hourly", value: "temperature_2m,apparent_temperature,precipitation"),
+            URLQueryItem(name: "hourly", value: "temperature_2m,apparent_temperature,precipitation,snowfall"),
             URLQueryItem(name: "models", value: ModelBlend.members.map(\.rawValue).joined(separator: ",")),
             URLQueryItem(name: "timezone", value: "auto"),
             URLQueryItem(name: "timeformat", value: "unixtime"),
@@ -95,6 +95,8 @@ public struct OpenMeteoProvider: ForecastProvider {
             var freezing: Int
             /// Each model's precipitation (mm) this hour, for the day's chance of rain.
             var precipitation: [WeatherModel: Double] = [:]
+            /// Rain or snow, from all the models (ModelBlend.precipitationType).
+            var type: PrecipitationKind? = nil
         }
         var hourly: [Int: Hour] = [:]
     }
@@ -129,6 +131,7 @@ public struct OpenMeteoProvider: ForecastProvider {
         let temps = Dictionary(uniqueKeysWithValues: ModelBlend.members.map { ($0, series("temperature_2m", $0)) })
         let feels = Dictionary(uniqueKeysWithValues: ModelBlend.members.map { ($0, series("apparent_temperature", $0)) })
         let precip = Dictionary(uniqueKeysWithValues: ModelBlend.members.map { ($0, series("precipitation", $0)) })
+        let snow = Dictionary(uniqueKeysWithValues: ModelBlend.members.map { ($0, series("snowfall", $0)) })
 
         let nowEpoch = now.timeIntervalSince1970
         let observedTemperature = anchor?.temperature
@@ -158,7 +161,10 @@ public struct OpenMeteoProvider: ForecastProvider {
                                                                        currentModelTemps: currentModelTemps),
                                            low: values.min()!, high: values.max()!, count: values.count,
                                            wet: wet, freezing: values.filter { $0 <= 0 }.count,
-                                           precipitation: hourPrecip)
+                                           precipitation: hourPrecip,
+                                           type: ModelBlend.precipitationType(
+                                               temperature: temp, precipitation: hourPrecip,
+                                               snowfall: at(snow).filter { hourTemps[$0.key] != nil }))
         }
         return out
     }
@@ -475,6 +481,7 @@ extension Forecast {
                 h.modelsFreezing = t.freezing
                 h.precipitationProbability = ModelBlend.hourlyChance(openMeteo: h.precipitationProbability,
                                                                      wet: t.wet, of: t.count)
+                if let type = t.type { h.setPrecipitationType(type) }
             }
             return h
         }
@@ -496,6 +503,11 @@ extension Forecast {
                     wet: full.values.filter { $0 >= ModelBlend.wetDayMm }.count,
                     of: full.count, dayIndex: index)
             }
+            if hours.count == copy.hours(on: day).count, hours.count >= 20 {
+                // The day's rain and snow follow the hours' rain-or-snow call.
+                d.rainSum = hours.reduce(0) { $0 + ($1.rain ?? 0) }
+                d.snowfallSum = hours.reduce(0) { $0 + ($1.snowfall ?? 0) }
+            }
             let spreads = hours.compactMap { h in h.modelHigh.flatMap { hi in h.modelLow.map { hi - $0 } } }
             if !spreads.isEmpty { d.modelSpread = spreads.reduce(0, +) / Double(spreads.count) }
             guard hours.count >= 18 else { return d }  // ensure blended daily high/low match the 8-model hourly curve
@@ -514,6 +526,10 @@ extension Forecast {
         // nearby station the Now card could say 5° while the curve said 6° at the same time.
         if let now = Self.blendedTemperature(temps, at: current.time) {
             copy.current.temperature = now
+        }
+        let hourStart = Int(floor(current.time.timeIntervalSince1970 / 3600)) * 3600
+        if let type = temps.hourly[hourStart]?.type {
+            copy.current.condition = copy.current.condition.converted(to: type)
         }
         copy.extremesIncludePeak = true
         // A day whose chance fell may no longer be headlined as rain.

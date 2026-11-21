@@ -104,6 +104,16 @@ public struct HourlyForecast: Equatable, Codable, Sendable, Identifiable {
                                 low: temperature, high: temperature)
     }
 
+    /// Makes this hour's rain and snow one kind: the amounts move to rain (mm) or snow (cm, at
+    /// 0.7 mm of water per cm) and the condition follows. Freezing rain is left alone.
+    mutating func setPrecipitationType(_ type: PrecipitationKind) {
+        guard type != .mixed, condition != .freezingRain, condition != .freezingDrizzle else { return }
+        condition = condition.converted(to: type)
+        let water = max(precipitation ?? 0, (rain ?? 0) + (snowfall ?? 0) * 0.7)
+        guard water > 0 else { return }
+        if type == .snow { snowfall = water / 0.7; rain = 0 } else { rain = water; snowfall = 0 }
+    }
+
     public init(time: Date, temperature: Double, feelsLike: Double? = nil,
                 precipitationProbability: Double? = nil, precipitation: Double? = nil,
                 condition: WeatherCondition, isDay: Bool = true) {

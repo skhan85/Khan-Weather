@@ -157,6 +157,34 @@ final class OpenMeteoProviderTests: XCTestCase {
                        try XCTUnwrap(EnvironmentCanadaProvider.windChill(temperature: 4.5, windKmh: 19.4)), accuracy: 0.001)
     }
 
+    func testRainOrSnowFromAllTheModels() {
+        // Best match alone says rain at 0.6°, but four of five wet models say snow.
+        let precip: [WeatherModel: Double] = [.canada: 1, .europe: 0.8, .germany: 0.6, .uk: 0.5, .us: 0.4, .europeAI: 0]
+        let snow: [WeatherModel: Double] = [.canada: 1.2, .europe: 1.0, .germany: 0.7, .uk: 0, .us: 0.5, .europeAI: 0]
+        XCTAssertEqual(ModelBlend.precipitationType(temperature: 0.6, precipitation: precip, snowfall: snow), .snow)
+        // Clearly warm or cold, the temperature decides whatever the models' snowfall says.
+        XCTAssertEqual(ModelBlend.precipitationType(temperature: 3.2, precipitation: precip, snowfall: snow), .rain)
+        XCTAssertEqual(ModelBlend.precipitationType(temperature: -2.5, precipitation: precip, snowfall: [:]), .snow)
+        // No wet model: snow at or below 1°.
+        XCTAssertEqual(ModelBlend.precipitationType(temperature: 0.9, precipitation: [:], snowfall: [:]), .snow)
+        XCTAssertEqual(ModelBlend.precipitationType(temperature: 1.4, precipitation: [:], snowfall: [:]), .rain)
+
+        var hour = HourlyForecast(time: Date(), temperature: 0.6, precipitation: 1.4, condition: .rainShowers)
+        hour.rain = 1.4
+        hour.snowfall = 0
+        hour.setPrecipitationType(.snow)
+        XCTAssertEqual(hour.condition, .snowShowers)
+        XCTAssertEqual(hour.rain, 0)
+        XCTAssertEqual(hour.snowfall ?? 0, 2.0, accuracy: 0.001, "1.4 mm of water is 2 cm of snow")
+        XCTAssertEqual(hour.precipitationKind, .snow)
+        hour.setPrecipitationType(.rain)
+        XCTAssertEqual(hour.condition, .rainShowers)
+        XCTAssertEqual(hour.rain ?? 0, 1.4, accuracy: 0.001)
+        var ice = HourlyForecast(time: Date(), temperature: -0.5, precipitation: 1, condition: .freezingRain)
+        ice.setPrecipitationType(.snow)
+        XCTAssertEqual(ice.condition, .freezingRain, "freezing rain is left alone")
+    }
+
     func testFeelsLikeFollowsEnvironmentCanada() throws {
         // Winter breeze: wind chill.
         let chill = try XCTUnwrap(FeelsLike.value(temperature: 0, windKmh: 20, dewPoint: -3))
