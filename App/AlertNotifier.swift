@@ -157,8 +157,7 @@ enum AlertNotifier {
     private static func post(_ a: WeatherAlert, place: String) async {
         let content = UNMutableNotificationContent()
         content.title = "\(a.title) for \(place)"
-        let firstParagraph = a.text.components(separatedBy: "\n\n").first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? a.text
-        content.body = String(firstParagraph.trimmingCharacters(in: .whitespacesAndNewlines).prefix(240))
+        content.body = a.notificationBody
         content.sound = .default
         content.threadIdentifier = place
         let center = UNUserNotificationCenter.current()
