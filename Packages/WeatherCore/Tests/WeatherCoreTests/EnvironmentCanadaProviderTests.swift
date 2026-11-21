@@ -178,8 +178,9 @@ final class EnvironmentCanadaProviderTests: XCTestCase {
                               feelsLike: 0.7, feelsLikeKind: .windChill, humidity: 79, windSpeed: 39,
                               condition: .fog, conditionText: "Fog", distanceKm: 20)
         let merged = forecast.applying(far)
-        XCTAssertEqual(merged.current.condition, .fog)
-        XCTAssertEqual(merged.skySource, "Burlington Lift Bridge, 20 km away")
+        // Fog 20 km away isn't fog here: the forecast's sky for this spot stays.
+        XCTAssertEqual(merged.current.condition, forecast.current.condition)
+        XCTAssertNil(merged.skySource)
         XCTAssertEqual(merged.current.temperature, forecast.current.temperature)
         XCTAssertEqual(merged.current.feelsLike, forecast.current.feelsLike)
         XCTAssertEqual(merged.current.windSpeed, forecast.current.windSpeed)
