@@ -1,0 +1,31 @@
+name: Score models by region
+
+# Scores the blend's models at airports around the world (tools/score_regions.py) and fits
+# weights per region. Run by hand, or on a push that changes the scorer.
+# Linux: GitHub's Mac runners can't reach api.open-meteo.com.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - tools/score_regions.py
+      - tools/probe_sources.py
+      - .github/workflows/score-regions.yml
+
+permissions:
+  contents: read
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: tools/verify-cache
+          key: regions-cache-${{ github.run_id }}
+          restore-keys: regions-cache-
+      - name: Probe
+        working-directory: tools
+        run: python3 probe_sources.py
