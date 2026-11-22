@@ -30,21 +30,31 @@ class OpenMeteoProvider(
         forecast.applying(temps)
     }
 
+    /**
+     * Blended hourly temperatures; null if the request fails, so the default stays. If the
+     * region's own models are refused, it tries again with the worldwide models and weights.
+     */
     suspend fun blendedTemperatures(coordinate: Coordinate, anchor: suspend () -> ModelBlend.Anchor? = { null }): ModelTemperatures? {
-        val data = try { loader.fetch(blendURL(coordinate)) } catch (e: Exception) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
-            return null
+        val region = BlendRegion.at(coordinate)
+        val tries = if (region == BlendRegion.fallback) listOf(region) else listOf(region, BlendRegion.fallback)
+        for (r in tries) {
+            val data = try { loader.fetch(blendURL(coordinate, r)) } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                if (e is HttpStatusException) continue
+                return null
+            }
+            val observed = anchor()
+            return try { parseBlend(data, r, observed, nowEpoch()) } catch (e: Exception) { null }
         }
-        val observed = anchor()
-        return try { parseBlend(data, observed, nowEpoch()) } catch (e: Exception) { null }
+        return null
     }
 
-    fun blendURL(coordinate: Coordinate): String {
+    fun blendURL(coordinate: Coordinate, region: BlendRegion = BlendRegion.at(coordinate)): String {
         val c = coordinate.rounded
         return buildUrl(baseURL,
             "latitude" to dstr(c.latitude), "longitude" to dstr(c.longitude),
             "hourly" to "temperature_2m,apparent_temperature,precipitation,snowfall",
-            "models" to ModelBlend.members.joinToString(",") { it.raw },
+            "models" to region.models.joinToString(",") { it.raw },
             "timezone" to "auto", "timeformat" to "unixtime", "forecast_days" to forecastDays.toString())
     }
 
@@ -81,7 +91,8 @@ class OpenMeteoProvider(
 
     companion object {
         /** North America, where the high-resolution Canadian and US models cover the spot. */
-        fun usesBlend(c: Coordinate): Boolean = c.latitude in 24.0..84.0 && c.longitude in -170.0..-52.0
+        /** Whether the spot's region uses the blend (it scored better than best match there). */
+        fun usesBlend(c: Coordinate): Boolean = BlendRegion.at(c).useBlend
 
         val currentFields = listOf(
             "temperature_2m", "apparent_temperature", "relative_humidity_2m", "is_day",
@@ -124,11 +135,11 @@ class OpenMeteoProvider(
         }
 
         /** With several models, Open-Meteo suffixes each field: "temperature_2m_gem_seamless". */
-        fun parseBlend(data: ByteArray, anchor: ModelBlend.Anchor? = null, now: Epoch): ModelTemperatures {
+        fun parseBlend(data: ByteArray, region: BlendRegion = BlendRegion.home, anchor: ModelBlend.Anchor? = null, now: Epoch): ModelTemperatures {
             val root = parseJson(data)
             val hourly = root["hourly"].obj ?: throw ForecastException("The weather service response was missing hourly.")
             val times = hourly["time"].arr?.map { it.numOnly ?: 0.0 } ?: throw ForecastException("missing hourly")
-            fun series(field: String) = ModelBlend.members.associateWith { hourly["${field}_${it.raw}"].doubles() }
+            fun series(field: String) = region.models.associateWith { hourly["${field}_${it.raw}"].doubles() }
             val temps = series("temperature_2m")
             val feels = series("apparent_temperature")
             val precip = series("precipitation")
@@ -146,13 +157,13 @@ class OpenMeteoProvider(
                     return m
                 }
                 val hourTemps = at(temps)
-                val temp = ModelBlend.blend(hourTemps, lead, observedTemperature, currentModelTemps) ?: continue
+                val temp = ModelBlend.blend(hourTemps, lead, region, observedTemperature, currentModelTemps) ?: continue
                 val values = hourTemps.values.toList()
                 val hourPrecip = at(precip).filterKeys { hourTemps.containsKey(it) }
                 val wet = hourPrecip.count { it.value >= ModelBlend.wetHourMm }
                 out.hourly[t.toLong()] = ModelTemperatures.Hour(
                     temperature = temp,
-                    feelsLike = ModelBlend.blend(at(feels), lead, observedTemperature, currentModelTemps),
+                    feelsLike = ModelBlend.blend(at(feels), lead, region, observedTemperature, currentModelTemps),
                     low = values.min(), high = values.max(), count = values.size,
                     wet = wet, freezing = values.count { it <= 0 },
                     precipitation = hourPrecip,

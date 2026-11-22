@@ -107,7 +107,11 @@ class OpenMeteoProviderTest {
         """
         val p = OpenMeteoProvider(loader = loader { url -> 200 to (if (url.contains("gem_hrdps_continental")) blend else sample) })
         val f = sync { p.forecast(Coordinate.fallback) }
-        val expected = (-5.0 * 0.15 - 3.0 * 0.20) / 0.35
+        // Hours already past use the first day's weights of the spot's region.
+        val region = BlendRegion.at(Coordinate.fallback)
+        val wHRRR = ModelBlend.weight(WeatherModel.usHighRes, -1.0, region)
+        val wECMWF = ModelBlend.weight(WeatherModel.europe, -1.0, region)
+        val expected = if (wHRRR + wECMWF > 0) (-5.0 * wHRRR - 3.0 * wECMWF) / (wHRRR + wECMWF) else -4.0
         close(expected, f.hourly[0].temperature, 0.001)
         assertEquals(-9.0, f.hourly[0].feelsLike)
         assertEquals(-5.0, f.hourly[0].modelLow)
@@ -176,19 +180,20 @@ class OpenMeteoProviderTest {
     }
 
     @Test fun blendWeightsShiftWithLeadTime() {
+        val r = testRegion
         val values = mapOf(WeatherModel.germany to 0.0, WeatherModel.europe to 10.0)
-        close(10 * 0.20 / 0.50, ModelBlend.blend(values, 6.0), 0.001)
-        close(10 * 0.165 / 0.225, ModelBlend.blend(values, 200.0), 0.001)
-        close(10 * 0.08 / (0.08 + 0.1375), ModelBlend.blend(values, 72.0), 0.001)
+        close(10 * 0.20 / 0.50, ModelBlend.blend(values, 6.0, r), 0.001)
+        close(10 * 0.165 / 0.225, ModelBlend.blend(values, 200.0, r), 0.001)
+        close(10 * 0.08 / (0.08 + 0.1375), ModelBlend.blend(values, 72.0, r), 0.001)
         assertNull(ModelBlend.blend(emptyMap(), 6.0))
         assertNull(ModelBlend.blend(mapOf(WeatherModel.bestMatch to 5.0), 6.0))
     }
 
     @Test fun blendFailureKeepsDefault() {
-        val p = OpenMeteoProvider(loader = loader { url -> (if (url.contains("gem_hrdps_continental")) 500 else 200) to sample })
+        // Every blend request fails: the region's models, then the worldwide retry.
+        val p = OpenMeteoProvider(loader = loader { url -> (if (url.contains("models=")) 500 else 200) to sample })
         val f = sync { p.forecast(Coordinate.fallback) }
         assertEquals(-2.0, f.hourly[0].temperature)
-        assertFalse(OpenMeteoProvider.usesBlend(Coordinate(51.5, -0.12)))
     }
 
     @Test fun wmoCodesAndFormat() {
@@ -198,5 +203,14 @@ class OpenMeteoProviderTest {
         assertEquals("0°", WeatherFormat.temperature(-0.3, TemperatureUnit.celsius))
         assertEquals("22°", WeatherFormat.temperature(21.6, TemperatureUnit.celsius))
         assertEquals("-3°", WeatherFormat.temperature(-2.5, TemperatureUnit.celsius), "halves round away from zero, like iOS")
+    }
+
+    private val testRegion get() = Regions.testRegion
+
+    object Regions {
+        /** A made-up region with the first (Pearson and Hamilton) weights for ICON and ECMWF. */
+        val testRegion = BlendRegion("test", "Test", emptyList(), true, listOf(WeatherModel.germany, WeatherModel.europe),
+            listOf(0.30 to 0.20, 0.22 to 0.04, 0.18 to 0.075, 0.095 to 0.085, 0.07 to 0.075, 0.06 to 0.165)
+                .map { (g, e) -> mapOf(WeatherModel.germany to g, WeatherModel.europe to e) })
     }
 }
