@@ -74,6 +74,8 @@ enum RadarSpan: Int, CaseIterable, Identifiable {
 /// Or the current temperature, wind or cloud map from Environment Canada's HRDPS model.
 /// Outside Canada and the US, RainViewer's worldwide radar loop instead.
 struct RadarMapView: View {
+    @State private var pwsStations: [NetatmoStation] = []
+    @State private var showStations = true
     @Environment(\.dismiss) private var dismiss
     let center: Coordinate
     var timeZone: TimeZone = .current
@@ -308,8 +310,6 @@ struct RadarPreviewCard: View {
     let refreshKey: Date
 
     @State private var frames: [RadarFrame] = []
-    @State private var pwsStations: [NetatmoStation] = []
-    @State private var showStations = true
     @State private var index = 0
     @State private var hold = 0
     @State private var storm: StormHeadsUp?
