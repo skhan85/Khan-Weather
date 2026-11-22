@@ -1,0 +1,5 @@
+<resources>
+    <string name="widget_summary">Now, feels like and today\'s high and low</string>
+    <string name="widget_hourly">Now and the next six hours</string>
+    <string name="widget_daily">Now and the next five days</string>
+</resources>

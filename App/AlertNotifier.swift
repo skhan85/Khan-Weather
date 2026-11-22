@@ -14,6 +14,8 @@ enum AlertNotifier {
     static let advisoriesKey = "alertNotificationsAdvisories"
     static let rainKey = "rainNotifications"
     static let frostKey = "frostNotifications"
+    static let stormKey = "stormNotifications"
+    private static let lastStormKey = "lastStormNotification"
     private static let lastFrostDayKey = "lastFrostNotificationDay"
     private static let lastRainKey = "lastRainNotification"
     private static let lastLocationKey = "lastCurrentLocation"
@@ -25,12 +27,14 @@ enum AlertNotifier {
     static var isEnabled: Bool { defaults.bool(forKey: enabledKey) }
     static var rainEnabled: Bool { defaults.bool(forKey: rainKey) }
     static var frostEnabled: Bool { defaults.bool(forKey: frostKey) }
+    /// Until it's switched either way, storm heads-ups follow the alert or rain switch.
+    static var stormEnabled: Bool { defaults.object(forKey: stormKey) as? Bool ?? (isEnabled || rainEnabled) }
 
     // MARK: Scheduling
 
     /// Asks iOS for the next background check. iOS decides the actual time.
     static func schedule() {
-        guard isEnabled || rainEnabled || frostEnabled else { return }
+        guard isEnabled || rainEnabled || frostEnabled || stormEnabled else { return }
         let request = BGAppRefreshTaskRequest(identifier: taskID)
         request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
         try? BGTaskScheduler.shared.submit(request)
@@ -43,12 +47,12 @@ enum AlertNotifier {
     /// When iOS last let the app check in the background, for the status rows in Settings.
     static var lastBackgroundCheck: Date? { defaults.object(forKey: lastBackgroundCheckKey) as? Date }
     static var lastBackgroundReason: String? { defaults.string(forKey: lastBackgroundReasonKey) }
-    static var anyEnabled: Bool { isEnabled || rainEnabled || frostEnabled }
+    static var anyEnabled: Bool { isEnabled || rainEnabled || frostEnabled || stormEnabled }
 
     /// The app was installed again (sideloading does this often) and iOS forgot the permission,
     /// but the switches are still on: ask again so they mean something.
     static func ensurePermission() async {
-        guard isEnabled || rainEnabled || frostEnabled else { return }
+        guard isEnabled || rainEnabled || frostEnabled || stormEnabled else { return }
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         if settings.authorizationStatus == .notDetermined { _ = await requestPermission() }
         schedule()
@@ -138,7 +142,8 @@ enum AlertNotifier {
         defaults.set(reason, forKey: lastBackgroundReasonKey)
         async let alerts: Void = check()
         async let rain: Void = checkForecast()
-        _ = await (alerts, rain)
+        async let storm: Void = checkStorm()
+        _ = await (alerts, rain, storm)
         // iOS woke the app (background refresh, or the phone moved): a good moment to let the
         // widgets refresh too, especially after a move, since they follow the phone's location.
         WidgetCenter.shared.reloadAllTimelines()
@@ -281,6 +286,30 @@ enum AlertNotifier {
             try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: frostAheadID, content: content, trigger: trigger))
             defaults.set([at, today], forKey: scheduledFrostKey)
         }
+    }
+
+    // MARK: Storm heading your way
+
+    /// A thunderstorm, downpour or snow squall on radar upwind of the last known location and
+    /// due within the hour or so (or thunder forecast right here where there's no radar). Once per
+    /// few hours, and it also counts as the rain heads-up so the two don't both fire.
+    static func checkStorm(provider: StormWatchProvider = StormWatchProvider(), now: Date = Date()) async {
+        guard stormEnabled, let here = lastLocation else { return }
+        let last = defaults.object(forKey: lastStormKey) as? Date
+        if let last, now.timeIntervalSince(last) < StormWatch.quietPeriod { return }
+        guard let storm = StormWatch.shouldNotify(await provider.check(at: here, now: now), lastNotified: last, now: now) else { return }
+        defaults.set(now, forKey: lastStormKey)
+        defaults.set(now, forKey: lastRainKey)
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [rainAheadID])
+        let content = UNMutableNotificationContent()
+        content.title = storm.title
+        content.body = storm.body(at: now, timeZone: .current,
+                                  distance: { WeatherFormat.distance($0) ?? "\(Int($0)) km" },
+                                  speed: { WeatherFormat.wind($0) })
+        content.sound = .default
+        content.threadIdentifier = "storm"
+        try? await UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: "storm-\(Int(now.timeIntervalSince1970))", content: content, trigger: nil))
     }
 
     /// Opening the app shows the same "rain starting" line, so don't repeat it as a notification.

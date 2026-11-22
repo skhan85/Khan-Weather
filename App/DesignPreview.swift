@@ -31,9 +31,41 @@ struct DesignPreview: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
+    /// What the storm heads-up notifications say, as they'd read on the Lock Screen.
+    private var stormSamples: some View {
+        let now = Date()
+        let samples = [
+            StormHeadsUp(kind: .thunderstorm, source: .radar, arrival: now.addingTimeInterval(39 * 60),
+                         distanceKm: 26, bearing: 265, speedKmh: 40),
+            StormHeadsUp(kind: .snowSquall, source: .radar, arrival: now.addingTimeInterval(15 * 60),
+                         distanceKm: 16, bearing: 300, speedKmh: 55),
+            StormHeadsUp(kind: .thunderstorm, source: .forecast, arrival: now.addingTimeInterval(3600)),
+        ]
+        return VStack(spacing: 8) {
+            ForEach(samples.indices, id: \.self) { i in
+                HStack(alignment: .top, spacing: 10) {
+                    Image("Logo").resizable().frame(width: 34, height: 34)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(samples[i].title).font(.subheadline.weight(.semibold))
+                        Text(samples[i].body(at: now, timeZone: .current)).font(.subheadline)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(12)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+        }
+        .padding(12)
+        .background(SkyBackground(condition: .thunderstorm, isDay: true))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                Text("Storm heads-ups").font(.headline)
+                stormSamples
                 Text("Alerts").font(.headline)
                 alertSamples
                 Text("New details").font(.headline)
@@ -259,5 +291,40 @@ struct DesignPreview: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(WidgetSky(entry: entry))
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+}
+
+/// `-radarScreen`: the main screen's radar card on its own, then (after a few seconds) the full
+/// radar map, both for Milton. CI screenshots each.
+struct RadarScreenPreview: View {
+    private let milton = Coordinate(latitude: 43.5183, longitude: -79.8774)
+    @State private var showMap = false
+    @State private var opened = Date()
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if showMap {
+                    RadarMapView(center: milton, timeZone: TimeZone(identifier: "America/Toronto")!)
+                } else {
+                    List {
+                        Section {
+                            RadarPreviewCard(center: milton, timeZone: TimeZone(identifier: "America/Toronto")!,
+                                             refreshKey: opened)
+                        } header: {
+                            SkySectionHeader(title: "Radar", systemImage: "dot.radiowaves.left.and.right")
+                        }
+                        .glassRow()
+                    }
+                    .skyBackground(.rain, isDay: true)
+                    .navigationTitle("Khan Weather")
+                    .navigationBarTitleDisplayMode(.inline)
+                }
+            }
+        }
+        .task {
+            try? await Task.sleep(nanoseconds: 30_000_000_000)
+            showMap = true
+        }
     }
 }

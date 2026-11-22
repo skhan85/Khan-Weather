@@ -124,6 +124,13 @@ jobs:
             python3 -c "import json,sys; h=json.load(open(sys.argv[1]))['hourly']; print(' '.join(f'{t[11:13]}h:{v}' for t,v in zip(h['time'],h['temperature_2m'])))" "om-$m.json" || true
           done
 
+      - name: Check radar and storm data from the runner
+        continue-on-error: true
+        run: |
+          curl -sS -m 30 "https://api.rainviewer.com/public/weather-maps.json" | head -c 600; echo
+          curl -sS -m 30 "https://api.open-meteo.com/v1/forecast?latitude=43.52&longitude=-79.88&hourly=cape,weather_code,wind_speed_700hPa,wind_direction_700hPa&timeformat=unixtime&past_hours=1&forecast_hours=4" | head -c 800; echo
+          curl -sS -m 30 "https://geo.weather.gc.ca/geomet?service=WMS&version=1.3.0&request=GetFeatureInfo&layers=RADAR_1KM_RRAI&query_layers=RADAR_1KM_RRAI&crs=EPSG:4326&bbox=43.50,-80.20,43.52,-80.18&width=3&height=3&i=1&j=1&info_format=application/json" | head -c 600; echo
+
       - name: Take screenshots
         run: |
           set -x
@@ -161,6 +168,13 @@ jobs:
             xcrun simctl launch "$udid" "$BUNDLE" -designPreview
             sleep 25
             xcrun simctl io "$udid" screenshot "shots/${label}-design-preview.png"
+            xcrun simctl terminate "$udid" "$BUNDLE" || true
+            sleep 2
+            xcrun simctl launch "$udid" "$BUNDLE" -radarScreen
+            sleep 25
+            xcrun simctl io "$udid" screenshot "shots/${label}-radar-card.png"
+            sleep 25
+            xcrun simctl io "$udid" screenshot "shots/${label}-radar-map.png"
             xcrun simctl shutdown "$udid" || true
           }
           shoot "iPhone 16 Pro" iphone
