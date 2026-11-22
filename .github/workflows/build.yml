@@ -198,6 +198,8 @@ jobs:
           git add -A
           git commit -qm "Screenshots for ${{ github.sha }}"
           git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-screenshots
+          # Also per pull request, so two PRs running at once don't overwrite each other's shots.
+          if [ -n "${{ github.event.pull_request.number }}" ]; then git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" "ci-screenshots:ci-screenshots-pr${{ github.event.pull_request.number }}"; fi
 
       - name: Upload screenshots
         if: always()

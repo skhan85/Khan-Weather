@@ -124,6 +124,10 @@ jobs:
           git add -A
           git commit -qm "Android screenshots for ${{ github.sha }}"
           git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ci-screenshots-android
+          # Also per pull request, so two PRs running at once don't overwrite each other's shots.
+          if [ -n "${{ github.event.pull_request.number }}" ]; then
+            git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" "ci-screenshots-android:ci-screenshots-android-pr${{ github.event.pull_request.number }}"
+          fi
 
       - uses: actions/upload-artifact@v4
         if: always()
