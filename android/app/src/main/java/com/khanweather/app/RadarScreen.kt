@@ -80,6 +80,7 @@ private fun radarHtml(c: Coordinate, twelve: Boolean, miles: Boolean, card: Bool
 <!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script>window.L_DISABLE_3D=true;/* plain 2D positioning: some WebViews draw nothing for 3D-transformed map panes */</script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
  html,body,#map{margin:0;height:100%;background:#1b2636;font-family:sans-serif}
