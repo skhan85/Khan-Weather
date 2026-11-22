@@ -90,7 +90,8 @@ private fun radarHtml(c: Coordinate, twelve: Boolean, miles: Boolean, card: Bool
 <script>window.onerror=function(m,u,l){console.log('radar error '+m+' line '+l)};window.L_DISABLE_3D=true;/* plain 2D positioning: some WebViews draw nothing for 3D-transformed map panes */</script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
- html,body,#map{margin:0;height:100%;background:#1b2636;font-family:sans-serif}
+ html,body{margin:0;height:100%;background:#1b2636;font-family:sans-serif}
+ #map{position:fixed;top:0;left:0;right:0;bottom:0;background:#1b2636}
  .bar{position:fixed;left:12px;right:12px;z-index:1000;background:rgba(20,24,32,.86);color:#fff;border-radius:14px;padding:10px 12px;box-sizing:border-box}
  #top{top:12px;display:flex;gap:6px;padding:6px}
  #top button{flex:1;border:0;border-radius:9px;padding:8px 0;background:transparent;color:#fff;font-size:14px;font-weight:600}
