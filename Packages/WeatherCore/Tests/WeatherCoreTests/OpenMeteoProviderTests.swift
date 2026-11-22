@@ -124,8 +124,11 @@ final class OpenMeteoProviderTests: XCTestCase {
                     HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
         })
         let forecast = try await provider.forecast(for: .fallback)
-        // Hours already past use the first day's weights: HRRR 0.15, ECMWF 0.20.
-        let expected: Double = (-5.0 * 0.15 - 3.0 * 0.20) / 0.35
+        // Hours already past use the first day's weights of the spot's region.
+        let region = BlendRegion.at(.fallback)
+        let wHRRR = ModelBlend.weight(.usHighRes, leadHours: -1, region: region)
+        let wECMWF = ModelBlend.weight(.europe, leadHours: -1, region: region)
+        let expected: Double = wHRRR + wECMWF > 0 ? (-5.0 * wHRRR - 3.0 * wECMWF) / (wHRRR + wECMWF) : -4.0
         XCTAssertEqual(forecast.hourly[0].temperature, expected, accuracy: 0.001)
         XCTAssertEqual(forecast.hourly[0].feelsLike, -9.0)
         XCTAssertEqual(forecast.hourly[0].modelLow, -5.0)
@@ -199,27 +202,34 @@ final class OpenMeteoProviderTests: XCTestCase {
         XCTAssertNil(FeelsLike.value(temperature: 15, windKmh: nil, dewPoint: nil))
     }
 
+    /// A made-up region with the first (Pearson and Hamilton) weights for ICON and ECMWF.
+    static let testRegion = BlendRegion(
+        id: "test", name: "Test", boxes: [], useBlend: true, models: [.germany, .europe],
+        byDay: [[.germany: 0.30, .europe: 0.20], [.germany: 0.22, .europe: 0.04], [.germany: 0.18, .europe: 0.075],
+                [.germany: 0.095, .europe: 0.085], [.germany: 0.07, .europe: 0.075], [.germany: 0.06, .europe: 0.165]])
+
     func testBlendWeightsShiftWithLeadTime() throws {
+        let r = Self.testRegion
         let values: [WeatherModel: Double] = [.germany: 0, .europe: 10]
         let today: Double = 10 * 0.20 / 0.50                // ICON 0.30, ECMWF 0.20
         let day6: Double = 10 * 0.165 / 0.225               // ICON 0.06, ECMWF 0.165
         let between: Double = 10 * 0.08 / (0.08 + 0.1375)   // halfway between days 3 and 4 at 72 h
-        XCTAssertEqual(try XCTUnwrap(ModelBlend.blend(values, leadHours: 6)), today, accuracy: 0.001)
-        XCTAssertEqual(try XCTUnwrap(ModelBlend.blend(values, leadHours: 200)), day6, accuracy: 0.001)
-        XCTAssertEqual(try XCTUnwrap(ModelBlend.blend(values, leadHours: 72)), between, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(ModelBlend.blend(values, leadHours: 6, region: r)), today, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(ModelBlend.blend(values, leadHours: 200, region: r)), day6, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(ModelBlend.blend(values, leadHours: 72, region: r)), between, accuracy: 0.001)
         XCTAssertNil(ModelBlend.blend([:], leadHours: 6))
         XCTAssertNil(ModelBlend.blend([.bestMatch: 5], leadHours: 6), "best match isn't part of the blend")
     }
 
     func testBlendFailureKeepsDefault() async throws {
         let provider = OpenMeteoProvider(loader: { request in
-            let isBlend = request.url!.query!.contains("gem_hrdps_continental")
+            // Every blend request fails: the region's models, then the worldwide retry.
+            let isBlend = request.url!.query!.contains("models=")
             return (Self.sample, HTTPURLResponse(url: request.url!, statusCode: isBlend ? 500 : 200,
                                                  httpVersion: nil, headerFields: nil)!)
         })
         let forecast = try await provider.forecast(for: .fallback)
         XCTAssertEqual(forecast.hourly[0].temperature, -2.0)
-        XCTAssertFalse(OpenMeteoProvider.usesBlend(Coordinate(latitude: 51.5, longitude: -0.12)))
     }
 
     func testWMOCodes() {

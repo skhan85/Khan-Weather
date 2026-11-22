@@ -38,8 +38,9 @@ public struct OpenMeteoProvider: ForecastProvider {
     /// station overlaps the download instead of adding to it.
     public func forecast(for coordinate: Coordinate,
                          anchor: @escaping @Sendable () async -> ModelBlend.Anchor?) async throws -> Forecast {
-        // In North America, temperatures are a weighted blend of several models (see ModelBlend).
-        // Everything else stays on Open-Meteo's default.
+        // Temperatures are a weighted blend of several models (see ModelBlend), with weights for
+        // the part of the world the spot is in (BlendRegion). Where the blend didn't beat
+        // Open-Meteo's own best match, best match stays.
         async let blended = Self.usesBlend(coordinate)
             ? blendedTemperatures(for: coordinate, anchor: anchor)
             : nil
@@ -53,29 +54,38 @@ public struct OpenMeteoProvider: ForecastProvider {
         return forecast.applying(temps)
     }
 
-    /// North America, where the high-resolution Canadian and US models cover the spot.
+    /// Whether the spot's region uses the blend (it scored better than best match there).
     static func usesBlend(_ c: Coordinate) -> Bool {
-        (24...84).contains(c.latitude) && (-170...(-52)).contains(c.longitude)
+        BlendRegion.at(c).useBlend
     }
 
     /// Blended hourly temperatures. nil if the request fails, so the default stays.
+    /// If the region's own models are refused (say a regional model has no data at a spot near
+    /// the edge of its area), it tries again with the worldwide models and weights.
     func blendedTemperatures(for coordinate: Coordinate,
                              anchor: @Sendable () async -> ModelBlend.Anchor? = { nil }) async -> ModelTemperatures? {
-        let request = URLRequest(url: blendURL(for: coordinate), timeoutInterval: 15)
-        guard let (data, response) = try? await loader(request) else { return nil }
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { return nil }
-        let observed = await anchor()
-        return try? Self.parseBlend(data, anchor: observed, now: Date())
+        let region = BlendRegion.at(coordinate)
+        var tries = [region]
+        if region != .fallback { tries.append(.fallback) }
+        for r in tries {
+            let request = URLRequest(url: blendURL(for: coordinate, region: r), timeoutInterval: 15)
+            guard let (data, response) = try? await loader(request) else { return nil }
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { continue }
+            let observed = await anchor()
+            return try? Self.parseBlend(data, region: r, anchor: observed, now: Date())
+        }
+        return nil
     }
 
-    func blendURL(for coordinate: Coordinate) -> URL {
+    func blendURL(for coordinate: Coordinate, region: BlendRegion? = nil) -> URL {
+        let region = region ?? BlendRegion.at(coordinate)
         let c = coordinate.rounded
         var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "latitude", value: String(c.latitude)),
             URLQueryItem(name: "longitude", value: String(c.longitude)),
             URLQueryItem(name: "hourly", value: "temperature_2m,apparent_temperature,precipitation,snowfall"),
-            URLQueryItem(name: "models", value: ModelBlend.members.map(\.rawValue).joined(separator: ",")),
+            URLQueryItem(name: "models", value: region.models.map(\.rawValue).joined(separator: ",")),
             URLQueryItem(name: "timezone", value: "auto"),
             URLQueryItem(name: "timeformat", value: "unixtime"),
             URLQueryItem(name: "forecast_days", value: String(forecastDays)),
@@ -120,6 +130,7 @@ public struct OpenMeteoProvider: ForecastProvider {
 
     /// With several models, Open-Meteo suffixes each field: "temperature_2m_gem_seamless".
     static func parseBlend(_ data: Data,
+                           region: BlendRegion = .home,
                            anchor: ModelBlend.Anchor? = nil,
                            now: Date) throws -> ModelTemperatures {
         guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -128,10 +139,10 @@ public struct OpenMeteoProvider: ForecastProvider {
         func series(_ field: String, _ model: WeatherModel) -> [Double?] {
             ((hourly["\(field)_\(model.rawValue)"] as? [Any]) ?? []).map { ($0 as? NSNumber)?.doubleValue }
         }
-        let temps = Dictionary(uniqueKeysWithValues: ModelBlend.members.map { ($0, series("temperature_2m", $0)) })
-        let feels = Dictionary(uniqueKeysWithValues: ModelBlend.members.map { ($0, series("apparent_temperature", $0)) })
-        let precip = Dictionary(uniqueKeysWithValues: ModelBlend.members.map { ($0, series("precipitation", $0)) })
-        let snow = Dictionary(uniqueKeysWithValues: ModelBlend.members.map { ($0, series("snowfall", $0)) })
+        let temps = Dictionary(uniqueKeysWithValues: region.models.map { ($0, series("temperature_2m", $0)) })
+        let feels = Dictionary(uniqueKeysWithValues: region.models.map { ($0, series("apparent_temperature", $0)) })
+        let precip = Dictionary(uniqueKeysWithValues: region.models.map { ($0, series("precipitation", $0)) })
+        let snow = Dictionary(uniqueKeysWithValues: region.models.map { ($0, series("snowfall", $0)) })
 
         let nowEpoch = now.timeIntervalSince1970
         let observedTemperature = anchor?.temperature
@@ -149,6 +160,7 @@ public struct OpenMeteoProvider: ForecastProvider {
             let hourTemps = at(temps)
             guard let temp = ModelBlend.blend(hourTemps,
                                               leadHours: lead,
+                                              region: region,
                                               observedTemperature: observedTemperature,
                                               currentModelTemps: currentModelTemps) else { continue }
             let values = Array(hourTemps.values)
@@ -157,6 +169,7 @@ public struct OpenMeteoProvider: ForecastProvider {
             out.hourly[t.intValue] = .init(temperature: temp,
                                            feelsLike: ModelBlend.blend(at(feels),
                                                                        leadHours: lead,
+                                                                       region: region,
                                                                        observedTemperature: observedTemperature,
                                                                        currentModelTemps: currentModelTemps),
                                            low: values.min()!, high: values.max()!, count: values.count,
