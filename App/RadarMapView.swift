@@ -48,8 +48,30 @@ enum MapLayer: String, CaseIterable, Identifiable {
     }
 }
 
-/// Environment Canada's 1 km radar (rain and snow) over a zoomable map, looping the last hour,
-/// or the current temperature, wind or cloud map from Environment Canada's HRDPS model.
+/// Extra layers drawn over the radar loop (Environment Canada GeoMet, Canada and the US).
+enum RadarExtra: String, CaseIterable, Identifiable {
+    case lightning, warnings
+    var id: String { rawValue }
+
+    var label: String { self == .lightning ? "Lightning" : "Warnings" }
+    var systemImage: String { self == .lightning ? "bolt.fill" : "exclamationmark.triangle.fill" }
+
+    /// GeoMet layer: lightning flashes in the last 10 minutes (2.5 km grid), and the areas
+    /// under Environment Canada warnings, watches and advisories right now.
+    var wmsLayers: String { self == .lightning ? "Lightning_2.5km_Density" : "ALERTS" }
+    var opacity: CGFloat { self == .lightning ? 0.95 : 0.4 }
+}
+
+/// How far back the loop goes. GeoMet keeps three hours of radar.
+enum RadarSpan: Int, CaseIterable, Identifiable {
+    case oneHour = 1, threeHours = 3
+    var id: Int { rawValue }
+    var label: String { "\(rawValue) h" }
+}
+
+/// Environment Canada's 1 km radar (rain and snow) over a zoomable map, looping the last one or
+/// three hours plus RainViewer's short forecast, with lightning, warnings and distance rings.
+/// Or the current temperature, wind or cloud map from Environment Canada's HRDPS model.
 /// Outside Canada and the US, RainViewer's worldwide radar loop instead.
 struct RadarMapView: View {
     let center: Coordinate
@@ -61,16 +83,23 @@ struct RadarMapView: View {
     @State private var playing = true
     @State private var hold = 0
     @State private var loading = false
+    @State private var recenter = 0
+    @AppStorage("radarHours") private var hours = RadarSpan.oneHour.rawValue
+    @AppStorage("radarLightning") private var lightning = true
+    @AppStorage("radarWarnings") private var warnings = false
+    @AppStorage("radarRings") private var rings = true
     private let timer = Timer.publish(every: RadarLoop.tick, on: .main, in: .common).autoconnect()
 
     init(center: Coordinate, timeZone: TimeZone = .current) {
         self.center = center
         self.timeZone = timeZone
-        _radarFrames = State(initialValue: RadarFrames.initial(for: center))
+        _radarFrames = State(initialValue: RadarFrames.initial(for: center,
+            hours: UserDefaults.standard.object(forKey: "radarHours") as? Int ?? 1))
     }
 
     private var covered: Bool { ECCCRadarProvider.covers(center) }
     private var hasForecast: Bool { radarFrames.contains(where: \.isForecast) }
+    private var span: RadarSpan { RadarSpan(rawValue: hours) ?? .oneHour }
 
     /// The radar loop, or a single model map (GeoMet's latest model hour when no time is sent).
     private var frames: [RadarFrame] {
@@ -80,9 +109,14 @@ struct RadarMapView: View {
     /// The newest frame that is radar, not forecast: the loop's "now".
     private var latestPast: Int { radarFrames.lastIndex(where: { !$0.isForecast }) ?? max(0, radarFrames.count - 1) }
 
+    private var extras: [RadarExtra] {
+        guard covered, layer == .radar else { return [] }
+        return (warnings ? [.warnings] : []) + (lightning ? [.lightning] : [])
+    }
+
     private func load() async {
         loading = true
-        radarFrames = await RadarFrames.load(for: center)
+        radarFrames = await RadarFrames.load(for: center, hours: span.rawValue)
         index = latestPast
         loading = false
     }
@@ -90,7 +124,8 @@ struct RadarMapView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             RadarMap(center: center, frames: frames, index: shownIndex,
-                     opacity: layer == .radar ? 0.75 : 0.6)
+                     opacity: layer == .radar ? 0.75 : 0.6, extras: extras, rings: rings,
+                     recenter: recenter)
                 .ignoresSafeArea(edges: .bottom)
             if layer != .radar {
                 VStack(alignment: .leading, spacing: 6) {
@@ -117,8 +152,9 @@ struct RadarMapView: View {
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
                     .padding()
             } else {
-                VStack(spacing: 8) {
-                    RadarKey()
+                VStack(spacing: 10) {
+                    options
+                    RadarKey(lightning: extras.contains(.lightning))
                     HStack(spacing: 16) {
                         Button {
                             playing.toggle()
@@ -146,6 +182,19 @@ struct RadarMapView: View {
                 .padding()
             }
         }
+        .overlay(alignment: .topTrailing) {
+            Button {
+                recenter += 1
+            } label: {
+                Image(systemName: "location.fill")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 40, height: 40)
+                    .background(.regularMaterial, in: Circle())
+            }
+            .accessibilityLabel("Back to my location")
+            .padding(.trailing, 12)
+            .padding(.top, 8)
+        }
         .navigationTitle("Radar")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -159,6 +208,7 @@ struct RadarMapView: View {
         }
         .onAppear { index = latestPast }
         .onChange(of: layer) { _, new in if new == .radar { index = latestPast } }
+        .onChange(of: hours) { _, _ in Task { await load() } }
         .task { await load() }
         .onReceive(timer) { _ in
             guard playing, layer == .radar, !frames.isEmpty else { return }
@@ -179,8 +229,8 @@ struct RadarMapView: View {
                      : !covered
                      ? "Radar: RainViewer, from national weather services. Pinch to zoom."
                      : hasForecast
-                     ? "Radar: Environment and Climate Change Canada. Forecast frames: RainViewer. Pinch to zoom."
-                     : "Radar: Environment and Climate Change Canada. Covers Canada and the northern US. Pinch to zoom.")
+                     ? "Radar, lightning and warnings: Environment and Climate Change Canada. Forecast frames: RainViewer."
+                     : "Radar, lightning and warnings: Environment and Climate Change Canada. Covers Canada and the northern US.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .padding(.vertical, 2)
@@ -189,6 +239,49 @@ struct RadarMapView: View {
         }
         .tint(.blue)
         .toolbarColorScheme(.light, for: .navigationBar)
+    }
+
+    /// Loop length and the overlays, as small chips.
+    private var options: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                if covered {
+                    ForEach(RadarSpan.allCases) { s in
+                        RadarChip(title: s.label, systemImage: nil, on: span == s) { hours = s.rawValue }
+                    }
+                    Divider().frame(height: 18)
+                    RadarChip(title: RadarExtra.lightning.label, systemImage: RadarExtra.lightning.systemImage,
+                              on: lightning) { lightning.toggle() }
+                    RadarChip(title: RadarExtra.warnings.label, systemImage: RadarExtra.warnings.systemImage,
+                              on: warnings) { warnings.toggle() }
+                }
+                RadarChip(title: "Rings", systemImage: "scope", on: rings) { rings.toggle() }
+            }
+        }
+    }
+}
+
+/// A small on/off pill for the radar's options.
+private struct RadarChip: View {
+    let title: String
+    let systemImage: String?
+    let on: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                if let systemImage { Image(systemName: systemImage) }
+                Text(title)
+            }
+            .font(.caption.weight(.bold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .foregroundStyle(on ? Color.black : Color.primary)
+            .background(Capsule().fill(on ? Brand.gold : Color.primary.opacity(0.08)))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 }
 
@@ -214,7 +307,7 @@ struct RadarPreviewCard: View {
             if !frames.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     RadarMap(center: center, frames: frames, index: min(index, frames.count - 1),
-                             span: 160_000, interactive: false)
+                             span: 160_000, interactive: false, rings: true)
                         .frame(height: 210)
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .overlay(alignment: .topLeading) {
@@ -269,8 +362,11 @@ struct RadarPreviewCard: View {
     }
 }
 
-/// Environment Canada's rain colours, light to heavy, as a thin strip.
+/// Environment Canada's rain colours, light to heavy, as a thin strip, and the lightning colour
+/// when that layer is on.
 private struct RadarKey: View {
+    var lightning = false
+
     var body: some View {
         HStack(spacing: 6) {
             Text("Light").font(.caption2.weight(.semibold))
@@ -282,6 +378,10 @@ private struct RadarKey: View {
                 .frame(height: 6)
                 .clipShape(Capsule())
             Text("Heavy").font(.caption2.weight(.semibold))
+            if lightning {
+                Image(systemName: "bolt.fill").foregroundStyle(.yellow)
+                Text("Lightning, last 10 min").font(.caption2.weight(.semibold))
+            }
         }
         .foregroundStyle(.secondary)
         .accessibilityElement(children: .ignore)
@@ -327,24 +427,29 @@ struct RadarFrame: Equatable {
 }
 
 enum RadarFrames {
-    /// GeoMet publishes a frame every 6 minutes, a few minutes after the fact.
-    static func recent(count: Int = 10, now: Date = Date()) -> [RadarFrame] {
-        let step: TimeInterval = 6 * 60
-        let latest = ((now.timeIntervalSince1970 - 9 * 60) / step).rounded(.down) * step
+    /// GeoMet publishes a frame every 6 minutes, a few minutes after the fact, and keeps three
+    /// hours. The last hour is every frame; three hours is every second frame, so the loop
+    /// stays a few seconds long and loads quickly.
+    static func recent(hours: Int = 1, now: Date = Date()) -> [RadarFrame] {
+        let six: TimeInterval = 6 * 60
+        let latest = ((now.timeIntervalSince1970 - 9 * 60) / six).rounded(.down) * six
+        let step = hours > 1 ? 2 * six : six
+        // Stay a frame inside GeoMet's window so the oldest one is never already gone.
+        let count = hours > 1 ? Int((Double(hours) * 3600 - six) / step) + 1 : 10
         return (0..<count).reversed().map { RadarFrame(time: Date(timeIntervalSince1970: latest - Double($0) * step)) }
     }
 
     /// What to show before anything loads: Environment Canada's frames where it has radar.
-    static func initial(for c: Coordinate) -> [RadarFrame] {
-        ECCCRadarProvider.covers(c) ? recent() : []
+    static func initial(for c: Coordinate, hours: Int = 1) -> [RadarFrame] {
+        ECCCRadarProvider.covers(c) ? recent(hours: hours) : []
     }
 
     /// The loop for a place: Environment Canada's last hour plus RainViewer's nowcast where it has
     /// radar, otherwise RainViewer's worldwide radar for the last two hours.
-    static func load(for c: Coordinate) async -> [RadarFrame] {
+    static func load(for c: Coordinate, hours: Int = 1) async -> [RadarFrame] {
         let rv = await rainViewer()
         guard ECCCRadarProvider.covers(c) else { return rv.past + rv.nowcast }
-        let past = recent()
+        let past = recent(hours: hours)
         let latest = past.last?.time ?? .distantPast
         return past + rv.nowcast.filter { $0.time > latest }
     }
@@ -428,6 +533,27 @@ final class RadarTileOverlay: MKTileOverlay {
     }
 }
 
+
+/// Distances for the rings around your spot, in the unit chosen in Settings.
+enum RadarRings {
+    /// Ring radii in km, and their labels: 10, 25 and 50 km, or 5, 15 and 30 miles.
+    static func radii(miles: Bool = UnitSettings.current.distance == .mi) -> [(km: Double, label: String)] {
+        miles
+            ? [5, 15, 30].map { (Double($0) * 1.609344, "\($0) mi") }
+            : [10, 25, 50].map { (Double($0), "\($0) km") }
+    }
+}
+
+/// Where a ring's label sits: on the ring, straight north of your spot.
+private final class RingLabel: NSObject, MKAnnotation {
+    let coordinate: CLLocationCoordinate2D
+    let title: String?
+    init(_ coordinate: CLLocationCoordinate2D, _ title: String) {
+        self.coordinate = coordinate
+        self.title = title
+    }
+}
+
 private struct RadarMap: UIViewRepresentable {
     let center: Coordinate
     let frames: [RadarFrame]
@@ -438,40 +564,86 @@ private struct RadarMap: UIViewRepresentable {
     var span: CLLocationDistance = 300_000
     /// False for the main screen's preview, so a tap goes to the full map instead.
     var interactive = true
+    /// Lightning and warnings, drawn over every frame.
+    var extras: [RadarExtra] = []
+    /// Distance rings around your spot.
+    var rings = false
+    /// Bumped to fly back to your spot.
+    var recenter = 0
 
     func makeCoordinator() -> Coordinator { Coordinator() }
+
+    private var meters: CLLocationDistance { ECCCRadarProvider.covers(center) ? span : max(span, 500_000) }
+    private var coordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: center.latitude, longitude: center.longitude)
+    }
 
     func makeUIView(context: Context) -> MKMapView {
         let map = MKMapView()
         map.delegate = context.coordinator
         map.pointOfInterestFilter = .excludingAll
         map.showsUserLocation = true
-        let c = CLLocationCoordinate2D(latitude: center.latitude, longitude: center.longitude)
-        let meters = ECCCRadarProvider.covers(center) ? span : max(span, 500_000)
-        map.setRegion(MKCoordinateRegion(center: c, latitudinalMeters: meters, longitudinalMeters: meters), animated: false)
+        map.isRotateEnabled = false
+        map.isPitchEnabled = false
+        map.setRegion(MKCoordinateRegion(center: coordinate, latitudinalMeters: meters, longitudinalMeters: meters), animated: false)
         map.isUserInteractionEnabled = interactive
         if !interactive {
             map.showsCompass = false
             map.showsScale = false
+        } else {
+            map.showsScale = true
         }
         let pin = MKPointAnnotation()
-        pin.coordinate = c
+        pin.coordinate = coordinate
         map.addAnnotation(pin)
+        context.coordinator.recenter = recenter
         return map
     }
 
     func updateUIView(_ map: MKMapView, context: Context) {
         let coordinator = context.coordinator
         if coordinator.frames != frames {
-            map.removeOverlays(map.overlays)
+            map.removeOverlays(coordinator.overlays)
             coordinator.frames = frames
             coordinator.overlays = frames.map { RadarTileOverlay.make($0) }
             coordinator.renderers = [:]
             map.addOverlays(coordinator.overlays, level: .aboveRoads)
+            // Keep lightning, warnings and rings above the newly added radar frames.
+            coordinator.extrasShown = nil
+            coordinator.ringsShown = nil
+        }
+        if coordinator.extrasShown != extras {
+            map.removeOverlays(coordinator.extraOverlays)
+            coordinator.extraOverlays = extras.map { extra in
+                let o = RadarTileOverlay(time: nil, layers: extra.wmsLayers)
+                coordinator.extraOpacity[ObjectIdentifier(o)] = extra.opacity
+                return o
+            }
+            map.addOverlays(coordinator.extraOverlays, level: .aboveRoads)
+            coordinator.extrasShown = extras
+            coordinator.ringsShown = nil
+        }
+        let ringKey = rings ? RadarRings.radii().map(\.label).joined(separator: ",") : ""
+        if coordinator.ringsShown != ringKey {
+            map.removeOverlays(coordinator.ringOverlays)
+            map.removeAnnotations(coordinator.ringLabels)
+            let radii = rings ? RadarRings.radii() : []
+            coordinator.ringOverlays = radii.map { MKCircle(center: coordinate, radius: $0.km * 1000) }
+            coordinator.ringLabels = radii.map { r in
+                // One degree of latitude is about 111 km.
+                RingLabel(CLLocationCoordinate2D(latitude: center.latitude + r.km / 111.0, longitude: center.longitude), r.label)
+            }
+            map.addOverlays(coordinator.ringOverlays, level: .aboveLabels)
+            map.addAnnotations(coordinator.ringLabels)
+            coordinator.ringsShown = ringKey
         }
         if coordinator.opacity != opacity {
             coordinator.opacity = opacity
             coordinator.refresh()
+        }
+        if coordinator.recenter != recenter {
+            coordinator.recenter = recenter
+            map.setRegion(MKCoordinateRegion(center: coordinate, latitudinalMeters: meters, longitudinalMeters: meters), animated: true)
         }
         coordinator.show(index)
     }
@@ -481,6 +653,13 @@ private struct RadarMap: UIViewRepresentable {
         var overlays: [MKTileOverlay] = []
         var renderers: [ObjectIdentifier: MKTileOverlayRenderer] = [:]
         var opacity: CGFloat = 0.75
+        var extrasShown: [RadarExtra]?
+        var extraOverlays: [MKTileOverlay] = []
+        var extraOpacity: [ObjectIdentifier: CGFloat] = [:]
+        var ringsShown: String?
+        var ringOverlays: [MKCircle] = []
+        fileprivate var ringLabels: [RingLabel] = []
+        var recenter = 0
         private var current = -1
 
         func show(_ index: Int) {
@@ -496,11 +675,45 @@ private struct RadarMap: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            if let circle = overlay as? MKCircle {
+                let r = MKCircleRenderer(circle: circle)
+                r.strokeColor = UIColor.white.withAlphaComponent(0.85)
+                r.lineWidth = 1.5
+                r.lineDashPattern = [6, 5]
+                return r
+            }
             guard let tiles = overlay as? MKTileOverlay else { return MKOverlayRenderer(overlay: overlay) }
             let r = MKTileOverlayRenderer(tileOverlay: tiles)
+            if let extra = extraOpacity[ObjectIdentifier(tiles)] {
+                r.alpha = extra
+                return r
+            }
             r.alpha = overlays.firstIndex(of: tiles) == current ? opacity : 0
             renderers[ObjectIdentifier(tiles)] = r
             return r
+        }
+
+        func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            guard let ring = annotation as? RingLabel else { return nil }
+            let id = "ring"
+            let view = mapView.dequeueReusableAnnotationView(withIdentifier: id) ?? MKAnnotationView(annotation: ring, reuseIdentifier: id)
+            view.annotation = ring
+            view.subviews.forEach { $0.removeFromSuperview() }
+            let label = UILabel()
+            label.text = " \(ring.title ?? "") "
+            label.font = .systemFont(ofSize: 11, weight: .bold)
+            label.textColor = .white
+            label.backgroundColor = UIColor.black.withAlphaComponent(0.55)
+            label.layer.cornerRadius = 6
+            label.layer.masksToBounds = true
+            label.sizeToFit()
+            label.frame.size.height += 4
+            view.frame = label.bounds
+            view.addSubview(label)
+            view.canShowCallout = false
+            view.isEnabled = false
+            view.displayPriority = .required
+            return view
         }
     }
 }

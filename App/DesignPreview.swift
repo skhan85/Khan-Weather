@@ -323,6 +323,11 @@ struct RadarScreenPreview: View {
             }
         }
         .task {
+            // Show every radar option on the map screenshot: three hours, lightning, warnings, rings.
+            UserDefaults.standard.set(3, forKey: "radarHours")
+            UserDefaults.standard.set(true, forKey: "radarLightning")
+            UserDefaults.standard.set(true, forKey: "radarWarnings")
+            UserDefaults.standard.set(true, forKey: "radarRings")
             try? await Task.sleep(nanoseconds: 30_000_000_000)
             showMap = true
         }

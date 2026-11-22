@@ -91,6 +91,11 @@ fun ForecastList(
             HourlyCurve(forecast.hoursStartingNow(count = count), zone, firstIsNow = true) { nav(Screen.Hour(it, zone)) }
         }
 
+        // Live radar loop. Environment Canada in Canada and the US, RainViewer elsewhere.
+        Section("Radar", Icons.Filled.Radar, PaddingValues(horizontal = 12.dp, vertical = 12.dp)) {
+            RadarCard(forecast.location) { nav(Screen.Radar) }
+        }
+
         Section("${forecast.daily.size}-day forecast", Icons.Filled.CalendarMonth, PaddingValues(horizontal = 16.dp, vertical = 2.dp)) {
             days.forEachIndexed { i, day ->
                 LinkRow({ nav(Screen.Day(day, i)) }) {
@@ -110,16 +115,6 @@ fun ForecastList(
 
         if (Prefs.showAirQuality && airQuality != null && (airQuality.usAQI != null || airQuality.aqhi != null)) {
             Section("Air quality", Icons.Filled.Air) { AirQualityCard(airQuality) }
-        }
-
-        if (radarCovers(forecast.location)) {
-            Section(null, null, PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
-                LinkRow({ nav(Screen.Radar) }) {
-                    Icon(Icons.Filled.Radar, null, tint = Color.White, modifier = Modifier.size(22.dp))
-                    Spacer(Modifier.width(12.dp))
-                    Text("Radar, temperature, wind and cloud maps", style = style(16.sp, FontWeight.Medium))
-                }
-            }
         }
 
         Section(null, null, PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {

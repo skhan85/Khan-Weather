@@ -38,5 +38,9 @@ done
 $A shell am start -S -n $PKG/.MainActivity --ez widgetPreview true
 sleep 10
 shot android-widgets
+# The full radar map: loop, lightning and rings.
+$A shell am start -S -n $PKG/.MainActivity --ez radarScreen true
+sleep 30
+shot android-radar
 timeout 30 adb logcat -d 2>/dev/null | grep -iE "khanweather|AndroidRuntime|FATAL" | tail -80 > shots/logcat.txt || true
 ls -l shots
