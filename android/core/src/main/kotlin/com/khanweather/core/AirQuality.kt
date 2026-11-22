@@ -224,7 +224,7 @@ class ModelComparisonProvider(private val loader: HttpLoader = defaultLoader) {
     private val core = listOf(WeatherModel.bestMatch, WeatherModel.canada, WeatherModel.us, WeatherModel.europe, WeatherModel.germany)
 
     suspend fun days(coordinate: Coordinate, forecastDays: Int = 10): List<ModelDay> = try {
-        days(coordinate, WeatherModel.requested, forecastDays)
+        days(coordinate, WeatherModel.requested(coordinate), forecastDays)
     } catch (e: Exception) {
         if (e is kotlinx.coroutines.CancellationException) throw e
         days(coordinate, core, forecastDays)
@@ -236,11 +236,11 @@ class ModelComparisonProvider(private val loader: HttpLoader = defaultLoader) {
             "daily" to "weather_code,temperature_2m_max,temperature_2m_min,rain_sum,showers_sum,snowfall_sum",
             "models" to models.joinToString(",") { it.raw }, "timezone" to "auto", "timeformat" to "unixtime",
             "forecast_days" to forecastDays.toString())
-        return parse(loader.fetch(url), models)
+        return parse(loader.fetch(url), models, BlendRegion.at(coordinate))
     }
 
     companion object {
-        fun parse(data: ByteArray, models: List<WeatherModel>): List<ModelDay> {
+        fun parse(data: ByteArray, models: List<WeatherModel> = WeatherModel.requested, region: BlendRegion = BlendRegion.home): List<ModelDay> {
             val daily = parseJson(data)["daily"].obj ?: throw ForecastException("missing daily")
             val times = daily["time"].doubles()
             fun series(field: String, m: WeatherModel) = (daily["${field}_${m.raw}"] ?: daily[field]).doubles()
@@ -255,7 +255,7 @@ class ModelComparisonProvider(private val loader: HttpLoader = defaultLoader) {
                         OpenMeteoProvider.sum(rain.at(i), showers.at(i)), snow.at(i)))
                 }
             }
-            return out + blendRows(out)
+            return out + blendRows(out, region)
         }
 
         /** The Khan Weather row shows the app's own displayed high and low for each day. */
@@ -268,15 +268,15 @@ class ModelComparisonProvider(private val loader: HttpLoader = defaultLoader) {
             }
         }
 
-        fun blendRows(days: List<ModelDay>): List<ModelDay> {
+        fun blendRows(days: List<ModelDay>, region: BlendRegion = BlendRegion.home): List<ModelDay> {
             val dates = days.map { it.date }.toSet().sorted()
             return dates.mapIndexedNotNull { index, date ->
-                val sameDay = days.filter { it.date == date && it.model in ModelBlend.members }
+                val sameDay = days.filter { it.date == date && it.model in region.models }
                 val lead = index * 24.0 + 12
                 fun blend(value: (ModelDay) -> Double?): Double? {
                     val m = linkedMapOf<WeatherModel, Double>()
                     for (d in sameDay) value(d)?.let { if (!m.containsKey(d.model)) m[d.model] = it }
-                    return ModelBlend.blend(m, lead)
+                    return ModelBlend.blend(m, lead, region)
                 }
                 val high = blend { it.high } ?: return@mapIndexedNotNull null
                 val low = blend { it.low } ?: return@mapIndexedNotNull null

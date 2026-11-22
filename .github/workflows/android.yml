@@ -3,9 +3,9 @@ name: Android APK
 on:
   push:
     branches: [main]
-    paths: ["android/**", ".github/workflows/android.yml"]
+    paths: ["android/**", ".github/workflows/android.yml", "Packages/WeatherCore/blend-regions.json"]
   pull_request:
-    paths: ["android/**", ".github/workflows/android.yml"]
+    paths: ["android/**", ".github/workflows/android.yml", "Packages/WeatherCore/blend-regions.json"]
   workflow_dispatch:
 
 concurrency:

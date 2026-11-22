@@ -17,38 +17,34 @@ enum class WeatherModel(val raw: String, val displayName: String) {
     europe("ecmwf_ifs025", "European (ECMWF)"),
     uk("ukmo_seamless", "UK Met Office"),
     germany("icon_seamless", "German (ICON)"),
-    europeAI("ecmwf_aifs025_single", "European AI (AIFS)");
+    europeAI("ecmwf_aifs025_single", "European AI (AIFS)"),
+    // Regional and newer models, asked for only where they cover the spot (BlendRegion.models).
+    usBlend("ncep_nbm_conus", "NOAA National Blend (NBM)"),
+    europeHighRes("ecmwf_ifs", "European 9 km (ECMWF IFS)"),
+    france("meteofrance_seamless", "Météo-France (ARPEGE/AROME)"),
+    netherlands("knmi_seamless", "Dutch KNMI (HARMONIE)"),
+    denmark("dmi_seamless", "Danish DMI (HARMONIE)");
 
     companion object {
         fun usedForTemperatures(c: Coordinate): WeatherModel =
             if (OpenMeteoProvider.usesBlend(c)) blend else bestMatch
 
-        val requested: List<WeatherModel> = entries.filter { it != blend }
+        /** The models asked of Open-Meteo for the comparison everywhere. */
+        val requested: List<WeatherModel> = listOf(bestMatch, canada, canadaHighRes, us, usHighRes, europe, uk, germany, europeAI)
+
+        /** The comparison's models at a spot: the usual ones plus the regional models the blend uses there. */
+        fun requested(at: Coordinate): List<WeatherModel> = requested + BlendRegion.at(at).models.filter { it !in requested }
     }
 }
 
 /**
  * Khan Weather's own temperature forecast: a weighted average of several models. The weights
- * come from 12 months of scoring at Toronto Pearson and Hamilton (see the iOS ModelBlend.swift
- * for the full story); keep the two files identical.
+ * depend on where you are (BlendRegion): each part of the world has its own set, fitted on hourly
+ * readings at its airports (tools/score_regions.py), with a worldwide set for everywhere else.
+ * Each row is one forecast day; hours in between are interpolated. A model with no value for an
+ * hour is skipped and the others share its weight. Keep in step with the iOS ModelBlend.swift.
  */
 object ModelBlend {
-    val members = listOf(
-        WeatherModel.canadaHighRes, WeatherModel.usHighRes, WeatherModel.canada, WeatherModel.europe,
-        WeatherModel.europeAI, WeatherModel.germany, WeatherModel.uk, WeatherModel.us,
-    )
-
-    private val byDay: List<Map<WeatherModel, Double>> =
-        listOf(
-            mapOf(WeatherModel.germany to 0.30, WeatherModel.europe to 0.20, WeatherModel.usHighRes to 0.15, WeatherModel.canada to 0.15, WeatherModel.uk to 0.10, WeatherModel.europeAI to 0.10),
-            mapOf(WeatherModel.europeAI to 0.28, WeatherModel.germany to 0.22, WeatherModel.uk to 0.185, WeatherModel.canadaHighRes to 0.12, WeatherModel.canada to 0.10, WeatherModel.europe to 0.04,
-                WeatherModel.usHighRes to 0.025, WeatherModel.us to 0.025),
-            mapOf(WeatherModel.europeAI to 0.35, WeatherModel.us to 0.23, WeatherModel.germany to 0.18, WeatherModel.uk to 0.125, WeatherModel.europe to 0.075, WeatherModel.canada to 0.04),
-            mapOf(WeatherModel.europeAI to 0.43, WeatherModel.us to 0.235, WeatherModel.uk to 0.11, WeatherModel.germany to 0.095, WeatherModel.europe to 0.085, WeatherModel.canada to 0.045),
-            mapOf(WeatherModel.europeAI to 0.47, WeatherModel.us to 0.23, WeatherModel.uk to 0.125, WeatherModel.europe to 0.075, WeatherModel.germany to 0.07, WeatherModel.canada to 0.03),
-            mapOf(WeatherModel.europeAI to 0.49, WeatherModel.europe to 0.165, WeatherModel.us to 0.15, WeatherModel.uk to 0.08, WeatherModel.germany to 0.06, WeatherModel.canada to 0.055),
-        )
-
     /** How many hours ahead a live station reading re-weights the models. */
     const val liveWeightHours = 6.0
     const val errorSoftening = 2.0
@@ -56,7 +52,10 @@ object ModelBlend {
     /** A local station reading that re-weights the first hours of the blend. */
     data class Anchor(val temperature: Double, val time: Epoch)
 
-    fun weight(model: WeatherModel, leadHours: Double): Double {
+    /** The weight of `model` at `leadHours` from now, in `region`. */
+    fun weight(model: WeatherModel, leadHours: Double, region: BlendRegion = BlendRegion.home): Double {
+        val byDay = region.byDay
+        if (byDay.isEmpty()) return 1.0
         val x = min(max((leadHours - 12) / 24, 0.0), (byDay.size - 1).toDouble())
         val i = x.toInt()
         val j = min(i + 1, byDay.size - 1)
@@ -70,9 +69,10 @@ object ModelBlend {
      * lean toward the models that match the station.
      */
     fun blend(values: Map<WeatherModel, Double>, leadHours: Double,
+              region: BlendRegion = BlendRegion.home,
               observedTemperature: Double? = null,
               currentModelTemps: Map<WeatherModel, Double>? = null): Double? {
-        val present = values.filterKeys { it in members }
+        val present = values.filterKeys { it in region.models }
         if (present.isEmpty()) return null
 
         val liveShare = if (observedTemperature != null && currentModelTemps != null && currentModelTemps.isNotEmpty() &&
@@ -84,7 +84,7 @@ object ModelBlend {
         if (liveShare > 0 && observedTemperature != null && currentModelTemps != null) {
             var invTotal = 0.0
             for (model in present.keys) {
-                val priorFloor = max(weight(model, leadHours), 0.04)
+                val priorFloor = max(weight(model, leadHours, region), 0.04)
                 val nowTemp = currentModelTemps[model] ?: continue
                 val err = abs(nowTemp - observedTemperature)
                 val invSq = priorFloor / (err * err + errorSoftening)
@@ -97,7 +97,7 @@ object ModelBlend {
         var sum = 0.0
         var total = 0.0
         for ((model, value) in present) {
-            val prior = weight(model, leadHours)
+            val prior = weight(model, leadHours, region)
             val dyn = errorWeights[model]
             val w = if (liveShare > 0 && dyn != null) prior * (1 - liveShare) + dyn * liveShare else prior
             sum += value * w
