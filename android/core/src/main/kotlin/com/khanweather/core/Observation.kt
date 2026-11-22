@@ -110,7 +110,7 @@ fun Forecast.applying(observation: Observation?): Forecast {
         val name = o.skyStationName ?: o.stationName
         val km = if (o.skyStationName == null) o.distanceKm else o.skyDistanceKm
         copy.skySource = WeatherFormat.plainStationName(name) +
-            (WeatherFormat.distance(km?.let { if (it >= 1) it.rnd() else it })?.let { ", $it away" } ?: "")
+            (km?.let { ", ${WeatherFormat.roughDistance(it)} away" } ?: "")
     }
     // A home sensor in the sun can read 5-13° high; by day drop stations well above the forecast.
     val temps = o.stationTemperatures

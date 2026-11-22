@@ -93,7 +93,7 @@ struct HourlyCurve: View {
                     .foregroundStyle(.white.opacity(0.8))
             }
             if let rain = hour.rain {
-                Text(String(format: "%.1f mm", rain))
+                Text(WeatherFormat.rainAmount(rain))
                     .font(.caption2)
                     .foregroundStyle(.white.opacity(0.8))
             }

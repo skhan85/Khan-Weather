@@ -61,8 +61,8 @@ public struct StormHeadsUp: Equatable, Sendable {
 
     /// "Heavy rain about 25 km west of you, moving east at 40 km/h. Likely here around 4:10 PM."
     public func body(at now: Date = Date(), timeZone: TimeZone,
-                     distance: (Double) -> String = { "\(Int(($0 / 5).rounded() * 5)) km" },
-                     speed: (Double) -> String = { "\(Int(($0 / 5).rounded() * 5)) km/h" }) -> String {
+                     distance: (Double) -> String = StormWatch.roundedDistance,
+                     speed: (Double) -> String = StormWatch.roundedSpeed) -> String {
         let f = DateFormatter()
         f.timeZone = timeZone
         f.timeStyle = .short
@@ -81,7 +81,7 @@ public struct StormHeadsUp: Equatable, Sendable {
     }
 
     /// One line for the radar card: "Heavy rain 25 km west, here around 4:10 PM".
-    public func shortText(timeZone: TimeZone, distance: (Double) -> String = { "\(Int(($0 / 5).rounded() * 5)) km" }) -> String {
+    public func shortText(timeZone: TimeZone, distance: (Double) -> String = StormWatch.roundedDistance) -> String {
         let f = DateFormatter()
         f.timeZone = timeZone
         f.timeStyle = .short
@@ -152,6 +152,18 @@ public struct StormSample: Equatable, Sendable {
 }
 
 public enum StormWatch {
+    /// "25 km" or "15 miles", to the nearest 5 in the person's units.
+    public static func roundedDistance(_ km: Double) -> String {
+        let unit = UnitSettings.current.distance
+        return "\(Int((unit.convert(km) / 5).rounded() * 5)) \(unit == .km ? "km" : "miles")"
+    }
+
+    /// "40 km/h" or "25 mph", to the nearest 5 in the person's units.
+    public static func roundedSpeed(_ kmh: Double) -> String {
+        let unit = UnitSettings.current.wind
+        return "\(Int(max(5, (unit.convert(kmh) / 5).rounded() * 5))) \(unit.label)"
+    }
+
     /// Rain this heavy (mm/h) is a downpour; about 40 dBZ on radar.
     public static let heavyRain = 10.0
     /// Snow this heavy (cm/h) is a squall: whiteouts on the road.

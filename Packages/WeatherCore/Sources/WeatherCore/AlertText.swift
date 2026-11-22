@@ -20,7 +20,11 @@ public enum AlertText {
     ]
 
     /// The useful paragraphs, in order. Falls back to the raw text if everything looked like boilerplate.
-    public static func paragraphs(_ raw: String) -> [String] {
+    public static func paragraphs(_ raw: String, units: UnitSettings = .current) -> [String] {
+        plainParagraphs(raw).map { withUnits($0, units: units) }
+    }
+
+    static func plainParagraphs(_ raw: String) -> [String] {
         let paras = raw
             .replacingOccurrences(of: "\r\n", with: "\n")
             .components(separatedBy: "\n\n")
@@ -35,8 +39,64 @@ public enum AlertText {
     }
 
     /// All useful text as one flowing block, for a collapsed preview or a notification.
-    public static func summary(_ raw: String) -> String {
-        paragraphs(raw).joined(separator: " ")
+    public static func summary(_ raw: String, units: UnitSettings = .current) -> String {
+        paragraphs(raw, units: units).joined(separator: " ")
+    }
+
+    // MARK: Units in the official text
+
+    /// Official alerts give amounts in their own country's units ("50 to 75 mm", "gusts of 90
+    /// km/h", "6 inches", "60 mph"). When those aren't the person's units, add theirs after the
+    /// original, which stays word for word: "50 to 75 mm (2 to 3 in)".
+    public static func withUnits(_ text: String, units: UnitSettings) -> String {
+        let number = #"([-−]?\d+(?:\.\d+)?)"#
+        let pattern = number + #"(?:\s*(?:to|-|–|and)\s*"# + number + #")?\s*(mm|cm|km/h|kph|km|inches|inch|in\.|mph|miles|mile|°C|°F)(?![\w/])(?!\s*\()"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return text }
+        let ns = text as NSString
+        var out = ""
+        var last = 0
+        for m in regex.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            func value(_ i: Int) -> Double? {
+                m.range(at: i).location == NSNotFound ? nil
+                    : Double(ns.substring(with: m.range(at: i)).replacingOccurrences(of: "−", with: "-"))
+            }
+            let a = value(1)
+            let b = value(2)
+            let unit = ns.substring(with: m.range(at: 3)).lowercased()
+            out += ns.substring(with: NSRange(location: last, length: m.range.upperBound - last))
+            last = m.range.upperBound
+            if let a, let extra = converted(a, b, unit: unit, units: units) { out += " (\(extra))" }
+        }
+        out += ns.substring(from: last)
+        return out
+    }
+
+    /// "2 to 3 in" for (50, 75, "mm") in US units; nil when the text already uses the person's units.
+    static func converted(_ a: Double, _ b: Double?, unit: String, units: UnitSettings) -> String? {
+        func one(_ x: Double, decimals: Bool) -> String {
+            if decimals && x < 1 { return String(format: "%.1f", max(0.1, (x * 10).rounded() / 10)) }
+            return "\(Int(x.rounded()))"
+        }
+        func show(_ f: (Double) -> Double, _ label: String, decimals: Bool) -> String {
+            let first = one(f(a), decimals: decimals)
+            let text = b.map { "\(first) to \(one(f($0), decimals: decimals))" } ?? first
+            return text + (label.hasPrefix("°") ? "" : " ") + label
+        }
+        let inches = units.precipitation == .inches
+        let miles = units.distance == .mi
+        let f = units.temperature == .fahrenheit
+        switch unit {
+        case "mm": return inches ? show({ $0 / 25.4 }, "in", decimals: true) : nil
+        case "cm": return inches ? show({ $0 / 2.54 }, "in", decimals: true) : nil
+        case "inches", "inch", "in.": return inches ? nil : show({ $0 * 25.4 }, "mm", decimals: false)
+        case "km/h", "kph": return units.wind == .kmh ? nil : show({ units.wind.convert($0) }, units.wind.label, decimals: false)
+        case "mph": return units.wind == .mph ? nil : show({ units.wind.convert($0 * 1.609344) }, units.wind.label, decimals: false)
+        case "km": return miles ? show({ $0 / 1.609344 }, "miles", decimals: true) : nil
+        case "miles", "mile": return miles ? nil : show({ $0 * 1.609344 }, "km", decimals: true)
+        case "°c": return f ? show({ $0 * 9 / 5 + 32 }, "°F", decimals: false) : nil
+        case "°f": return f ? nil : show({ ($0 - 32) * 5 / 9 }, "°C", decimals: false)
+        default: return nil
+        }
     }
 
     static func normalise(_ s: String) -> String {
@@ -74,7 +134,7 @@ public enum AlertText {
 
 extension WeatherAlert {
     /// The alert text without the stock lines, as paragraphs.
-    public var readableParagraphs: [String] { AlertText.paragraphs(text) }
+    public var readableParagraphs: [String] { AlertText.paragraphs(text) }  // in the person's units
 
     /// The alert text without the stock lines, as one block.
     public var summary: String { AlertText.summary(text) }

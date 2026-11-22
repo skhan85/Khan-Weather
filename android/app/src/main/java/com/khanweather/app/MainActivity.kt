@@ -57,6 +57,10 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         val widgetPreview = intent?.getBooleanExtra("widgetPreview", false) == true
+        // CI screenshots: `--es units us` answers the first-launch question.
+        intent?.getStringExtra("units")?.let { name ->
+            UnitPreset.entries.firstOrNull { it.name == name }?.let { Prefs.saveUnits(it.settings); Prefs.unitsChosen = true }
+        }
         setContent {
             if (widgetPreview) Box(Modifier.fillMaxSize()) {
                 SkyBackground(WeatherCondition.overcast, true)
@@ -72,6 +76,7 @@ fun App(model: WeatherViewModel) {
     var stack by remember { mutableStateOf(listOf<Screen>(Screen.Main)) }
     var selectedId by remember { mutableStateOf(Prefs.selectedPlaceId?.takeIf { id -> Prefs.places.any { it.id == id } }) }
     var settingsVersion by remember { mutableIntStateOf(0) }
+    var unitsChosen by remember { mutableStateOf(Prefs.unitsChosen) }
     val screen = stack.last()
     fun nav(s: Screen) { stack = stack + s }
     fun back() { if (stack.size > 1) stack = stack.dropLast(1) }
@@ -108,6 +113,12 @@ fun App(model: WeatherViewModel) {
 
     Box(Modifier.fillMaxSize()) {
         SkyBackground(sky.first, sky.second)
+        if (!unitsChosen) {
+            Box(Modifier.fillMaxSize().systemBarsPadding()) {
+                UnitsWelcomeScreen { unitsChosen = true; settingsVersion++; com.khanweather.app.widget.Widgets.updateAllAsync(context) }
+            }
+            return@Box
+        }
         Column(Modifier.fillMaxSize().systemBarsPadding()) {
             TopBar(screen, forecast, onBack = ::back, onSettings = { nav(Screen.Settings) }, onPlaces = { nav(Screen.Places) },
                 isSavedPlace = selectedId != null)

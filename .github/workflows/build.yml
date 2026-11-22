@@ -156,8 +156,14 @@ jobs:
             xcrun simctl install "$udid" "$APP"
             xcrun simctl privacy "$udid" grant location "$BUNDLE" || true
             xcrun simctl location "$udid" set 43.5183,-79.8774 || true
+            # First launch asks which units to use.
             xcrun simctl launch "$udid" "$BUNDLE"
-            sleep 60
+            sleep 20
+            xcrun simctl io "$udid" screenshot "shots/${label}-units-question.png"
+            xcrun simctl terminate "$udid" "$BUNDLE" || true
+            # Launch arguments answer it for the rest (UserDefaults argument domain).
+            xcrun simctl launch "$udid" "$BUNDLE" -unitsChosen YES
+            sleep 45
             xcrun simctl io "$udid" screenshot "shots/${label}-main.png"
             xcrun simctl ui "$udid" appearance dark
             sleep 3
@@ -165,7 +171,13 @@ jobs:
             xcrun simctl ui "$udid" appearance light
             xcrun simctl terminate "$udid" "$BUNDLE" || true
             sleep 3
-            xcrun simctl launch "$udid" "$BUNDLE" -designPreview
+            xcrun simctl launch "$udid" "$BUNDLE" -unitsChosen YES -unitTemperature fahrenheit -unitWind mph \
+              -unitPrecipitation inches -unitPressure inHg -unitDistance mi
+            sleep 30
+            xcrun simctl io "$udid" screenshot "shots/${label}-main-us-units.png"
+            xcrun simctl terminate "$udid" "$BUNDLE" || true
+            sleep 3
+            xcrun simctl launch "$udid" "$BUNDLE" -unitsChosen YES -designPreview
             sleep 25
             xcrun simctl io "$udid" screenshot "shots/${label}-design-preview.png"
             xcrun simctl terminate "$udid" "$BUNDLE" || true
