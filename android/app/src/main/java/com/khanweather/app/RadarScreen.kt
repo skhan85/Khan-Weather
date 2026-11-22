@@ -176,13 +176,19 @@ function setExtras(){Object.keys(extras).forEach(function(k){var want=covered&&m
  if(!want&&extraLayers[k]){map.removeLayer(extraLayers[k]);delete extraLayers[k];}});
  document.getElementById('bolt').style.display=extraLayers.lightning?'inline':'none';}
 // Rings around your spot: 10, 25 and 50 km, or 5, 15 and 30 miles.
-function setRings(){if(ringLayer){map.removeLayer(ringLayer);ringLayer=null;}if(!opt.rings)return;
+var ringLabels=[];
+// Hide ring labels that would sit on top of each other (or of your spot) at this zoom.
+function spaceLabels(){var mid=map.latLngToContainerPoint(here).y,last=0;ringLabels.forEach(function(m){
+ var up=mid-map.latLngToContainerPoint(m.getLatLng()).y,show=up>=22&&up-last>=22,el=m.getElement();
+ if(el)el.style.display=show?'':'none';if(show)last=up;});}
+map.on('zoomend',spaceLabels);
+function setRings(){if(ringLayer){map.removeLayer(ringLayer);ringLayer=null;}ringLabels=[];if(!opt.rings)return;
  var radii=miles?[[5*1609.344,'5 mi'],[15*1609.344,'15 mi'],[30*1609.344,'30 mi']]:[[10e3,'10 km'],[25e3,'25 km'],[50e3,'50 km']];
  ringLayer=L.layerGroup(radii.map(function(r){
   var circle=L.circle(here,{radius:r[0],color:'#fff',weight:1.5,opacity:.85,dashArray:'6 5',fill:false,pane:'rings',interactive:false});
   var top=[here[0]+r[0]/111000,here[1]];
   var label=L.marker(top,{pane:'rings',interactive:false,icon:L.divIcon({className:'',html:'<span class="ring">'+r[1]+'</span>',iconSize:null,iconAnchor:[18,9]})});
-  return L.layerGroup([circle,label]);})).addTo(map);}
+  ringLabels.push(label);return L.layerGroup([circle,label]);})).addTo(map);spaceLabels();}
 function chips(){var el=document.getElementById('chips'),h='';
  if(covered){[1,3].forEach(function(n){h+='<button class="chip'+(opt.hours==n?' on':'')+'" data-h="'+n+'">'+n+' h</button>'});
   h+='<button class="chip'+(opt.lightning?' on':'')+'" data-o="lightning">⚡ Lightning</button>';

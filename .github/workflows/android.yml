@@ -25,6 +25,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check the radar map layers from the runner
+        continue-on-error: true
+        run: |
+          curl -sS -m 120 "https://geo.weather.gc.ca/geomet?service=WMS&version=1.3.0&request=GetCapabilities" -o caps.xml || true
+          grep -ioE "<Name>[^<]*(alert|warn|avert|lightning)[^<]*</Name>" caps.xml | sort -u | head -20
+          rm -f caps.xml
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

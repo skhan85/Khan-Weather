@@ -249,7 +249,6 @@ struct RadarMapView: View {
                     ForEach(RadarSpan.allCases) { s in
                         RadarChip(title: s.label, systemImage: nil, on: span == s) { hours = s.rawValue }
                     }
-                    Divider().frame(height: 18)
                     RadarChip(title: RadarExtra.lightning.label, systemImage: RadarExtra.lightning.systemImage,
                               on: lightning) { lightning.toggle() }
                     RadarChip(title: RadarExtra.warnings.label, systemImage: RadarExtra.warnings.systemImage,
@@ -275,7 +274,7 @@ private struct RadarChip: View {
                 Text(title)
             }
             .font(.caption.weight(.bold))
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 9)
             .padding(.vertical, 6)
             .foregroundStyle(on ? Color.black : Color.primary)
             .background(Capsule().fill(on ? Brand.gold : Color.primary.opacity(0.08)))
@@ -635,6 +634,7 @@ private struct RadarMap: UIViewRepresentable {
             }
             map.addOverlays(coordinator.ringOverlays, level: .aboveLabels)
             map.addAnnotations(coordinator.ringLabels)
+            coordinator.ringCenter = coordinate
             coordinator.ringsShown = ringKey
         }
         if coordinator.opacity != opacity {
@@ -659,7 +659,29 @@ private struct RadarMap: UIViewRepresentable {
         var ringsShown: String?
         var ringOverlays: [MKCircle] = []
         fileprivate var ringLabels: [RingLabel] = []
+        var ringCenter = CLLocationCoordinate2D()
         var recenter = 0
+
+        /// Hides ring labels that would sit on top of each other (or of your spot) at this zoom.
+        func spaceRingLabels(_ map: MKMapView) {
+            let middle = map.convert(ringCenter, toPointTo: map)
+            var lastShown: CGFloat = 0
+            for label in ringLabels {
+                guard let view = map.view(for: label) else { continue }
+                let up = middle.y - map.convert(label.coordinate, toPointTo: map).y
+                let show = up >= 22 && up - lastShown >= 22
+                view.isHidden = !show
+                if show { lastShown = up }
+            }
+        }
+
+        func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+            spaceRingLabels(mapView)
+        }
+
+        func mapView(_ mapView: MKMapView, didAdd views: [MKAnnotationView]) {
+            spaceRingLabels(mapView)
+        }
         private var current = -1
 
         func show(_ index: Int) {
