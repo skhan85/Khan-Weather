@@ -61,6 +61,13 @@ private fun RadarWebView(center: Coordinate, card: Boolean, modifier: Modifier) 
             settings.domStorageEnabled = true
             settings.userAgentString = settings.userAgentString + " KhanWeather-Android"
             webViewClient = WebViewClient()
+            // The map's JavaScript messages and errors go to logcat (tag KhanWeatherRadar).
+            webChromeClient = object : android.webkit.WebChromeClient() {
+                override fun onConsoleMessage(m: android.webkit.ConsoleMessage): Boolean {
+                    android.util.Log.i("KhanWeatherRadar", "${m.messageLevel()} ${m.message()} (line ${m.lineNumber()})")
+                    return true
+                }
+            }
             setBackgroundColor(android.graphics.Color.parseColor("#1b2636"))
             val html = radarHtml(center, twelve, miles, card, radarCovers(center))
             // Load once the view has its real size: a map started at 0×0 draws no tiles.
@@ -80,7 +87,7 @@ private fun radarHtml(c: Coordinate, twelve: Boolean, miles: Boolean, card: Bool
 <!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<script>window.L_DISABLE_3D=true;/* plain 2D positioning: some WebViews draw nothing for 3D-transformed map panes */</script>
+<script>window.onerror=function(m,u,l){console.log('radar error '+m+' line '+l)};window.L_DISABLE_3D=true;/* plain 2D positioning: some WebViews draw nothing for 3D-transformed map panes */</script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
  html,body,#map{margin:0;height:100%;background:#1b2636;font-family:sans-serif}
@@ -210,7 +217,10 @@ document.getElementById('me').onclick=function(){map.setView(here,zoom)};
 // Redraw at the right size if the view changes size after loading.
 window.addEventListener('resize',function(){map.invalidateSize()});
 if(window.ResizeObserver)new ResizeObserver(function(){map.invalidateSize()}).observe(document.getElementById('map'));
-setTimeout(function(){map.invalidateSize();map.setView(here,zoom)},600);
+setTimeout(function(){map.invalidateSize();map.setView(here,zoom);
+ var r=document.getElementById('map').getBoundingClientRect();
+ console.log('radar map '+r.width+'x'+r.height+' leaflet css '+(getComputedStyle(map.getPane('tilePane')).position));},600);
+var tileErrors=0;map.eachLayer(function(l){if(l.on)l.on('tileerror',function(e){if(tileErrors++<3)console.log('tile error '+(e.tile&&e.tile.src))})});
 document.getElementById('play').onclick=function(){playing=!playing;this.textContent=playing?'❚❚':'▶';};
 document.getElementById('slider').oninput=function(){playing=false;document.getElementById('play').textContent='▶';show(+this.value)};
 document.querySelectorAll('#top button').forEach(function(b){b.onclick=function(){
