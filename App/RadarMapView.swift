@@ -58,7 +58,7 @@ enum RadarExtra: String, CaseIterable, Identifiable {
 
     /// GeoMet layer: lightning flashes in the last 10 minutes (2.5 km grid), and the areas
     /// under Environment Canada warnings, watches and advisories right now.
-    var wmsLayers: String { self == .lightning ? "Lightning_2.5km_Density" : "ALERTS" }
+    var wmsLayers: String { self == .lightning ? "Lightning_2.5km_Density" : "Current-Alerts" }
     var opacity: CGFloat { self == .lightning ? 0.95 : 0.4 }
 }
 

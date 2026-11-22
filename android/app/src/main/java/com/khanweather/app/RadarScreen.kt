@@ -129,7 +129,7 @@ map.createPane('rings');map.getPane('rings').style.zIndex=460;map.getPane('rings
 L.circleMarker(here,{radius:7,color:'#fff',weight:2,fillColor:'#ffc752',fillOpacity:1,pane:'rings'}).addTo(map);
 var WMS='https://geo.weather.gc.ca/geomet';
 var models={temp:['HRDPS.CONTINENTAL_TT','Temperature at 2 m'],wind:['HRDPS.CONTINENTAL_UU','Wind speed at 10 m'],clouds:['HRDPS.CONTINENTAL_NT','Cloud cover']};
-var extras={lightning:['Lightning_2.5km_Density',0.95],warnings:['ALERTS',0.4]};
+var extras={lightning:['Lightning_2.5km_Density',0.95],warnings:['Current-Alerts',0.4]};
 var frames=[],layers=[],idx=0,hold=0,playing=true,mode='radar',modelLayer=null,extraLayers={},ringLayer=null;
 if(card){['top','bottom','me'].forEach(function(id){document.getElementById(id).style.display='none'})}
 else document.getElementById('badge').style.display='none';
