@@ -131,7 +131,7 @@ public struct HyperlocalObservationProvider: ObservationProvider {
     static func merge(official base: Observation?, netatmo local: Observation) -> Observation {
         var local = local
         let limit = base?.dataProvider == "ON-MTO" ? 3.0 : officialLimit
-        if let base, base.isLocal, abs(base.temperature - local.temperature) > limit,
+        if let base, (base.distanceKm ?? 0) <= 10, abs(base.temperature - local.temperature) > limit,
            base.observedAt.timeIntervalSince(local.observedAt) > -3600 {
             // Usually one or two of the nearest stations are in the sun (15 Nov, 4 pm: 7.1, 9.4,
             // 9.9, 9.5 and 16.4° while Campbellville read 6°). Keep the ones that agree with the
