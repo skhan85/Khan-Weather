@@ -73,13 +73,14 @@ public enum AlertText {
 
     /// "2 to 3 in" for (50, 75, "mm") in US units; nil when the text already uses the person's units.
     static func converted(_ a: Double, _ b: Double?, unit: String, units: UnitSettings) -> String? {
+        func one(_ x: Double, decimals: Bool) -> String {
+            if decimals && x < 1 { return String(format: "%.1f", max(0.1, (x * 10).rounded() / 10)) }
+            return "\(Int(x.rounded()))"
+        }
         func show(_ f: (Double) -> Double, _ label: String, decimals: Bool) -> String {
-            func one(_ v: Double) -> String {
-                let x = f(v)
-                if decimals && x < 1 { return String(format: "%.1f", max(0.1, (x * 10).rounded() / 10)) }
-                return "\(Int(x.rounded()))"
-            }
-            return (b.map { "\(one(a)) to \(one($0))" } ?? one(a)) + (label.hasPrefix("°") ? "" : " ") + label
+            let first = one(f(a), decimals: decimals)
+            let text = b.map { "\(first) to \(one(f($0), decimals: decimals))" } ?? first
+            return text + (label.hasPrefix("°") ? "" : " ") + label
         }
         let inches = units.precipitation == .inches
         let miles = units.distance == .mi

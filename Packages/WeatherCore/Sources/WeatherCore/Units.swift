@@ -108,10 +108,10 @@ public enum UnitPreset: String, CaseIterable, Codable, Sendable {
 
     /// From the phone's region ("en_CA" -> Canadian). Parsed by hand so it works on Linux too.
     public static var deviceDefault: UnitPreset {
-        let id = Locale.current.identifier
-        let region = id.split(separator: "@").first?.split(whereSeparator: { $0 == "_" || $0 == "-" })
-            .dropFirst().first { $0.count == 2 && $0.allSatisfy(\.isLetter) }
-        return forRegion(region.map(String.init))
+        let id = Locale.current.identifier.components(separatedBy: "@")[0]
+        let parts = id.components(separatedBy: CharacterSet(charactersIn: "_-")).dropFirst()
+        let region: String? = parts.first { $0.count == 2 && $0.allSatisfy { $0.isLetter } }
+        return forRegion(region)
     }
 }
 
