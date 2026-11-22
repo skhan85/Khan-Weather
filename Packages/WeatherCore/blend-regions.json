@@ -12,14 +12,392 @@
     ]
    ],
    "useBlend": true,
+   "models": [
+    "canada",
+    "us",
+    "europe",
+    "europeAI",
+    "germany",
+    "uk",
+    "canadaHighRes",
+    "usHighRes",
+    "usBlend",
+    "europeHighRes"
+   ],
    "byDay": [
     {
-     "germany": 0.3,
-     "europe": 0.2,
-     "usHighRes": 0.15,
-     "canada": 0.15,
-     "uk": 0.1,
-     "europeAI": 0.1
+     "europeAI": 0.175,
+     "germany": 0.185,
+     "uk": 0.179,
+     "canadaHighRes": 0.194,
+     "usHighRes": 0.119,
+     "usBlend": 0.098,
+     "europeHighRes": 0.05
+    },
+    {
+     "canada": 0.097,
+     "europeAI": 0.307,
+     "germany": 0.125,
+     "uk": 0.206,
+     "usHighRes": 0.07,
+     "usBlend": 0.172,
+     "europeHighRes": 0.024
+    },
+    {
+     "us": 0.087,
+     "europeAI": 0.353,
+     "germany": 0.217,
+     "uk": 0.154,
+     "europeHighRes": 0.189
+    },
+    {
+     "us": 0.084,
+     "europeAI": 0.42,
+     "germany": 0.165,
+     "uk": 0.157,
+     "europeHighRes": 0.174
+    },
+    {
+     "us": 0.098,
+     "europeAI": 0.443,
+     "germany": 0.151,
+     "uk": 0.145,
+     "europeHighRes": 0.163
+    },
+    {
+     "us": 0.117,
+     "europeAI": 0.44,
+     "germany": 0.184,
+     "uk": 0.113,
+     "europeHighRes": 0.146
+    }
+   ]
+  },
+  {
+   "id": "na_west",
+   "name": "Western North America",
+   "boxes": [
+    [
+     24,
+     75,
+     -170,
+     -100
+    ]
+   ],
+   "useBlend": true,
+   "models": [
+    "canada",
+    "us",
+    "europe",
+    "europeAI",
+    "germany",
+    "uk",
+    "usHighRes",
+    "usBlend",
+    "europeHighRes"
+   ],
+   "byDay": [
+    {
+     "europeAI": 0.116,
+     "germany": 0.151,
+     "uk": 0.171,
+     "usHighRes": 0.116,
+     "usBlend": 0.38,
+     "europeHighRes": 0.067
+    },
+    {
+     "europeAI": 0.208,
+     "germany": 0.192,
+     "uk": 0.197,
+     "usBlend": 0.296,
+     "europeHighRes": 0.108
+    },
+    {
+     "us": 0.087,
+     "europeAI": 0.353,
+     "germany": 0.217,
+     "uk": 0.154,
+     "europeHighRes": 0.189
+    },
+    {
+     "us": 0.084,
+     "europeAI": 0.42,
+     "germany": 0.165,
+     "uk": 0.157,
+     "europeHighRes": 0.174
+    },
+    {
+     "us": 0.098,
+     "europeAI": 0.443,
+     "germany": 0.151,
+     "uk": 0.145,
+     "europeHighRes": 0.163
+    },
+    {
+     "us": 0.117,
+     "europeAI": 0.44,
+     "germany": 0.184,
+     "uk": 0.113,
+     "europeHighRes": 0.146
+    }
+   ]
+  },
+  {
+   "id": "europe",
+   "name": "Europe",
+   "boxes": [
+    [
+     34,
+     72,
+     -25,
+     45
+    ]
+   ],
+   "useBlend": true,
+   "models": [
+    "us",
+    "europe",
+    "europeAI",
+    "germany",
+    "uk",
+    "europeHighRes",
+    "france",
+    "netherlands",
+    "denmark"
+   ],
+   "byDay": [
+    {
+     "us": 0.021,
+     "europeAI": 0.209,
+     "germany": 0.213,
+     "uk": 0.151,
+     "europeHighRes": 0.099,
+     "france": 0.27,
+     "netherlands": 0.037
+    },
+    {
+     "europeAI": 0.337,
+     "germany": 0.271,
+     "uk": 0.193,
+     "europeHighRes": 0.199
+    },
+    {
+     "us": 0.087,
+     "europeAI": 0.353,
+     "germany": 0.217,
+     "uk": 0.154,
+     "europeHighRes": 0.189
+    },
+    {
+     "us": 0.084,
+     "europeAI": 0.42,
+     "germany": 0.165,
+     "uk": 0.157,
+     "europeHighRes": 0.174
+    },
+    {
+     "us": 0.098,
+     "europeAI": 0.443,
+     "germany": 0.151,
+     "uk": 0.145,
+     "europeHighRes": 0.163
+    },
+    {
+     "us": 0.117,
+     "europeAI": 0.44,
+     "germany": 0.184,
+     "uk": 0.113,
+     "europeHighRes": 0.146
+    }
+   ]
+  },
+  {
+   "id": "sw_asia",
+   "name": "Middle East and South Asia",
+   "boxes": [
+    [
+     5,
+     45,
+     34,
+     92
+    ]
+   ],
+   "useBlend": true,
+   "models": [
+    "us",
+    "europe",
+    "europeAI",
+    "germany",
+    "uk",
+    "europeHighRes"
+   ],
+   "byDay": [
+    {
+     "europeAI": 0.26,
+     "germany": 0.303,
+     "uk": 0.188,
+     "europeHighRes": 0.249
+    },
+    {
+     "europeAI": 0.337,
+     "germany": 0.271,
+     "uk": 0.193,
+     "europeHighRes": 0.199
+    },
+    {
+     "us": 0.087,
+     "europeAI": 0.353,
+     "germany": 0.217,
+     "uk": 0.154,
+     "europeHighRes": 0.189
+    },
+    {
+     "us": 0.084,
+     "europeAI": 0.42,
+     "germany": 0.165,
+     "uk": 0.157,
+     "europeHighRes": 0.174
+    },
+    {
+     "us": 0.098,
+     "europeAI": 0.443,
+     "germany": 0.151,
+     "uk": 0.145,
+     "europeHighRes": 0.163
+    },
+    {
+     "us": 0.117,
+     "europeAI": 0.44,
+     "germany": 0.184,
+     "uk": 0.113,
+     "europeHighRes": 0.146
+    }
+   ]
+  },
+  {
+   "id": "east_asia",
+   "name": "East Asia",
+   "boxes": [
+    [
+     18,
+     55,
+     92,
+     150
+    ]
+   ],
+   "useBlend": true,
+   "models": [
+    "us",
+    "europe",
+    "europeAI",
+    "germany",
+    "uk",
+    "europeHighRes"
+   ],
+   "byDay": [
+    {
+     "europeAI": 0.26,
+     "germany": 0.303,
+     "uk": 0.188,
+     "europeHighRes": 0.249
+    },
+    {
+     "europeAI": 0.337,
+     "germany": 0.271,
+     "uk": 0.193,
+     "europeHighRes": 0.199
+    },
+    {
+     "us": 0.087,
+     "europeAI": 0.353,
+     "germany": 0.217,
+     "uk": 0.154,
+     "europeHighRes": 0.189
+    },
+    {
+     "us": 0.084,
+     "europeAI": 0.42,
+     "germany": 0.165,
+     "uk": 0.157,
+     "europeHighRes": 0.174
+    },
+    {
+     "us": 0.098,
+     "europeAI": 0.443,
+     "germany": 0.151,
+     "uk": 0.145,
+     "europeHighRes": 0.163
+    },
+    {
+     "us": 0.117,
+     "europeAI": 0.44,
+     "germany": 0.184,
+     "uk": 0.113,
+     "europeHighRes": 0.146
+    }
+   ]
+  },
+  {
+   "id": "oceania",
+   "name": "Australia and New Zealand",
+   "boxes": [
+    [
+     -50,
+     -8,
+     110,
+     180
+    ]
+   ],
+   "useBlend": true,
+   "models": [
+    "us",
+    "europe",
+    "europeAI",
+    "germany",
+    "uk",
+    "europeHighRes"
+   ],
+   "byDay": [
+    {
+     "europeAI": 0.26,
+     "germany": 0.303,
+     "uk": 0.188,
+     "europeHighRes": 0.249
+    },
+    {
+     "us": 0.275,
+     "europeAI": 0.19,
+     "germany": 0.12,
+     "uk": 0.183,
+     "europeHighRes": 0.232
+    },
+    {
+     "us": 0.087,
+     "europeAI": 0.353,
+     "germany": 0.217,
+     "uk": 0.154,
+     "europeHighRes": 0.189
+    },
+    {
+     "us": 0.176,
+     "europeAI": 0.199,
+     "germany": 0.101,
+     "uk": 0.173,
+     "europeHighRes": 0.351
+    },
+    {
+     "us": 0.098,
+     "europeAI": 0.443,
+     "germany": 0.151,
+     "uk": 0.145,
+     "europeHighRes": 0.163
+    },
+    {
+     "us": 0.262,
+     "europeAI": 0.35,
+     "germany": 0.074,
+     "uk": 0.202,
+     "europeHighRes": 0.111
     }
    ]
   }
@@ -28,10 +406,56 @@
   "id": "global",
   "name": "Elsewhere",
   "boxes": [],
-  "useBlend": false,
+  "useBlend": true,
+  "models": [
+   "canada",
+   "us",
+   "europe",
+   "europeAI",
+   "germany",
+   "uk",
+   "europeHighRes"
+  ],
   "byDay": [
    {
-    "germany": 0.3
+    "europeAI": 0.26,
+    "germany": 0.303,
+    "uk": 0.188,
+    "europeHighRes": 0.249
+   },
+   {
+    "europeAI": 0.337,
+    "germany": 0.271,
+    "uk": 0.193,
+    "europeHighRes": 0.199
+   },
+   {
+    "us": 0.087,
+    "europeAI": 0.353,
+    "germany": 0.217,
+    "uk": 0.154,
+    "europeHighRes": 0.189
+   },
+   {
+    "us": 0.084,
+    "europeAI": 0.42,
+    "germany": 0.165,
+    "uk": 0.157,
+    "europeHighRes": 0.174
+   },
+   {
+    "us": 0.098,
+    "europeAI": 0.443,
+    "germany": 0.151,
+    "uk": 0.145,
+    "europeHighRes": 0.163
+   },
+   {
+    "us": 0.117,
+    "europeAI": 0.44,
+    "germany": 0.184,
+    "uk": 0.113,
+    "europeHighRes": 0.146
    }
   ]
  }

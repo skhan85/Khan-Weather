@@ -9,8 +9,79 @@ extension BlendRegion {
             id: "na_east", name: "Eastern North America",
             boxes: [Box(24, 75, -100, -50)],
             useBlend: true,
+            models: [.canada, .us, .europe, .europeAI, .germany, .uk, .canadaHighRes, .usHighRes, .usBlend, .europeHighRes],
             byDay: [
-                [.germany: 0.3, .europe: 0.2, .canada: 0.15, .usHighRes: 0.15, .europeAI: 0.1, .uk: 0.1],
+                [.canadaHighRes: 0.194, .germany: 0.185, .uk: 0.179, .europeAI: 0.175, .usHighRes: 0.119, .usBlend: 0.098, .europeHighRes: 0.05],
+                [.europeAI: 0.307, .uk: 0.206, .usBlend: 0.172, .germany: 0.125, .canada: 0.097, .usHighRes: 0.07, .europeHighRes: 0.024],
+                [.europeAI: 0.353, .germany: 0.217, .europeHighRes: 0.189, .uk: 0.154, .us: 0.087],
+                [.europeAI: 0.42, .europeHighRes: 0.174, .germany: 0.165, .uk: 0.157, .us: 0.084],
+                [.europeAI: 0.443, .europeHighRes: 0.163, .germany: 0.151, .uk: 0.145, .us: 0.098],
+                [.europeAI: 0.44, .germany: 0.184, .europeHighRes: 0.146, .us: 0.117, .uk: 0.113],
+            ]),
+        BlendRegion(
+            id: "na_west", name: "Western North America",
+            boxes: [Box(24, 75, -170, -100)],
+            useBlend: true,
+            models: [.canada, .us, .europe, .europeAI, .germany, .uk, .usHighRes, .usBlend, .europeHighRes],
+            byDay: [
+                [.usBlend: 0.38, .uk: 0.171, .germany: 0.151, .europeAI: 0.116, .usHighRes: 0.116, .europeHighRes: 0.067],
+                [.usBlend: 0.296, .europeAI: 0.208, .uk: 0.197, .germany: 0.192, .europeHighRes: 0.108],
+                [.europeAI: 0.353, .germany: 0.217, .europeHighRes: 0.189, .uk: 0.154, .us: 0.087],
+                [.europeAI: 0.42, .europeHighRes: 0.174, .germany: 0.165, .uk: 0.157, .us: 0.084],
+                [.europeAI: 0.443, .europeHighRes: 0.163, .germany: 0.151, .uk: 0.145, .us: 0.098],
+                [.europeAI: 0.44, .germany: 0.184, .europeHighRes: 0.146, .us: 0.117, .uk: 0.113],
+            ]),
+        BlendRegion(
+            id: "europe", name: "Europe",
+            boxes: [Box(34, 72, -25, 45)],
+            useBlend: true,
+            models: [.us, .europe, .europeAI, .germany, .uk, .europeHighRes, .france, .netherlands, .denmark],
+            byDay: [
+                [.france: 0.27, .germany: 0.213, .europeAI: 0.209, .uk: 0.151, .europeHighRes: 0.099, .netherlands: 0.037, .us: 0.021],
+                [.europeAI: 0.337, .germany: 0.271, .europeHighRes: 0.199, .uk: 0.193],
+                [.europeAI: 0.353, .germany: 0.217, .europeHighRes: 0.189, .uk: 0.154, .us: 0.087],
+                [.europeAI: 0.42, .europeHighRes: 0.174, .germany: 0.165, .uk: 0.157, .us: 0.084],
+                [.europeAI: 0.443, .europeHighRes: 0.163, .germany: 0.151, .uk: 0.145, .us: 0.098],
+                [.europeAI: 0.44, .germany: 0.184, .europeHighRes: 0.146, .us: 0.117, .uk: 0.113],
+            ]),
+        BlendRegion(
+            id: "sw_asia", name: "Middle East and South Asia",
+            boxes: [Box(5, 45, 34, 92)],
+            useBlend: true,
+            models: [.us, .europe, .europeAI, .germany, .uk, .europeHighRes],
+            byDay: [
+                [.germany: 0.303, .europeAI: 0.26, .europeHighRes: 0.249, .uk: 0.188],
+                [.europeAI: 0.337, .germany: 0.271, .europeHighRes: 0.199, .uk: 0.193],
+                [.europeAI: 0.353, .germany: 0.217, .europeHighRes: 0.189, .uk: 0.154, .us: 0.087],
+                [.europeAI: 0.42, .europeHighRes: 0.174, .germany: 0.165, .uk: 0.157, .us: 0.084],
+                [.europeAI: 0.443, .europeHighRes: 0.163, .germany: 0.151, .uk: 0.145, .us: 0.098],
+                [.europeAI: 0.44, .germany: 0.184, .europeHighRes: 0.146, .us: 0.117, .uk: 0.113],
+            ]),
+        BlendRegion(
+            id: "east_asia", name: "East Asia",
+            boxes: [Box(18, 55, 92, 150)],
+            useBlend: true,
+            models: [.us, .europe, .europeAI, .germany, .uk, .europeHighRes],
+            byDay: [
+                [.germany: 0.303, .europeAI: 0.26, .europeHighRes: 0.249, .uk: 0.188],
+                [.europeAI: 0.337, .germany: 0.271, .europeHighRes: 0.199, .uk: 0.193],
+                [.europeAI: 0.353, .germany: 0.217, .europeHighRes: 0.189, .uk: 0.154, .us: 0.087],
+                [.europeAI: 0.42, .europeHighRes: 0.174, .germany: 0.165, .uk: 0.157, .us: 0.084],
+                [.europeAI: 0.443, .europeHighRes: 0.163, .germany: 0.151, .uk: 0.145, .us: 0.098],
+                [.europeAI: 0.44, .germany: 0.184, .europeHighRes: 0.146, .us: 0.117, .uk: 0.113],
+            ]),
+        BlendRegion(
+            id: "oceania", name: "Australia and New Zealand",
+            boxes: [Box(-50, -8, 110, 180)],
+            useBlend: true,
+            models: [.us, .europe, .europeAI, .germany, .uk, .europeHighRes],
+            byDay: [
+                [.germany: 0.303, .europeAI: 0.26, .europeHighRes: 0.249, .uk: 0.188],
+                [.us: 0.275, .europeHighRes: 0.232, .europeAI: 0.19, .uk: 0.183, .germany: 0.12],
+                [.europeAI: 0.353, .germany: 0.217, .europeHighRes: 0.189, .uk: 0.154, .us: 0.087],
+                [.europeHighRes: 0.351, .europeAI: 0.199, .us: 0.176, .uk: 0.173, .germany: 0.101],
+                [.europeAI: 0.443, .europeHighRes: 0.163, .germany: 0.151, .uk: 0.145, .us: 0.098],
+                [.europeAI: 0.35, .us: 0.262, .uk: 0.202, .europeHighRes: 0.111, .germany: 0.074],
             ]),
     ]
 
@@ -18,8 +89,14 @@ extension BlendRegion {
     static let fallback = BlendRegion(
         id: "global", name: "Elsewhere",
         boxes: [],
-        useBlend: false,
+        useBlend: true,
+        models: [.canada, .us, .europe, .europeAI, .germany, .uk, .europeHighRes],
         byDay: [
-            [.germany: 0.3],
+            [.germany: 0.303, .europeAI: 0.26, .europeHighRes: 0.249, .uk: 0.188],
+            [.europeAI: 0.337, .germany: 0.271, .europeHighRes: 0.199, .uk: 0.193],
+            [.europeAI: 0.353, .germany: 0.217, .europeHighRes: 0.189, .uk: 0.154, .us: 0.087],
+            [.europeAI: 0.42, .europeHighRes: 0.174, .germany: 0.165, .uk: 0.157, .us: 0.084],
+            [.europeAI: 0.443, .europeHighRes: 0.163, .germany: 0.151, .uk: 0.145, .us: 0.098],
+            [.europeAI: 0.44, .germany: 0.184, .europeHighRes: 0.146, .us: 0.117, .uk: 0.113],
         ])
 }
