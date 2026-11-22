@@ -5,16 +5,27 @@ import UserNotifications
 import WidgetKit
 import WeatherCore
 
-enum WidgetTemperatureUnit: String, AppEnum {
-    case celsius, fahrenheit
+/// The widget can't read the app's settings (no App Group on a free Apple ID), so it has its own
+/// units choice. "Same as phone" uses the phone's region, as the app's first-launch question does.
+enum WidgetUnits: String, AppEnum {
+    case phone, canadian, us, uk
 
-    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Temperature unit"
-    static var caseDisplayRepresentations: [WidgetTemperatureUnit: DisplayRepresentation] = [
-        .celsius: "°C",
-        .fahrenheit: "°F",
+    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Units"
+    static var caseDisplayRepresentations: [WidgetUnits: DisplayRepresentation] = [
+        .phone: "Same as phone's region",
+        .canadian: "Canadian (°C, km/h, mm)",
+        .us: "US (°F, mph, in)",
+        .uk: "UK (°C, mph, mm)",
     ]
 
-    var unit: TemperatureUnit { self == .celsius ? .celsius : .fahrenheit }
+    var settings: UnitSettings {
+        switch self {
+        case .phone: return UnitPreset.deviceDefault.settings
+        case .canadian: return UnitPreset.canadian.settings
+        case .us: return UnitPreset.us.settings
+        case .uk: return UnitPreset.uk.settings
+        }
+    }
 }
 
 enum WidgetAlertNotifications: String, AppEnum {
@@ -30,10 +41,11 @@ enum WidgetAlertNotifications: String, AppEnum {
 
 struct WeatherWidgetIntent: WidgetConfigurationIntent {
     static var title: LocalizedStringResource = "Weather"
-    static var description = IntentDescription("Choose the temperature unit.")
+    static var description = IntentDescription("Choose the units and alert notifications.")
 
-    @Parameter(title: "Temperature unit", default: .celsius)
-    var temperatureUnit: WidgetTemperatureUnit
+    /// Replaces the old °C/°F-only "Temperature unit" switch.
+    @Parameter(title: "Units", default: .phone)
+    var units: WidgetUnits
 
     /// iOS refreshes widgets far more often than it wakes a sideloaded app, so the widget also
     /// checks for alerts where you are and posts them as Khan Weather notifications.
@@ -88,15 +100,19 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> WeatherEntry { .placeholder }
 
     func snapshot(for configuration: WeatherWidgetIntent, in context: Context) async -> WeatherEntry {
+        configuration.units.settings.save()
         var entry: WeatherEntry = context.isPreview ? .placeholder : await loadEntry(notify: .off, hyperlocal: configuration.useHomeStations)
-        entry.unit = configuration.temperatureUnit.unit
+        entry.unit = configuration.units.settings.temperature
         return entry
     }
 
     func timeline(for configuration: WeatherWidgetIntent, in context: Context) async -> Timeline<WeatherEntry> {
+        // Saved in the widget's own settings so everything it writes (the rain line, alert
+        // notifications) uses the same units as the numbers it draws.
+        configuration.units.settings.save()
         var entry = await loadEntry(notify: configuration.alertNotifications,
                                     hyperlocal: configuration.useHomeStations)
-        entry.unit = configuration.temperatureUnit.unit
+        entry.unit = configuration.units.settings.temperature
         // Ask iOS to refresh in about 30 minutes; it may wait longer to save battery.
         return Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(30 * 60)))
     }

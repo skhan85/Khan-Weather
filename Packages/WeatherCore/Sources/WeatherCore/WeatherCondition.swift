@@ -119,8 +119,7 @@ public enum WeatherFormat {
             place = plainStationName(o.stationName) + ","
         }
         guard let km = o.distanceKm else { return place.trimmingCharacters(in: [","]) }
-        if km < 1 { return place.trimmingCharacters(in: [","]) + " under 1 km away" }
-        return place + " about " + (distance(km.rounded()) ?? "") + " away"
+        return place + " about " + roughDistance(km) + " away"
     }
 }
 

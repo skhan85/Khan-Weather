@@ -70,7 +70,10 @@ object AlertText {
         "for more information", "weather.gc.ca", "canada.ca", "getprepared", "visit www.", "please refer to",
     )
 
-    fun paragraphs(raw: String): List<String> {
+    fun paragraphs(raw: String, units: UnitSettings = UnitSettings.current): List<String> =
+        plainParagraphs(raw).map { withUnits(it, units) }
+
+    fun plainParagraphs(raw: String): List<String> {
         val paras = raw.replace("\r\n", "\n").split("\n\n").map(::normalise).filter { it.isNotEmpty() }
         val kept = paras.mapNotNull { para ->
             val joined = splitSentences(para).filter { !isBoilerplate(it) }.joinToString(" ")
@@ -79,7 +82,52 @@ object AlertText {
         return kept.ifEmpty { paras }
     }
 
-    fun summary(raw: String): String = paragraphs(raw).joinToString(" ")
+    fun summary(raw: String, units: UnitSettings = UnitSettings.current): String = paragraphs(raw, units).joinToString(" ")
+
+    private val unitPattern = Regex(
+        "([-−]?\\d+(?:\\.\\d+)?)(?:\\s*(?:to|-|–|and)\\s*([-−]?\\d+(?:\\.\\d+)?))?\\s*" +
+            "(mm|cm|km/h|kph|km|inches|inch|in\\.|mph|miles|mile|°C|°F)(?![\\w/])(?!\\s*\\()",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /**
+     * Official alerts give amounts in their own country's units ("50 to 75 mm", "gusts of 90 km/h",
+     * "6 inches"). When those aren't the person's units, add theirs after the original, which stays
+     * word for word: "50 to 75 mm (2 to 3 in)".
+     */
+    fun withUnits(text: String, units: UnitSettings): String = unitPattern.replace(text) { m ->
+        val a = m.groupValues[1].replace("−", "-").toDoubleOrNull()
+        val b = m.groupValues[2].takeIf { it.isNotEmpty() }?.replace("−", "-")?.toDoubleOrNull()
+        val extra = a?.let { converted(it, b, m.groupValues[3].lowercase(), units) }
+        if (extra == null) m.value else "${m.value} ($extra)"
+    }
+
+    /** "2 to 3 in" for (50, 75, "mm") in US units; null when the text already uses the person's units. */
+    fun converted(a: Double, b: Double?, unit: String, units: UnitSettings): String? {
+        fun show(f: (Double) -> Double, label: String, decimals: Boolean): String {
+            fun one(v: Double): String {
+                val x = f(v)
+                if (decimals && x < 1) return String.format(java.util.Locale.US, "%.1f", maxOf(0.1, (x * 10).rnd() / 10))
+                return "${x.rndInt()}"
+            }
+            return (b?.let { "${one(a)} to ${one(it)}" } ?: one(a)) + (if (label.startsWith("°")) "" else " ") + label
+        }
+        val inches = units.precipitation == PrecipitationUnit.inches
+        val miles = units.distance == DistanceUnit.mi
+        val f = units.temperature == TemperatureUnit.fahrenheit
+        return when (unit) {
+            "mm" -> if (inches) show({ it / 25.4 }, "in", true) else null
+            "cm" -> if (inches) show({ it / 2.54 }, "in", true) else null
+            "inches", "inch", "in." -> if (inches) null else show({ it * 25.4 }, "mm", false)
+            "km/h", "kph" -> if (units.wind == WindUnit.kmh) null else show({ units.wind.convert(it) }, units.wind.label, false)
+            "mph" -> if (units.wind == WindUnit.mph) null else show({ units.wind.convert(it * 1.609344) }, units.wind.label, false)
+            "km" -> if (miles) show({ it / 1.609344 }, "miles", true) else null
+            "miles", "mile" -> if (miles) null else show({ it * 1.609344 }, "km", true)
+            "°c" -> if (f) show({ it * 9 / 5 + 32 }, "°F", false) else null
+            "°f" -> if (f) null else show({ (it - 32) * 5 / 9 }, "°C", false)
+            else -> null
+        }
+    }
 
     fun normalise(s: String): String = s.split(Regex("\\s+")).filter { it.isNotEmpty() }.joinToString(" ")
 

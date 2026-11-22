@@ -39,6 +39,25 @@ object Prefs {
         get() = enumOr(sp.getString("distanceUnit", null), DistanceUnit.km)
         set(v) { sp.edit().putString("distanceUnit", v.name).apply(); applyUnits() }
 
+    /** Set once the person has picked units (the first-launch question). */
+    var unitsChosen: Boolean
+        get() = sp.getBoolean("unitsChosen", false)
+        set(v) = sp.edit().putBoolean("unitsChosen", v).apply()
+
+    /** Whether any unit was ever saved (someone updating from a version without the question). */
+    val hasSavedUnits: Boolean
+        get() = listOf("temperatureUnit", "windUnit", "precipitationUnit", "pressureUnit", "distanceUnit").any { sp.contains(it) }
+
+    val units: UnitSettings get() = UnitSettings(temperatureUnit, windUnit, precipitationUnit, pressureUnit, distanceUnit)
+
+    /** Sets all five units at once. */
+    fun saveUnits(u: UnitSettings) {
+        sp.edit().putString("temperatureUnit", u.temperature.name).putString("windUnit", u.wind.name)
+            .putString("precipitationUnit", u.precipitation.name).putString("pressureUnit", u.pressure.name)
+            .putString("distanceUnit", u.distance.name).apply()
+        applyUnits()
+    }
+
     fun applyUnits() {
         if (!::sp.isInitialized) return
         UnitSettings.current = UnitSettings(temperatureUnit, windUnit, precipitationUnit, pressureUnit, distanceUnit)

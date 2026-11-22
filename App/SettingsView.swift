@@ -30,20 +30,38 @@ struct SettingsView: View {
     @State private var locationAuthorization = BackgroundLocation.shared.authorization
     @Environment(\.scenePhase) private var scenePhase
 
+    private var currentUnits: UnitSettings {
+        UnitSettings(temperature: TemperatureUnit(rawValue: temperature) ?? .celsius,
+                     wind: WindUnit(rawValue: wind) ?? .kmh,
+                     precipitation: PrecipitationUnit(rawValue: precipitation) ?? .metric,
+                     pressure: PressureUnit(rawValue: pressure) ?? .kPa,
+                     distance: DistanceUnit(rawValue: distance) ?? .km)
+    }
+
+    /// Choosing a preset sets all five units; a mix shows as "Custom".
+    private var presetBinding: Binding<UnitPreset?> {
+        Binding(get: { currentUnits.preset }, set: { preset in
+            guard let s = preset?.settings else { return }
+            temperature = s.temperature.rawValue
+            wind = s.wind.rawValue
+            precipitation = s.precipitation.rawValue
+            pressure = s.pressure.rawValue
+            distance = s.distance.rawValue
+        })
+    }
+
     var body: some View {
         NavigationStack {
             Form {
                 Section {
+                    Picker("Units", selection: presetBinding) {
+                        ForEach(UnitPreset.allCases, id: \.self) { Text($0.label).tag(Optional($0)) }
+                        if currentUnits.preset == nil { Text("Custom").tag(UnitPreset?.none) }
+                    }
+                    .pickerStyle(.segmented)
                     Picker("Temperature", selection: $temperature) {
                         ForEach(TemperatureUnit.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
                     }
-                    .pickerStyle(.segmented)
-                } header: {
-                    Text("Temperature")
-                } footer: {
-                    Text("Home screen widgets have their own unit setting: touch and hold the widget, then Edit Widget.")
-                }
-                Section("Units") {
                     Picker("Wind", selection: $wind) {
                         ForEach(WindUnit.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
                     }
@@ -56,6 +74,10 @@ struct SettingsView: View {
                     Picker("Distance and visibility", selection: $distance) {
                         ForEach(DistanceUnit.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
                     }
+                } header: {
+                    Text("Units")
+                } footer: {
+                    Text("Pick Canadian, US or UK, then change any single unit if you like. Home screen widgets have their own Units setting: touch and hold the widget, then Edit Widget.")
                 }
                 Section {
                     Toggle("Severe weather alerts", isOn: $alertNotifications)
@@ -254,11 +276,12 @@ struct SettingsView: View {
     }
 
     private func reset() {
-        temperature = TemperatureUnit.celsius.rawValue
-        wind = WindUnit.kmh.rawValue
-        precipitation = PrecipitationUnit.metric.rawValue
-        pressure = PressureUnit.kPa.rawValue
-        distance = DistanceUnit.km.rawValue
+        let units = UnitSettings.deviceDefault
+        temperature = units.temperature.rawValue
+        wind = units.wind.rawValue
+        precipitation = units.precipitation.rawValue
+        pressure = units.pressure.rawValue
+        distance = units.distance.rawValue
         appearance = Appearance.system.rawValue
         clock = ClockStyle.automatic.rawValue
         mainTemperature = MainTemperature.actual.rawValue

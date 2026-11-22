@@ -25,7 +25,11 @@ $A shell pm grant $PKG android.permission.POST_NOTIFICATIONS || true
 $A shell settings put secure location_mode 3 || true
 for i in 1 2 3; do $A emu geo fix -79.8774 43.5183; sleep 2; done
 $A shell am start -n $PKG/.MainActivity
-sleep 40
+sleep 25
+# First launch asks which units to use.
+shot android-units-question
+$A shell am start -S -n $PKG/.MainActivity --es units canadian
+sleep 30
 $A emu geo fix -79.8774 43.5183
 shot android-main-1
 for i in 2 3 4 5; do
@@ -34,6 +38,15 @@ for i in 2 3 4 5; do
   sleep 4
   shot android-main-$i
 done
+# The same screen in US units.
+$A shell am start -S -n $PKG/.MainActivity --es units us
+sleep 30
+shot android-main-us
+$A shell input swipe 540 1800 540 700 600
+sleep 4
+shot android-main-us-2
+$A shell am start -S -n $PKG/.MainActivity --es units canadian
+sleep 5
 # The home-screen widgets, drawn in the app from the same saved forecast.
 $A shell am start -S -n $PKG/.MainActivity --ez widgetPreview true
 sleep 10
