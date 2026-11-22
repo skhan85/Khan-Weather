@@ -244,7 +244,7 @@ struct RadarMapView: View {
     /// Loop length and the overlays, as small chips.
     private var options: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 if covered {
                     ForEach(RadarSpan.allCases) { s in
                         RadarChip(title: s.label, systemImage: nil, on: span == s) { hours = s.rawValue }
@@ -274,7 +274,7 @@ private struct RadarChip: View {
                 Text(title)
             }
             .font(.caption.weight(.bold))
-            .padding(.horizontal, 9)
+            .padding(.horizontal, 8)
             .padding(.vertical, 6)
             .foregroundStyle(on ? Color.black : Color.primary)
             .background(Capsule().fill(on ? Brand.gold : Color.primary.opacity(0.08)))

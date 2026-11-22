@@ -62,8 +62,16 @@ private fun RadarWebView(center: Coordinate, card: Boolean, modifier: Modifier) 
             settings.userAgentString = settings.userAgentString + " KhanWeather-Android"
             webViewClient = WebViewClient()
             setBackgroundColor(android.graphics.Color.parseColor("#1b2636"))
-            loadDataWithBaseURL("https://khanweather.local/", radarHtml(center, twelve, miles, card, radarCovers(center)),
-                "text/html", "utf-8", null)
+            val html = radarHtml(center, twelve, miles, card, radarCovers(center))
+            // Load once the view has its real size: a map started at 0×0 draws no tiles.
+            var loaded = false
+            fun loadIfSized() {
+                if (loaded || width == 0 || height == 0) return
+                loaded = true
+                loadDataWithBaseURL("https://khanweather.local/", html, "text/html", "utf-8", null)
+            }
+            addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> loadIfSized() }
+            post { loadIfSized() }
         }
     })
 }
@@ -75,7 +83,7 @@ private fun radarHtml(c: Coordinate, twelve: Boolean, miles: Boolean, card: Bool
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
  html,body,#map{margin:0;height:100%;background:#1b2636;font-family:sans-serif}
- .bar{position:absolute;left:12px;right:12px;z-index:1000;background:rgba(20,24,32,.86);color:#fff;border-radius:14px;padding:10px 12px;box-sizing:border-box}
+ .bar{position:fixed;left:12px;right:12px;z-index:1000;background:rgba(20,24,32,.86);color:#fff;border-radius:14px;padding:10px 12px;box-sizing:border-box}
  #top{top:12px;display:flex;gap:6px;padding:6px}
  #top button{flex:1;border:0;border-radius:9px;padding:8px 0;background:transparent;color:#fff;font-size:14px;font-weight:600}
  #top button.on{background:#ffc752;color:#111}
@@ -198,6 +206,10 @@ function chips(){var el=document.getElementById('chips'),h='';
  el.querySelectorAll('[data-o]').forEach(function(b){b.onclick=function(){var k=b.dataset.o;opt[k]=!opt[k];save(k,opt[k]);chips();setExtras();setRings();}});}
 chips();load();setExtras();setRings();
 document.getElementById('me').onclick=function(){map.setView(here,zoom)};
+// Redraw at the right size if the view changes size after loading.
+window.addEventListener('resize',function(){map.invalidateSize()});
+if(window.ResizeObserver)new ResizeObserver(function(){map.invalidateSize()}).observe(document.getElementById('map'));
+setTimeout(function(){map.invalidateSize();map.setView(here,zoom)},600);
 document.getElementById('play').onclick=function(){playing=!playing;this.textContent=playing?'❚❚':'▶';};
 document.getElementById('slider').oninput=function(){playing=false;document.getElementById('play').textContent='▶';show(+this.value)};
 document.querySelectorAll('#top button').forEach(function(b){b.onclick=function(){
