@@ -409,11 +409,18 @@ public extension Forecast {
             guard hours.contains(where: { abs($0.time.timeIntervalSince(time)) < 3600 }) else { return day }
             var d = day
             let temps = hours.map(\.temperature) + [now.temperature]
-            d.high = max(d.high, temps.max()!)
-            d.low = min(d.low, temps.min()!)
-            let feels = hours.compactMap(\.feelsLike) + [now.feelsLike]
-            d.feelsLikeHigh = d.feelsLikeHigh.map { max($0, feels.max()!) }
-            d.feelsLikeLow = d.feelsLikeLow.map { min($0, feels.min()!) }
+           let feels = hours.compactMap(\.feelsLike) + [now.feelsLike]
+           if hours.count >= 18 {
+               d.high = temps.max()!
+               d.low = temps.min()!
+               if d.feelsLikeHigh != nil { d.feelsLikeHigh = feels.max() }
+               if d.feelsLikeLow != nil { d.feelsLikeLow = feels.min() }
+           } else {
+                d.high = max(d.high, temps.max()!)
+                d.low = min(d.low, temps.min()!)
+                d.feelsLikeHigh = d.feelsLikeHigh.map { max($0, feels.max()!) }
+                d.feelsLikeLow = d.feelsLikeLow.map { min($0, feels.min()!) }
+           }
             return d
         }
     }
