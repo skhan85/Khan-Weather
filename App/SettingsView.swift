@@ -20,6 +20,8 @@ struct SettingsView: View {
     @AppStorage(AlertNotifier.advisoriesKey) private var alertAdvisories = false
     @AppStorage(AlertNotifier.rainKey) private var rainNotifications = false
     @AppStorage(AlertNotifier.frostKey) private var frostNotifications = false
+    /// Nil until switched, so it follows the alert and rain switches (see AlertNotifier.stormEnabled).
+    @AppStorage(AlertNotifier.stormKey) private var stormNotifications: Bool?
     @AppStorage(DisplaySettings.showAirQualityKey) private var showAirQuality = true
     @AppStorage(ObservationSource.hyperlocalKey) private var useHyperlocalPWS = ObservationSource.hyperlocalDefault
     @State private var notificationsDenied = false
@@ -79,6 +81,17 @@ struct SettingsView: View {
                                 if allowed { AlertNotifier.schedule(); BackgroundLocation.shared.start() } else { rainNotifications = false }
                             }
                         }
+                    Toggle("Storm heading your way", isOn: Binding(
+                        get: { stormNotifications ?? AlertNotifier.stormEnabled },
+                        set: { stormNotifications = $0 }))
+                        .onChange(of: stormNotifications) { _, on in
+                            guard on == true else { return }
+                            Task {
+                                let allowed = await AlertNotifier.requestPermission()
+                                notificationsDenied = !allowed
+                                if allowed { AlertNotifier.schedule(); BackgroundLocation.shared.start() } else { stormNotifications = false }
+                            }
+                        }
                     Toggle("Frost tonight", isOn: $frostNotifications)
                         .onChange(of: frostNotifications) { _, on in
                             guard on else { return }
@@ -94,7 +107,7 @@ struct SettingsView: View {
                     if notificationsDenied {
                         Text("Notifications are turned off for Khan Weather. Turn them on in the iPhone Settings app, under Notifications.")
                     } else {
-                        Text("Warnings and watches from Environment Canada, the US National Weather Service and Germany's DWD, for your location and saved places. Rain, snow and frost heads-ups are for your location and only fire when most forecast models agree; rain at most once per wet spell, frost once an afternoon. Without true push (not available on a free Apple ID), these depend on iOS waking the app, so treat them as a heads-up, not an emergency alarm. The home screen widget sends its own alert notifications; change that under Edit Widget.")
+                        Text("Warnings and watches from Environment Canada, the US National Weather Service and Germany's DWD, for your location and saved places. Rain, snow and frost heads-ups are for your location and only fire when most forecast models agree. Storm heads-ups watch the radar along the path storms take towards you (about 50 km upwind) and fire when a thunderstorm, downpour or snow squall is due within the hour or so; rain at most once per wet spell, frost once an afternoon. Without true push (not available on a free Apple ID), these depend on iOS waking the app, so treat them as a heads-up, not an emergency alarm. The home screen widget sends its own alert notifications; change that under Edit Widget.")
                     }
                 }
                 Section {
