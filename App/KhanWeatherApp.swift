@@ -14,6 +14,9 @@ struct KhanWeatherApp: App {
         WindowGroup {
             if ProcessInfo.processInfo.arguments.contains("-designPreview") {
                 DesignPreview()
+            } else if ProcessInfo.processInfo.arguments.contains("-radarScreen") {
+                // CI screenshots of the radar card and the full radar map.
+                RadarScreenPreview()
             } else {
                 ContentView()
             }
