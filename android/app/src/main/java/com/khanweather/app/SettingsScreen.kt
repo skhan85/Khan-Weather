@@ -35,6 +35,8 @@ fun SettingsScreen(onChanged: () -> Unit) {
     key(version) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
             Section("Units", Icons.Filled.Straighten, PaddingValues(horizontal = 16.dp, vertical = 2.dp)) {
+                Choice("Units", UnitPreset.entries, Prefs.units.preset, { it?.label ?: "Custom" }) { p -> p?.let { Prefs.saveUnits(it.settings) }; changed() }
+                RowDivider()
                 Choice("Temperature", TemperatureUnit.entries, Prefs.temperatureUnit, { it.label }) { Prefs.temperatureUnit = it; changed() }
                 RowDivider()
                 Choice("Wind", WindUnit.entries, Prefs.windUnit, { it.label }) { Prefs.windUnit = it; changed() }

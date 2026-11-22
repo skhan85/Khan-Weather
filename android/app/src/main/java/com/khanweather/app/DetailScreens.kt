@@ -147,7 +147,7 @@ fun SourcesScreen(forecast: Forecast, alerts: List<WeatherAlert>, isSavedPlace: 
                 o.rainGauges?.takeIf { it > 0 }?.let { g ->
                     val s = if (g == 1) "" else "s"
                     Labeled("Rain gauges", if ((o.rainLastHourMm ?: 0.0) > 0)
-                        String.format(Locale.US, "%.1f mm in last hr (%d gauge%s)", o.rainLastHourMm ?: 0.0, g, s) else "Dry ($g gauge$s)")
+                        "${WeatherFormat.rainAmount(o.rainLastHourMm ?: 0.0)} in last hr ($g gauge$s)" else "Dry ($g gauge$s)")
                 }
                 o.skyStationName?.let { Labeled("Sky from", it) }
                 forecast.radar?.let { Labeled("Radar scan", TimeText.time(it.time, zone)) }

@@ -21,6 +21,8 @@ struct ContentView: View {
     @AppStorage(DisplaySettings.showDetailsKey) private var showDetails = true
     @AppStorage(DisplaySettings.showAirQualityKey) private var showAirQuality = true
     @AppStorage(ObservationSource.hyperlocalKey) private var useHyperlocalPWS = ObservationSource.hyperlocalDefault
+    // bool(forKey:) also reads "-unitsChosen YES" from the launch arguments (CI screenshots).
+    @State private var unitsChosen = UserDefaults.standard.bool(forKey: UnitSettings.chosenKey)
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -104,6 +106,10 @@ struct ContentView: View {
             .sheet(isPresented: $showingSettings) {
                 SettingsView()
                     .tint(.blue)
+            }
+            // The first time the app opens: which units to use.
+            .fullScreenCover(isPresented: Binding(get: { !unitsChosen }, set: { if !$0 { unitsChosen = true } })) {
+                UnitsWelcomeView()
             }
         }
         .tint(.white)
