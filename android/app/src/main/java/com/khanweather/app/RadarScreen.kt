@@ -96,7 +96,7 @@ private fun radarHtml(c: Coordinate, twelve: Boolean, miles: Boolean, card: Bool
  #top{top:12px;display:flex;gap:6px;padding:6px}
  #top button{flex:1;border:0;border-radius:9px;padding:8px 0;background:transparent;color:#fff;font-size:14px;font-weight:600}
  #top button.on{background:#ffc752;color:#111}
- #bottom{bottom:16px}
+ #bottom{bottom:30px}
  .row{display:flex;align-items:center;gap:12px}
  #chips{display:flex;gap:6px;overflow-x:auto;margin-bottom:8px}
  .chip{border:0;border-radius:14px;padding:6px 10px;background:rgba(255,255,255,.12);color:#fff;font-size:12px;font-weight:700;white-space:nowrap}
@@ -109,7 +109,7 @@ private fun radarHtml(c: Coordinate, twelve: Boolean, miles: Boolean, card: Bool
  #time{min-width:76px;text-align:right;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
  #rel{color:#cfd6e0;font-size:11px;font-weight:800;display:block}
  #rel.fc{color:#ff9f40}
- #legend{bottom:16px;display:none;font-size:12px}
+ #legend{bottom:30px;display:none;font-size:12px}
  #legend img{max-height:150px;display:block;margin-top:6px;background:#fff;border-radius:6px}
  #me{position:absolute;right:12px;z-index:1000;width:40px;height:40px;border:0;border-radius:20px;background:rgba(20,24,32,.86);color:#ffc752;font-size:20px}
  #badge{position:absolute;top:8px;left:8px;z-index:1000;color:#fff;font-size:12px;font-weight:700;padding:4px 8px;border-radius:10px;background:rgba(0,0,0,.55);font-variant-numeric:tabular-nums}
@@ -139,8 +139,9 @@ var opt=card?{hours:1,lightning:true,warnings:false,rings:true}
 var zoom=covered?8:6;
 var map=L.map('map',{zoomControl:false,attributionControl:!card,dragging:!card,touchZoom:!card,scrollWheelZoom:!card,
  doubleClickZoom:!card,boxZoom:!card,keyboard:!card}).setView(here,zoom);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{maxZoom:12,subdomains:'abcd',
- attribution:'© OpenStreetMap, © CARTO · Radar © Environment Canada, RainViewer'}).addTo(map);
+// OpenStreetMap's own tiles: CARTO's free base map now needs an API key.
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:12,
+ attribution:'© OpenStreetMap contributors · Radar © Environment Canada, RainViewer'}).addTo(map);
 map.createPane('extras');map.getPane('extras').style.zIndex=450;
 map.createPane('rings');map.getPane('rings').style.zIndex=460;map.getPane('rings').style.pointerEvents='none';
 L.circleMarker(here,{radius:7,color:'#fff',weight:2,fillColor:'#ffc752',fillOpacity:1,pane:'rings'}).addTo(map);
