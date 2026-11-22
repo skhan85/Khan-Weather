@@ -74,6 +74,7 @@ enum RadarSpan: Int, CaseIterable, Identifiable {
 /// Or the current temperature, wind or cloud map from Environment Canada's HRDPS model.
 /// Outside Canada and the US, RainViewer's worldwide radar loop instead.
 struct RadarMapView: View {
+    @Environment(\.dismiss) private var dismiss
     let center: Coordinate
     var timeZone: TimeZone = .current
 
@@ -197,7 +198,20 @@ struct RadarMapView: View {
         }
         .navigationTitle("Radar")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.backward")
+                            .fontWeight(.semibold)
+                        Text("Back")
+                    }
+                    .foregroundStyle(.blue)
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     Task { await load() }
