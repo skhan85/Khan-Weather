@@ -124,7 +124,7 @@ struct RadarMapView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            RadarMap(center: center, frames: frames, index: shownIndex,
+            RadarMap(center: center, frames: frames, index: shownIndex, stations: showStations ? pwsStations : [],
                      opacity: layer == .radar ? 0.75 : 0.6, extras: extras, rings: rings,
                      recenter: recenter)
                 .ignoresSafeArea(edges: .bottom)
@@ -223,7 +223,7 @@ struct RadarMapView: View {
         .onAppear { index = latestPast }
         .onChange(of: layer) { _, new in if new == .radar { index = latestPast } }
         .onChange(of: hours) { _, _ in Task { await load() } }
-        .task { await load() }
+        .task { await load(); pwsStations = await RelayExtrasProvider().stations(near: center) }
         .onReceive(timer) { _ in
             guard playing, layer == .radar, !frames.isEmpty else { return }
             RadarLoop.advance(&index, hold: &hold, count: frames.count, latest: latestPast)
@@ -265,6 +265,7 @@ struct RadarMapView: View {
                     }
                     RadarChip(title: RadarExtra.lightning.label, systemImage: RadarExtra.lightning.systemImage,
                               on: lightning) { lightning.toggle() }
+                    RadarChip(title: "Stations", systemImage: "thermometer.medium", on: showStations) { showStations.toggle() }
                     RadarChip(title: RadarExtra.warnings.label, systemImage: RadarExtra.warnings.systemImage,
                               on: warnings) { warnings.toggle() }
                 }
@@ -307,6 +308,8 @@ struct RadarPreviewCard: View {
     let refreshKey: Date
 
     @State private var frames: [RadarFrame] = []
+    @State private var pwsStations: [NetatmoStation] = []
+    @State private var showStations = true
     @State private var index = 0
     @State private var hold = 0
     @State private var storm: StormHeadsUp?
@@ -581,6 +584,7 @@ private struct RadarMap: UIViewRepresentable {
     var extras: [RadarExtra] = []
     /// Distance rings around your spot.
     var rings = false
+    var stations: [NetatmoStation] = []
     /// Bumped to fly back to your spot.
     var recenter = 0
 
@@ -636,7 +640,27 @@ private struct RadarMap: UIViewRepresentable {
             coordinator.extrasShown = extras
             coordinator.ringsShown = nil
         }
-        let ringKey = rings ? RadarRings.radii().map(\.label).joined(separator: ",") : ""
+        let stationKey = stations.map { "\($0.lat),\($0.lon),\($0.temperature ?? -999)" }.joined(separator: ";")
+        if coordinator.stationKey != stationKey {
+            map.removeAnnotations(coordinator.stationPins)
+            let pins: [MKPointAnnotation] = stations.compactMap { st in
+                guard let temp = st.temperature else { return nil }
+                let a = MKPointAnnotation()
+                a.coordinate = CLLocationCoordinate2D(latitude: st.lat, longitude: st.lon)
+                let tStr = WeatherFormat.temperature(temp)
+                if let rain = st.rain_60min, rain > 0 {
+                    a.title = "\(tStr) · \(String(format: "%.1f", rain)) mm"
+                } else {
+                    a.title = tStr
+                }
+                a.subtitle = st.city ?? "Home station"
+                return a
+            }
+            map.addAnnotations(pins)
+            coordinator.stationPins = pins
+            coordinator.stationKey = stationKey
+        }
+        let ringKey = rings ? RadarRings.radii().map(\.label).joined(separator: ",") : "" 
         if coordinator.ringsShown != ringKey {
             map.removeOverlays(coordinator.ringOverlays)
             map.removeAnnotations(coordinator.ringLabels)
@@ -671,6 +695,8 @@ private struct RadarMap: UIViewRepresentable {
         var extraOverlays: [MKTileOverlay] = []
         var extraOpacity: [ObjectIdentifier: CGFloat] = [:]
         var ringsShown: String?
+        var stationPins: [MKPointAnnotation] = []
+        var stationKey = ""
         var ringOverlays: [MKCircle] = []
         fileprivate var ringLabels: [RingLabel] = []
         var ringCenter = CLLocationCoordinate2D()

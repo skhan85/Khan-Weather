@@ -12,6 +12,7 @@ struct ModelComparisonView: View {
     @State private var rows: [ModelDay] = []
     @State private var failed = false
     @State private var loading = true
+    @State private var externalSources: [RelayConsensus.Source] = []
 
     private var usedModel: WeatherModel { .usedForTemperatures(at: location) }
 
@@ -28,6 +29,32 @@ struct ModelComparisonView: View {
                                        description: Text("Check your connection and try again."))
                     .glassRow()
             } else {
+                if !externalSources.isEmpty {
+                    Section {
+                        ForEach(externalSources) { src in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(src.provider).font(.subheadline.weight(.semibold))
+                                    if let cond = src.condition {
+                                        Text(cond).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                VStack(alignment: .trailing, spacing: 2) {
+                                    Text("Now \(WeatherFormat.temperature(src.temperature))")
+                                        .font(.subheadline.weight(.semibold)).monospacedDigit()
+                                    if let hi = src.high, let lo = src.low {
+                                        Text("\(WeatherFormat.temperature(hi)) / \(WeatherFormat.temperature(lo))")
+                                            .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                                    }
+                                }
+                            }
+                        }
+                    } header: {
+                        SkySectionHeader(title: "Other weather services", systemImage: "globe")
+                    }
+                    .glassRow()
+                }
                 if let summary = agreement {
                     Section {
                         HStack(spacing: 10) {
@@ -130,11 +157,13 @@ struct ModelComparisonView: View {
         do {
             var calendar = Calendar(identifier: .gregorian)
             calendar.timeZone = timeZone
+            async let extTask = RelayExtrasProvider().consensus(near: location)
             let sameDay = try await ModelComparisonProvider().days(at: location)
                 .filter { calendar.isDate($0.date, inSameDayAs: day.date) }
             let used = usedModel
             let ordered = sameDay.filter { $0.model == used } + sameDay.filter { $0.model != used }
             rows = ModelComparisonProvider.showingApp(ordered, appDays: [day] + appDays, used: used, timeZone: timeZone)
+            externalSources = await extTask?.sources ?? []
             failed = rows.isEmpty
         } catch {
             failed = true

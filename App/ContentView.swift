@@ -220,6 +220,13 @@ private struct ForecastList: View {
                                         shownTemperature: forecast.current.temperature)
         }
         .fontDesign(.rounded)
+        .task(id: forecast.fetchedAt) {
+            let storms = forecast.current.condition.isPrecipitation
+                || forecast.current.condition == .thunderstorm
+                || forecast.radar?.isPrecipitating == true
+            let cold = forecast.current.temperature <= 3
+            hazards = await RelayExtrasProvider().hazards(near: forecast.location, storms: storms, cold: cold)
+        }
     }
 
     private func column<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
@@ -241,8 +248,19 @@ private struct ForecastList: View {
         .glassRow()
     }
 
+    @State private var hazards: RelayHazards?
+
     /// Alerts, now, the next hours: the left column on iPad.
     @ViewBuilder private var nowSections: some View {
+            if let banners = hazards?.banners, !banners.isEmpty {
+                Section {
+                    ForEach(banners) { b in
+                        Label(b.text, systemImage: b.icon)
+                            .font(.footnote.weight(.semibold))
+                    }
+                }
+                .glassRow()
+            }
             if usingFallbackLocation {
                 Section {
                     Label("Location is off, so this shows Toronto. Turn on location in Settings for weather where you are.",
