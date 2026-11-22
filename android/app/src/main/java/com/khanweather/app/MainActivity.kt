@@ -57,6 +57,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         val widgetPreview = intent?.getBooleanExtra("widgetPreview", false) == true
+        // CI: open straight onto the full radar map.
+        val radarScreen = intent?.getBooleanExtra("radarScreen", false) == true
         // CI screenshots: `--es units us` answers the first-launch question.
         intent?.getStringExtra("units")?.let { name ->
             UnitPreset.entries.firstOrNull { it.name == name }?.let { Prefs.saveUnits(it.settings); Prefs.unitsChosen = true }
@@ -65,15 +67,15 @@ class MainActivity : ComponentActivity() {
             if (widgetPreview) Box(Modifier.fillMaxSize()) {
                 SkyBackground(WeatherCondition.overcast, true)
                 Box(Modifier.systemBarsPadding()) { com.khanweather.app.widget.WidgetPreviewScreen() }
-            } else App(model)
+            } else App(model, startOnRadar = radarScreen)
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun App(model: WeatherViewModel) {
-    var stack by remember { mutableStateOf(listOf<Screen>(Screen.Main)) }
+fun App(model: WeatherViewModel, startOnRadar: Boolean = false) {
+    var stack by remember { mutableStateOf(if (startOnRadar) listOf(Screen.Main, Screen.Radar) else listOf<Screen>(Screen.Main)) }
     var selectedId by remember { mutableStateOf(Prefs.selectedPlaceId?.takeIf { id -> Prefs.places.any { it.id == id } }) }
     var settingsVersion by remember { mutableIntStateOf(0) }
     var unitsChosen by remember { mutableStateOf(Prefs.unitsChosen) }
