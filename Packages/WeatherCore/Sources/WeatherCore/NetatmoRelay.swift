@@ -137,7 +137,7 @@ public struct HyperlocalObservationProvider: ObservationProvider {
             // 9.9, 9.5 and 16.4° while Campbellville read 6°). Keep the ones that agree with the
             // official station rather than dropping every home station; if none do, it wins.
             let agreeing = (local.stationTemperatures ?? []).filter { abs($0 - base.temperature) <= limit }
-            guard !agreeing.isEmpty else { return base }
+            guard agreeing.count >= min(2, (local.stationTemperatures ?? []).count), !agreeing.isEmpty else { return base }
             let v = Array(agreeing.prefix(3)).sorted()
             let mid = v.count % 2 == 1 ? v[v.count / 2] : (v[v.count / 2 - 1] + v[v.count / 2]) / 2
             local.temperature = (mid * 10).rounded() / 10

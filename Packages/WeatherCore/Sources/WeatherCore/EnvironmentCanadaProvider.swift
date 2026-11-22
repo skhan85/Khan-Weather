@@ -64,7 +64,7 @@ public struct Observation: Equatable, Codable, Sendable {
 
     /// Stations closer than this stand in for the user's own spot: temperature, wind and feels-like.
     /// Farther ones only tell us what the sky is doing (rain, snow, fog).
-    public static let localRadiusKm: Double = 15
+    public static let localRadiusKm: Double = 10
 
     public var isLocal: Bool { (distanceKm ?? 0) <= Self.localRadiusKm }
 }
