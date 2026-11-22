@@ -1,5 +1,8 @@
 import Foundation
 import WeatherCore
+#if canImport(WidgetKit)
+import WidgetKit
+#endif
 
 /// Loads the forecast for the user's location. Used by the iPhone/iPad app.
 @MainActor
@@ -196,6 +199,9 @@ final class WeatherViewModel: ObservableObject {
         }
         guard gen == generation, case .loaded(let shown) = state else { return }
         cache[key] = Snapshot(forecast: shown, name: placeName, alerts: alerts, airQuality: airQuality, at: Date())
+        #if canImport(WidgetKit)
+        if place == nil { WidgetCenter.shared.reloadAllTimelines() }
+        #endif
         Self.saveDiskCache(shown, for: key)
     }
 

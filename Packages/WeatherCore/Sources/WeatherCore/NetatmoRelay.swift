@@ -48,7 +48,7 @@ public struct NetatmoRelayProvider: ObservationProvider {
     }
 
     /// How far out to look for stations to make up three when fewer are within the radius.
-    static let fillRadiusKm: Double = 12
+    static let fillRadiusKm: Double = 10
 
     /// Degrees from the neighbourhood median beyond which a station is ignored.
     static let outlierLimit: Double = 2.5
