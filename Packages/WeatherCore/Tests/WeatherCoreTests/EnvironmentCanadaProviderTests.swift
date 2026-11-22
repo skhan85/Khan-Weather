@@ -110,7 +110,8 @@ final class EnvironmentCanadaProviderTests: XCTestCase {
 
     func testApplyingObservationOverridesNowOnly() throws {
         let forecast = try OpenMeteoProvider.parse(OpenMeteoProviderTests.sample, fetchedAt: now)
-        let o = try XCTUnwrap(EnvironmentCanadaProvider.parse(Self.sample, near: mississauga, now: now,
+        let nearPearson = Coordinate(latitude: 43.65, longitude: -79.63)
+        let o = try XCTUnwrap(EnvironmentCanadaProvider.parse(Self.sample, near: nearPearson, now: now,
                                                               maxDistanceKm: 60, maxAge: 3 * 3600))
         let merged = forecast.applying(o)
         XCTAssertEqual(merged.current.temperature, 4.0)
