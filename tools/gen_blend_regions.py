@@ -11,7 +11,7 @@ import json, os, sys
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Packages", "WeatherCore")
 ORDER = ["germany", "europeAI", "europe", "uk", "canada", "canadaHighRes", "us", "usHighRes", "usBlend",
-         "europeHighRes", "france", "netherlands", "denmark", "japan", "china"]
+         "europeHighRes", "france", "netherlands", "denmark"]
 
 
 def day(d):

@@ -443,14 +443,17 @@ def main():
                 if v:
                     day[f"held_out_{k2}"] = round(sum(a * b for a, b in v) / sum(a for a, _ in v), 3)
             res["days"].append(day)
-            if "held_out_region" in day and day["held_out_region"] < day["held_out_global"] * 0.99:
-                wins += 1
-            own.append(w_all)
-        # Keep the region's own weights only if they beat the worldwide ones on most days.
-        res["own_weights"] = rid != "global" and len(icaos) >= MIN_STATIONS and wins >= 4
+            # A day keeps the region's own weights only where they beat the worldwide ones by
+            # at least 1% at airports left out of the fit; otherwise that day uses the worldwide.
+            won = (rid != "global" and len(icaos) >= MIN_STATIONS and "held_out_region" in day
+                   and day["held_out_region"] < day["held_out_global"] * 0.99)
+            day["own"] = won
+            wins += won
+            own.append(w_all if won else global_w[n])
+        res["own_weights"] = wins > 0
         res["days_won"] = wins
         if rid != "global":
-            table[rid] = own if res["own_weights"] else global_w
+            table[rid] = own
         report["regions"][rid] = res
 
     # Against best_match (Previous Runs archive: each model's latest run as "day 0").
@@ -481,22 +484,24 @@ def main():
         won = sum(1 for v in res["vs_best_match"].values() if v["blend"] < v["best_match"])
         res["blend_beats_best_match"] = won >= 2
 
-    def covering(rid):
-        """Models that cover the region (asked for there; all vote on rain or snow)."""
+    def covering(rid, weights):
+        """Models asked for in the region: the ones that cover it, and any it weights."""
         ms = set()
         for day in report["regions"].get(rid, {}).get("days", []):
             ms.update(day.get("members", []))
-        return [NAMES[m] for m in ALL if m in ms] or [NAMES[m] for m in CORE]
+        for d in weights:
+            ms.update(d)
+        return [NAMES[m] for m in ALL if m in ms]
 
     out = {"regions": [], "global": {"useBlend": report["regions"].get("global", {}).get("blend_beats_best_match", False),
-                                     "models": [NAMES[m] for m in CORE],
+                                     "models": covering("__none__", [dict.fromkeys(CORE)] + global_w),
                                      "byDay": [{NAMES[m]: round(w, 3) for m, w in d.items()} for d in global_w]}}
     for rid, name, boxes in REGIONS:
         rr = report["regions"].get(rid, {})
         out["regions"].append({"id": rid, "name": name, "boxes": boxes,
                                "ownWeights": rr.get("own_weights", False),
                                "useBlend": rr.get("blend_beats_best_match", False),
-                               "models": covering(rid),
+                               "models": covering(rid, table[rid]),
                                "byDay": [{NAMES[m]: round(w, 3) for m, w in d.items()} for d in table[rid]]})
     with open("region-weights.json", "w") as f:
         json.dump(out, f, indent=1)
