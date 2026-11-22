@@ -65,7 +65,7 @@ object Outlook {
 
     /**
      * From 4 pm until 4 am, while it's still getting colder: "Cooling to a low of 3° by 6 am.",
-     * with the same low as the Now card's high/low chip, at the coldest hour on the hourly curve.
+     * with the same low as the Now card's high/low chip, by the hour the hourly curve first reaches its coldest number.
      */
     const val eveningStartHour = 16
     const val nightEndHour = 4
@@ -78,8 +78,10 @@ object Outlook {
         val low = forecast.displayDay(date)?.low ?: return null
         if (shown(low) >= nowShown) return null
         val end = tonightEnd(date, calendar)
-        val coldest = forecast.hoursStartingNow(date, 24).filter { it.time > date && it.time <= end }
-            .minByOrNull { it.temperature } ?: return null
+        val tonight = forecast.hoursStartingNow(date, 24).filter { it.time > date && it.time <= end }
+        // The first hour that reaches the coldest number the curve shows: "by" that hour.
+        val coldestShown = tonight.minOfOrNull { shown(it.temperature) } ?: return null
+        val coldest = tonight.first { shown(it.temperature) == coldestShown }
         return "Cooling to a low of ${WeatherFormat.temperature(low)} by ${hourText(coldest.time)}."
     }
 

@@ -60,13 +60,13 @@ final class OutlookTests: XCTestCase {
     func testLateEveningGivesTonightsLowNotTomorrowsHigh() {
         let f = forecast(startHour: 21, temps: lateEvening, high: 14, low: 7)
         XCTAssertEqual(f.displayDay(at: local(21))?.low, 3.3)
-        XCTAssertEqual(Outlook.text(f, at: local(21), hourText: hourText), "Cooling to a low of 3° by 6 am.")
+        XCTAssertEqual(Outlook.text(f, at: local(21), hourText: hourText), "Cooling to a low of 3° by 5 am.")
     }
 
     func testMorningGoesBackToTheWarmUp() {
-        let f = forecast(startHour: 21, temps: lateEvening, high: 14, low: 7)
         // At 5 am the night is over: back to the day's warm-up.
-        XCTAssertEqual(Outlook.text(f, at: local(29), hourText: hourText), "Warming to 16° by 2 pm.")
+        let f = forecast(startHour: 5, temps: Array(lateEvening.dropFirst(8)), high: 16, low: 7)
+        XCTAssertEqual(Outlook.text(f, at: local(5), hourText: hourText), "Warming to a high of 16° by 2 pm.")
     }
 
     func testNightWithNoFurtherDropFallsBack() {

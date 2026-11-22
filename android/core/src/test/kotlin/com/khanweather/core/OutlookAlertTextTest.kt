@@ -77,11 +77,12 @@ class OutlookTest {
     @Test fun lateEveningGivesTonightsLow() {
         val f = forecast(21, lateEvening, 14.0, 7.0)
         assertEquals(3.3, f.displayDay(local(21))?.low)
-        assertEquals("Cooling to a low of 3° by 6 am.", Outlook.text(f, local(21), ::hourText))
+        assertEquals("Cooling to a low of 3° by 5 am.", Outlook.text(f, local(21), ::hourText))
     }
 
+    // 5 am: the night is over, back to the day's warm-up.
     @Test fun afterNightBackToWarmUp() =
-        assertEquals("Warming to 16° by 2 pm.", Outlook.text(forecast(21, lateEvening, 14.0, 7.0), local(29), ::hourText))
+        assertEquals("Warming to a high of 16° by 2 pm.", Outlook.text(forecast(5, lateEvening.drop(8), 16.0, 7.0), local(5), ::hourText))
 
     @Test fun nightWithNoFurtherDropFallsBack() {
         val temps = listOf(3.0, 3.2, 3.4, 3.6, 3.8, 4.0, 4.2, 4.4, 4.6, 5.0, 6.0, 8.0, 10.0, 12.0, 14.0, 15.0, 16.0, 16.0, 15.0)

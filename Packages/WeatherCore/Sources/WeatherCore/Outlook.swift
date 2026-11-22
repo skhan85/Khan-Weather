@@ -83,7 +83,7 @@ public enum Outlook {
     }
 
     /// From 4 pm until 4 am, while it's still getting colder: "Cooling to a low of 3° by 6 am.",
-    /// with the same low as the Now card's high/low chip, at the coldest hour on the hourly curve.
+    /// with the same low as the Now card's high/low chip, by the hour the hourly curve first reaches its coldest number.
     static let eveningStartHour = 16
     static let nightEndHour = 4
 
@@ -97,7 +97,9 @@ public enum Outlook {
               let low = forecast.displayDay(at: date)?.low, shown(low) < nowShown else { return nil }
         let end = tonightEnd(date, calendar)
         let tonight = forecast.hoursStartingNow(from: date, count: 24).filter { $0.time > date && $0.time <= end }
-        guard let coldest = tonight.min(by: { $0.temperature < $1.temperature }) else { return nil }
+        // The first hour that reaches the coldest number the curve shows: "by" that hour.
+        guard let coldestShown = tonight.map({ shown($0.temperature) }).min(),
+              let coldest = tonight.first(where: { shown($0.temperature) == coldestShown }) else { return nil }
         return "Cooling to a low of \(WeatherFormat.temperature(low)) by \(hourText(coldest.time))."
     }
 
