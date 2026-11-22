@@ -337,7 +337,7 @@ public extension Forecast {
             let name = o.skyStationName ?? o.stationName
             let km = o.skyStationName == nil ? o.distanceKm : o.skyDistanceKm
             copy.skySource = WeatherFormat.plainStationName(name)
-                + (WeatherFormat.distance(km.map { $0 >= 1 ? $0.rounded() : $0 }).map { ", \($0) away" } ?? "")
+                + (km.map { ", \(WeatherFormat.roughDistance($0)) away" } ?? "")
         }
         // A home station far from both its neighbours' official reading and the model is more
         // likely sitting in the sun than right; keep only its sky.

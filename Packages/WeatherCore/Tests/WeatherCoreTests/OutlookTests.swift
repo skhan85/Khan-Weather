@@ -52,6 +52,29 @@ final class OutlookTests: XCTestCase {
         XCTAssertEqual(Outlook.text(f, at: local(4), hourText: hourText), "Warming to 15° by 1 pm.")
     }
 
+    // 9 pm, 5°: the screenshot case. Tomorrow warms to 16° by 2 pm, but at night the sentence
+    // should give tonight's low instead, the same number as the high/low chip.
+    private let lateEvening: [Double] = [5, 4.8, 4.6, 4.4, 4.2, 4, 3.8, 3.6, 3.4, 3.3, 3.5, 4.5, 7, 10, 12.5,
+                                         14.5, 15.2, 16, 15.5]
+
+    func testLateEveningGivesTonightsLowNotTomorrowsHigh() {
+        let f = forecast(startHour: 21, temps: lateEvening, high: 14, low: 7)
+        XCTAssertEqual(f.displayDay(at: local(21))?.low, 3.3)
+        XCTAssertEqual(Outlook.text(f, at: local(21), hourText: hourText), "Cooling to a low of 3° by 5 am.")
+    }
+
+    func testMorningGoesBackToTheWarmUp() {
+        // At 5 am the night is over: back to the day's warm-up.
+        let f = forecast(startHour: 5, temps: Array(lateEvening.dropFirst(8)), high: 16, low: 7)
+        XCTAssertEqual(Outlook.text(f, at: local(5), hourText: hourText), "Warming to a high of 16° by 2 pm.")
+    }
+
+    func testNightWithNoFurtherDropFallsBack() {
+        let temps: [Double] = [3, 3.2, 3.4, 3.6, 3.8, 4, 4.2, 4.4, 4.6, 5, 6, 8, 10, 12, 14, 15, 16, 16, 15]
+        let f = forecast(startHour: 21, temps: temps, high: 14, low: 7)
+        XCTAssertEqual(Outlook.text(f, at: local(21), hourText: hourText), "Warming to 16° by 1 pm.")
+    }
+
     func testEveningCoolingReachesTonightsLow() {
         let temps: [Double] = [11, 10, 9, 8, 7, 6.4, 5.6, 5, 4.6, 4.3, 4.1, 3.9, 4, 4.5, 5.5, 7, 9, 10, 11]
         let f = forecast(startHour: 18, temps: temps, high: 15, low: 7)

@@ -88,7 +88,7 @@ public struct HourlyForecast: Equatable, Codable, Sendable, Identifiable {
     public var visibility: Double?
     /// Sea-level pressure, hPa.
     public var pressure: Double?
-    // How the models in the blend see this hour (North America only).
+    // How the models in the blend see this hour (where the blend is used, see BlendRegion).
     /// Coldest and warmest model temperature, °C.
     public var modelLow: Double?
     public var modelHigh: Double?

@@ -284,7 +284,7 @@ struct SourcesView: View {
                     }
                     if let gauges = o.rainGauges, gauges > 0 {
                         let rainText = (o.rainLastHourMm ?? 0) > 0
-                            ? String(format: "%.1f mm in last hr (%d gauge%@)", o.rainLastHourMm ?? 0, gauges, gauges == 1 ? "" : "s")
+                            ? "\(WeatherFormat.rainAmount(o.rainLastHourMm ?? 0)) in last hr (\(gauges) gauge\(gauges == 1 ? "" : "s"))"
                         : "Dry (\(gauges) gauge\(gauges == 1 ? "" : "s"))"
                         LabeledContent("Rain gauges", value: rainText)
                     }

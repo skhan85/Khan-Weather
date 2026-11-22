@@ -13,11 +13,14 @@ final class ModelComparisonTests: XCTestCase {
           "weather_code_ecmwf_ifs025":[3,null],"temperature_2m_max_ecmwf_ifs025":[3.5,null],"temperature_2m_min_ecmwf_ifs025":[0.0,null],
           "weather_code_icon_seamless":[3,61],"temperature_2m_max_icon_seamless":[3.1,6.4],"temperature_2m_min_icon_seamless":[-0.2,1.1]}}
         """#
-        let days = try ModelComparisonProvider.parse(Data(json.utf8))
+        let first: [WeatherModel: Double] = [.canada: 0.15, .europe: 0.20, .germany: 0.30]
+        let region = BlendRegion(id: "test", name: "Test", boxes: [], useBlend: true,
+                                 models: [.canada, .us, .europe, .germany], byDay: Array(repeating: first, count: 6))
+        let days = try ModelComparisonProvider.parse(Data(json.utf8), region: region)
         XCTAssertEqual(days.filter { $0.model != .blend }.count, 9, "ECMWF's missing second day is dropped")
         let blend = days.filter { $0.model == .blend }
         XCTAssertEqual(blend.count, 2)
-        // Day 1 (today's weights): GEM 0.15, ECMWF 0.20, ICON 0.30, GFS 0.
+        // Day 1 (the test region's weights): GEM 0.15, ECMWF 0.20, ICON 0.30, GFS 0.
         let weighted: Double = 2.9 * 0.15 + 3.5 * 0.20 + 3.1 * 0.30
         let expected: Double = weighted / 0.65
         XCTAssertEqual(try XCTUnwrap(blend[0].high), expected, accuracy: 0.001)
@@ -40,8 +43,10 @@ final class ModelComparisonTests: XCTestCase {
         XCTAssertEqual(days.map(\.model), [.canada, .blend])
     }
 
-    func testNorthAmericaUsesBlend() {
+    func testTheBlendIsUsedWhereItBeatBestMatch() {
         XCTAssertEqual(WeatherModel.usedForTemperatures(at: Coordinate(latitude: 43.52, longitude: -79.88)), .blend)
-        XCTAssertEqual(WeatherModel.usedForTemperatures(at: Coordinate(latitude: 51.5, longitude: -0.12)), .bestMatch)
+        // Scored at airports worldwide, the blend beat best match in every region.
+        XCTAssertEqual(WeatherModel.usedForTemperatures(at: Coordinate(latitude: 51.5, longitude: -0.12)), .blend)
+        XCTAssertEqual(WeatherModel.usedForTemperatures(at: Coordinate(latitude: 24.86, longitude: 67.0)), .blend)
     }
 }
