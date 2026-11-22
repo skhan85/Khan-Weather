@@ -50,6 +50,10 @@ public enum Outlook {
             return "\(wet.precipitationKind.noun.capitalized) likely around \(hourText(wet.time))."
         }
         let nowShown = shown(now.temperature)
+        // Evening and night: tonight's low matters more than tomorrow afternoon's high.
+        if let night = overnightLow(forecast, at: date, nowShown: nowShown, hourText: hourText) {
+            return night
+        }
         let peak = turningPoint(now: nowShown, later: later, rising: true)
         let trough = turningPoint(now: nowShown, later: later, rising: false)
         let warmDelta = peak.map { shown($0.temperature) - nowShown } ?? 0
@@ -76,6 +80,25 @@ public enum Outlook {
         let typical = counts.max { $0.value < $1.value || ($0.value == $1.value && $0.key > $1.key) }?.key ?? nowShown
         let typicalHour = near.first(where: { shown($0.temperature) == typical }) ?? last
         return "Steady around \(WeatherFormat.temperature(typicalHour.temperature)) for the next few hours."
+    }
+
+    /// From 4 pm until 4 am, while it's still getting colder: "Cooling to a low of 3° by 6 am.",
+    /// with the same low as the Now card's high/low chip, at the coldest hour on the hourly curve.
+    static let eveningStartHour = 16
+    static let nightEndHour = 4
+
+    private static func overnightLow(_ forecast: Forecast, at date: Date, nowShown: Int,
+                                      hourText: (Date) -> String) -> String? {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = forecast.timeZone
+        let hour = calendar.component(.hour, from: date)
+        guard hour >= eveningStartHour || hour < nightEndHour,
+              forecast.tonightLow(from: date) != nil,
+              let low = forecast.displayDay(at: date)?.low, shown(low) < nowShown else { return nil }
+        let end = tonightEnd(date, calendar)
+        let tonight = forecast.hoursStartingNow(from: date, count: 24).filter { $0.time > date && $0.time <= end }
+        guard let coldest = tonight.min(by: { $0.temperature < $1.temperature }) else { return nil }
+        return "Cooling to a low of \(WeatherFormat.temperature(low)) by \(hourText(coldest.time))."
     }
 
     /// 9 am tomorrow (or today, before 6 am): the end of "tonight", matching `tonightLow`.

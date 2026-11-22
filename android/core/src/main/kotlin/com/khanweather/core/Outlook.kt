@@ -36,6 +36,8 @@ object Outlook {
             return "${wet.precipitationKind.noun.replaceFirstChar { it.uppercase() }.capitalizeWords()} likely around ${hourText(wet.time)}."
         }
         val nowShown = shown(now.temperature)
+        // Evening and night: tonight's low matters more than tomorrow afternoon's high.
+        overnightLow(forecast, date, nowShown, hourText)?.let { return it }
         val peak = turningPoint(nowShown, later, true)
         val trough = turningPoint(nowShown, later, false)
         val warmDelta = peak?.let { shown(it.temperature) - nowShown } ?: 0
@@ -59,6 +61,26 @@ object Outlook {
             .firstOrNull()?.key ?: nowShown
         val typicalHour = near.firstOrNull { shown(it.temperature) == typical } ?: last
         return "Steady around ${WeatherFormat.temperature(typicalHour.temperature)} for the next few hours."
+    }
+
+    /**
+     * From 4 pm until 4 am, while it's still getting colder: "Cooling to a low of 3° by 6 am.",
+     * with the same low as the Now card's high/low chip, at the coldest hour on the hourly curve.
+     */
+    const val eveningStartHour = 16
+    const val nightEndHour = 4
+
+    private fun overnightLow(forecast: Forecast, date: Epoch, nowShown: Int, hourText: (Epoch) -> String): String? {
+        val calendar = forecast.cal
+        val hour = calendar.hour(date)
+        if (hour < eveningStartHour && hour >= nightEndHour) return null
+        if (forecast.tonightLow(date) == null) return null
+        val low = forecast.displayDay(date)?.low ?: return null
+        if (shown(low) >= nowShown) return null
+        val end = tonightEnd(date, calendar)
+        val coldest = forecast.hoursStartingNow(date, 24).filter { it.time > date && it.time <= end }
+            .minByOrNull { it.temperature } ?: return null
+        return "Cooling to a low of ${WeatherFormat.temperature(low)} by ${hourText(coldest.time)}."
     }
 
     private fun tonightEnd(date: Epoch, calendar: Cal): Epoch {

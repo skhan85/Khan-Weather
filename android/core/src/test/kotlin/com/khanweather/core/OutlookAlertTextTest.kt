@@ -71,6 +71,23 @@ class OutlookTest {
     @Test fun notCalledHighWhenDiffers() =
         assertEquals("Warming to 15° by 1 pm.", Outlook.text(forecast(4, early, 17.0, 7.0), local(4), ::hourText))
 
+    val lateEvening = listOf(5.0, 4.8, 4.6, 4.4, 4.2, 4.0, 3.8, 3.6, 3.4, 3.3, 3.5, 4.5, 7.0, 10.0, 12.5,
+        14.5, 15.2, 16.0, 15.5)
+
+    @Test fun lateEveningGivesTonightsLow() {
+        val f = forecast(21, lateEvening, 14.0, 7.0)
+        assertEquals(3.3, f.displayDay(local(21))?.low)
+        assertEquals("Cooling to a low of 3° by 6 am.", Outlook.text(f, local(21), ::hourText))
+    }
+
+    @Test fun afterNightBackToWarmUp() =
+        assertEquals("Warming to 16° by 2 pm.", Outlook.text(forecast(21, lateEvening, 14.0, 7.0), local(29), ::hourText))
+
+    @Test fun nightWithNoFurtherDropFallsBack() {
+        val temps = listOf(3.0, 3.2, 3.4, 3.6, 3.8, 4.0, 4.2, 4.4, 4.6, 5.0, 6.0, 8.0, 10.0, 12.0, 14.0, 15.0, 16.0, 16.0, 15.0)
+        assertEquals("Warming to 16° by 1 pm.", Outlook.text(forecast(21, temps, 14.0, 7.0), local(21), ::hourText))
+    }
+
     @Test fun eveningCooling() {
         val temps = listOf(11.0, 10.0, 9.0, 8.0, 7.0, 6.4, 5.6, 5.0, 4.6, 4.3, 4.1, 3.9, 4.0, 4.5, 5.5, 7.0, 9.0, 10.0, 11.0)
         val f = forecast(18, temps, 15.0, 7.0)
