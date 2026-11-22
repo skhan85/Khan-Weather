@@ -42,7 +42,8 @@ EXTRAS = {
     "na_east": ["ncep_nbm_conus", "ecmwf_ifs"],
     "na_west": ["ncep_nbm_conus", "ecmwf_ifs"],
     "europe": ["meteofrance_seamless", "knmi_seamless", "dmi_seamless", "ecmwf_ifs"],
-    "east_asia": ["jma_seamless", "cma_grapes_global", "ecmwf_ifs"],
+    # JMA's (jma_msm) and CMA's single-run archives have gaps that fail whole calls; not tried.
+    "east_asia": ["ecmwf_ifs"],
 }
 DEFAULT_EXTRAS = ["ecmwf_ifs"]
 EXTRA_MODELS = ["ncep_nbm_conus", "ecmwf_ifs", "meteofrance_seamless", "knmi_seamless", "dmi_seamless",
@@ -143,7 +144,7 @@ def fetch(url, name, units=1.0, kind="json"):
             pace(units)
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "khan-weather-verify"})
-            with urllib.request.urlopen(req, timeout=90) as r:
+            with urllib.request.urlopen(req, timeout=30) as r:
                 body = r.read().decode()
             with open(path, "w") as f:
                 f.write(body)

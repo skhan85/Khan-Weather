@@ -10,9 +10,6 @@ import Foundation
 /// The first weights (Pearson and Hamilton only, tools/score_models.py, score_leads.py,
 /// score_forward.py) are kept in tools/score_regions.py as the "milton" baseline it scores against.
 public enum ModelBlend {
-    public static let members: [WeatherModel] = [
-        .canadaHighRes, .usHighRes, .canada, .europe, .europeAI, .germany, .uk, .us,
-    ]
 
     /// How many hours ahead a live station reading re-weights the models.
     static let liveWeightHours: Double = 6
@@ -48,7 +45,7 @@ public enum ModelBlend {
                              region: BlendRegion = .home,
                              observedTemperature: Double? = nil,
                              currentModelTemps: [WeatherModel: Double]? = nil) -> Double? {
-        let present = values.filter { members.contains($0.key) }
+        let present = values.filter { region.models.contains($0.key) }
         guard !present.isEmpty else { return nil }
 
         let liveShare: Double

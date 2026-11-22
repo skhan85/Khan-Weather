@@ -60,23 +60,32 @@ public struct OpenMeteoProvider: ForecastProvider {
     }
 
     /// Blended hourly temperatures. nil if the request fails, so the default stays.
+    /// If the region's own models are refused (say a regional model has no data at a spot near
+    /// the edge of its area), it tries again with the worldwide models and weights.
     func blendedTemperatures(for coordinate: Coordinate,
                              anchor: @Sendable () async -> ModelBlend.Anchor? = { nil }) async -> ModelTemperatures? {
-        let request = URLRequest(url: blendURL(for: coordinate), timeoutInterval: 15)
-        guard let (data, response) = try? await loader(request) else { return nil }
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { return nil }
-        let observed = await anchor()
-        return try? Self.parseBlend(data, region: BlendRegion.at(coordinate), anchor: observed, now: Date())
+        let region = BlendRegion.at(coordinate)
+        var tries = [region]
+        if region != .fallback { tries.append(.fallback) }
+        for r in tries {
+            let request = URLRequest(url: blendURL(for: coordinate, region: r), timeoutInterval: 15)
+            guard let (data, response) = try? await loader(request) else { return nil }
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { continue }
+            let observed = await anchor()
+            return try? Self.parseBlend(data, region: r, anchor: observed, now: Date())
+        }
+        return nil
     }
 
-    func blendURL(for coordinate: Coordinate) -> URL {
+    func blendURL(for coordinate: Coordinate, region: BlendRegion? = nil) -> URL {
+        let region = region ?? BlendRegion.at(coordinate)
         let c = coordinate.rounded
         var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "latitude", value: String(c.latitude)),
             URLQueryItem(name: "longitude", value: String(c.longitude)),
             URLQueryItem(name: "hourly", value: "temperature_2m,apparent_temperature,precipitation,snowfall"),
-            URLQueryItem(name: "models", value: ModelBlend.members.map(\.rawValue).joined(separator: ",")),
+            URLQueryItem(name: "models", value: region.models.map(\.rawValue).joined(separator: ",")),
             URLQueryItem(name: "timezone", value: "auto"),
             URLQueryItem(name: "timeformat", value: "unixtime"),
             URLQueryItem(name: "forecast_days", value: String(forecastDays)),
@@ -130,10 +139,10 @@ public struct OpenMeteoProvider: ForecastProvider {
         func series(_ field: String, _ model: WeatherModel) -> [Double?] {
             ((hourly["\(field)_\(model.rawValue)"] as? [Any]) ?? []).map { ($0 as? NSNumber)?.doubleValue }
         }
-        let temps = Dictionary(uniqueKeysWithValues: ModelBlend.members.map { ($0, series("temperature_2m", $0)) })
-        let feels = Dictionary(uniqueKeysWithValues: ModelBlend.members.map { ($0, series("apparent_temperature", $0)) })
-        let precip = Dictionary(uniqueKeysWithValues: ModelBlend.members.map { ($0, series("precipitation", $0)) })
-        let snow = Dictionary(uniqueKeysWithValues: ModelBlend.members.map { ($0, series("snowfall", $0)) })
+        let temps = Dictionary(uniqueKeysWithValues: region.models.map { ($0, series("temperature_2m", $0)) })
+        let feels = Dictionary(uniqueKeysWithValues: region.models.map { ($0, series("apparent_temperature", $0)) })
+        let precip = Dictionary(uniqueKeysWithValues: region.models.map { ($0, series("precipitation", $0)) })
+        let snow = Dictionary(uniqueKeysWithValues: region.models.map { ($0, series("snowfall", $0)) })
 
         let nowEpoch = now.timeIntervalSince1970
         let observedTemperature = anchor?.temperature

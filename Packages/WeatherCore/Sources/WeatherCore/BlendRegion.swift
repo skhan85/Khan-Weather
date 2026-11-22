@@ -25,6 +25,9 @@ public struct BlendRegion: Equatable, Sendable {
     public var boxes: [Box]
     /// Whether the blend beat best match here (else the app keeps best match's temperatures).
     public var useBlend: Bool
+    /// The models asked for here: the ones that cover the region. All of them vote on rain or
+    /// snow and the chance of rain; those with a weight make the temperatures.
+    public var models: [WeatherModel]
     /// Weights by forecast day, centred at lead hours 12, 36, 60, 84, 108 and 132.
     public var byDay: [[WeatherModel: Double]]
 
