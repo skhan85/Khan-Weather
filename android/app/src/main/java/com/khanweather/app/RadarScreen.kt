@@ -55,6 +55,7 @@ fun RadarCard(center: Coordinate, onOpen: () -> Unit) {
 private fun RadarWebView(center: Coordinate, card: Boolean, modifier: Modifier) {
     val twelve = Prefs.clock != "twentyFourHour"
     val miles = UnitSettings.current.distance == DistanceUnit.mi
+    val fahr = UnitSettings.current.temperature.convert(0.0) > 1.0
     AndroidView(modifier = modifier, factory = { ctx ->
         WebView(ctx).apply {
             settings.javaScriptEnabled = true
@@ -69,7 +70,7 @@ private fun RadarWebView(center: Coordinate, card: Boolean, modifier: Modifier) 
                 }
             }
             setBackgroundColor(android.graphics.Color.parseColor("#1b2636"))
-            val html = radarHtml(center, twelve, miles, card, radarCovers(center))
+            val html = radarHtml(center, twelve, miles, fahr, card, radarCovers(center))
             // Load once the view has its real size: a map started at 0×0 draws no tiles.
             var loaded = false
             fun loadIfSized() {
@@ -83,7 +84,7 @@ private fun RadarWebView(center: Coordinate, card: Boolean, modifier: Modifier) 
     })
 }
 
-private fun radarHtml(c: Coordinate, twelve: Boolean, miles: Boolean, card: Boolean, covered: Boolean) = """
+private fun radarHtml(c: Coordinate, twelve: Boolean, miles: Boolean, fahr: Boolean, card: Boolean, covered: Boolean) = """
 <!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
@@ -115,6 +116,7 @@ private fun radarHtml(c: Coordinate, twelve: Boolean, miles: Boolean, card: Bool
  #badge{position:absolute;top:8px;left:8px;z-index:1000;color:#fff;font-size:12px;font-weight:700;padding:4px 8px;border-radius:10px;background:rgba(0,0,0,.55);font-variant-numeric:tabular-nums}
  #badge.fc{background:rgba(255,140,0,.85)}
  .ring{color:#fff;font-size:11px;font-weight:700;background:rgba(0,0,0,.55);border-radius:6px;padding:1px 5px;white-space:nowrap}
+ .pws{background:rgba(20,24,32,.88);color:#fff;border:1.5px solid #ffc752;border-radius:10px;padding:1px 6px;font-size:11px;font-weight:700;white-space:nowrap}
  #note{position:absolute;left:0;right:0;top:50%;text-align:center;color:#fff;z-index:900;display:none}
 </style></head><body><div id="map"></div><div id="note">Loading radar…</div>
 <div id="top" class="bar">
@@ -129,12 +131,12 @@ private fun radarHtml(c: Coordinate, twelve: Boolean, miles: Boolean, card: Bool
  <div id="time"></div></div></div>
 <div id="legend" class="bar"><span id="credit"></span><img id="legimg"></div>
 <script>
-var twelve=$twelve, miles=$miles, card=$card, covered=$covered;
+var twelve=$twelve, miles=$miles, fahr=$fahr, card=$card, covered=$covered;
 var here=[${fmt(c.latitude)},${fmt(c.longitude)}];
 function pref(k,d){try{var v=localStorage.getItem('radar.'+k);return v==null?d:JSON.parse(v)}catch(e){return d}}
 function save(k,v){try{localStorage.setItem('radar.'+k,JSON.stringify(v))}catch(e){}}
-var opt=card?{hours:1,lightning:true,warnings:false,rings:true}
- :{hours:pref('hours',1),lightning:pref('lightning',true),warnings:pref('warnings',false),rings:pref('rings',true)};
+var opt=card?{hours:1,lightning:true,warnings:false,rings:true,stations:false}
+ :{hours:pref('hours',1),lightning:pref('lightning',true),warnings:pref('warnings',false),rings:pref('rings',true),stations:pref('stations',true)};
 // RainViewer's free tiles stop at zoom 7, so outside Environment Canada's radar start wider.
 var zoom=covered?8:6;
 var map=L.map('map',{zoomControl:false,attributionControl:!card,dragging:!card,touchZoom:!card,scrollWheelZoom:!card,
@@ -211,10 +213,33 @@ function chips(){var el=document.getElementById('chips'),h='';
  if(covered){[1,3].forEach(function(n){h+='<button class="chip'+(opt.hours==n?' on':'')+'" data-h="'+n+'">'+n+' h</button>'});
   h+='<button class="chip'+(opt.lightning?' on':'')+'" data-o="lightning">⚡ Lightning</button>';
   h+='<button class="chip'+(opt.warnings?' on':'')+'" data-o="warnings">⚠ Warnings</button>';}
- h+='<button class="chip'+(opt.rings?' on':'')+'" data-o="rings">◎ Rings</button>';el.innerHTML=h;
+ h+='<button class="chip'+(opt.rings?' on':'')+'" data-o="rings">◎ Rings</button>';
+ h+='<button class="chip'+(opt.stations?' on':'')+'" data-o="stations">⌂ Stations</button>';el.innerHTML=h;
  el.querySelectorAll('[data-h]').forEach(function(b){b.onclick=function(){opt.hours=+b.dataset.h;save('hours',opt.hours);chips();load();}});
- el.querySelectorAll('[data-o]').forEach(function(b){b.onclick=function(){var k=b.dataset.o;opt[k]=!opt[k];save(k,opt[k]);chips();setExtras();setRings();}});}
-chips();load();setExtras();setRings();
+ el.querySelectorAll('[data-o]').forEach(function(b){b.onclick=function(){var k=b.dataset.o;opt[k]=!opt[k];save(k,opt[k]);chips();setExtras();setRings();setStations();}});}
+var pwsLayer=null,pwsData=null;
+function drawStations(list){
+ if(pwsLayer){map.removeLayer(pwsLayer);pwsLayer=null;}
+ if(!opt.stations||!list||!list.length)return;
+ var ms=[];
+ list.forEach(function(st){
+  if(st.lat==null||st.lon==null||st.temperature==null)return;
+  var t=Math.round(fahr?(st.temperature*9/5+32):st.temperature)+'°';
+  var tip='<b>'+t+'</b>';
+  if(st.humidity!=null)tip+=' · '+Math.round(st.humidity)+'% RH';
+  if(st.rain_1h!=null&&st.rain_1h>0)tip+=' · '+st.rain_1h.toFixed(1)+' mm/h';
+  var mk=L.marker([st.lat,st.lon],{icon:L.divIcon({className:'',html:'<span class="pws">'+t+'</span>',iconSize:null,iconAnchor:[16,10]})});
+  mk.bindPopup(tip);ms.push(mk);
+ });
+ pwsLayer=L.layerGroup(ms).addTo(map);
+}
+function setStations(){
+ if(!opt.stations){if(pwsLayer){map.removeLayer(pwsLayer);pwsLayer=null;}return;}
+ if(pwsData){drawStations(pwsData);return;}
+ fetch('https://weather-relay.khanofmilton.ca/v1/netatmo?lat='+here[0]+'&lon='+here[1])
+  .then(function(r){return r.json()}).then(function(d){pwsData=(d&&d.stations)||[];drawStations(pwsData);}).catch(function(){});
+}
+chips();load();setExtras();setRings();setStations();
 document.getElementById('me').onclick=function(){map.setView(here,zoom)};
 // Redraw at the right size if the view changes size after loading.
 window.addEventListener('resize',function(){map.invalidateSize()});
