@@ -117,7 +117,8 @@ object WeatherLoader {
             val peakRain = matching.maxOf { it.rain_mmh }
             val peakSnow = if (isSnow) maxOf(matching.maxOf { it.snow_cmh }, peakRain) else 0.0
             val peakRate = if (isSnow) peakSnow else peakRain
-            if (peakRate < 0.20) return@map slot
+            val minRate = if (!isSnow && (current.humidity?.toDouble() ?: 100.0) < 80.0) 1.0 else 0.50
+            if (peakRate < minRate) return@map slot
             val slotAmount = maxOf(PrecipitationSlot.wetThreshold, peakRate / 4.0)
             val rain = if (isSnow) slot.rain else maxOf(slot.rain, slotAmount)
             val snow = if (isSnow) maxOf(slot.snowfall, slotAmount) else slot.snowfall

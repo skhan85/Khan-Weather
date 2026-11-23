@@ -103,6 +103,13 @@ const val gaugeVetoRate = 1.0
 /** When the radar shows rain or snow falling here now, say so even if the model says cloudy. */
 fun Forecast.applyingRadar(radarNow: RadarNow?): Forecast {
     val radar = radarNow?.typed(current.temperature) ?: return this
+    // Virga guard: in dry surface air (RH < 80%), weak overhead radar (< 1.0 mm/h)
+    // evaporates before reaching the ground; below 88% RH, ignore < 0.5 mm/h clutter.
+    val rh = current.humidity?.toDouble()
+    if (rh != null && radar.isRaining && !radar.isSnowing && current.temperature > 1.0 &&
+        (observation?.rainLastHourMm ?: 0.0) < 0.1 &&
+        ((rh < 80.0 && radar.rainMmPerHour < 1.0) || (rh < 88.0 && radar.rainMmPerHour < 0.5))
+    ) return this
     val condition = radar.condition
     if (condition == null) {
         if (current.temperature <= 1 || !current.condition.isRainLike || (observation?.skyIsLocal ?: false)) return this

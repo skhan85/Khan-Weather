@@ -111,7 +111,8 @@ public extension Forecast {
             let peakRain = matching.map(\.rain_mmh).max() ?? 0
             let peakSnow = isSnow ? max(matching.map(\.snow_cmh).max() ?? 0, peakRain) : 0
             let peakRate = isSnow ? peakSnow : peakRain
-            guard peakRate >= 0.20 else { return slot }
+            let minRate = (!isSnow && (current.humidity.map(Double.init) ?? 100) < 80) ? 1.0 : 0.50
+            guard peakRate >= minRate else { return slot }
             let slotAmount = max(PrecipitationSlot.wetThreshold, peakRate / 4.0)
             let rain = isSnow ? slot.rain : max(slot.rain, slotAmount)
             let snow = isSnow ? max(slot.snowfall, slotAmount) : slot.snowfall
