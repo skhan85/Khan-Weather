@@ -574,6 +574,7 @@ private struct RadarMap: UIViewRepresentable {
     let center: Coordinate
     let frames: [RadarFrame]
     let index: Int
+    var stations: [NetatmoStation] = []
     var opacity: CGFloat = 0.75
     /// Metres across. RainViewer's free tiles stop at zoom 7, so outside Environment Canada's
     /// radar the map starts wider.
@@ -584,7 +585,6 @@ private struct RadarMap: UIViewRepresentable {
     var extras: [RadarExtra] = []
     /// Distance rings around your spot.
     var rings = false
-    var stations: [NetatmoStation] = []
     /// Bumped to fly back to your spot.
     var recenter = 0
 
