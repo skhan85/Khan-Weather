@@ -50,8 +50,8 @@ final class RadarProviderTests: XCTestCase {
                          current: current, hourly: [], daily: [], source: "t", fetchedAt: now,
                          observation: Observation(stationName: "Portland-Hillsboro Airport", observedAt: now, temperature: 11))
         let wet = f.applyingRadar(RadarNow(rainMmPerHour: 0, snowCmPerHour: 0.7, time: now))
-        XCTAssertEqual(wet.current.condition, .rain)
-        XCTAssertEqual(wet.observation?.conditionText, "Light rain")
+        XCTAssertEqual(wet.current.condition, .overcast)
+        XCTAssertNil(wet.observation?.conditionText)
 
         let cold = RadarNow(rainMmPerHour: 1, snowCmPerHour: 0, time: now).typed(byTemperature: -2)
         XCTAssertEqual(cold.condition, .snow)
