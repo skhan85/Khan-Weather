@@ -157,7 +157,7 @@ public extension Forecast {
         if current.temperature >= 3, (radar.rainMmPerHour < 0.5 || (rawRadarRain < 0.5)) {
             if radar.isPrecipitating { return self }
         }
-        if let rh = current.humidity.map(Double.init), radar.isRaining, !radar.isSnowing, current.temperature > 1,
+        if let rh = current.humidity, radar.isRaining, !radar.isSnowing, current.temperature > 1,
            (observation?.rainLastHourMm ?? 0) < 0.1,
            (rh < 90 && radar.rainMmPerHour < 1.0) || radar.rainMmPerHour < 0.5 {
             return self

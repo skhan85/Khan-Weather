@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.util.Locale
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -48,7 +49,7 @@ object SnapshotStore {
     }
 
     /** The last good snapshot, if younger than `maxAge` seconds. */
-    fun load(context: Context, key: String?, maxAge: Double = 6 * 3600.0): Snapshot? = runCatching {
+    fun load(context: Context, key: String?, maxAge: kotlin.Double = 6 * 3600.0): Snapshot? = runCatching {
         val s = json.decodeFromString(Snapshot.serializer(), file(context, key).readText())
         if (nowEpoch() - s.forecast.fetchedAt < maxAge) s else null
     }.getOrNull()
@@ -82,7 +83,7 @@ object WeatherLoader {
     private val relayJson = Json { ignoreUnknownKeys = true }
 
     @Serializable
-    data class RelayNowcastSlot(val epoch: Double, val rain_mmh: Double = 0.0, val snow_cmh: Double = 0.0)
+    data class RelayNowcastSlot(val epoch: kotlin.Double, val rain_mmh: kotlin.Double = 0.0, val snow_cmh: kotlin.Double = 0.0)
 
     @Serializable
     data class RelayNowcast(val slots: List<RelayNowcastSlot> = emptyList())
@@ -117,7 +118,7 @@ object WeatherLoader {
             val peakRain = matching.maxOf { it.rain_mmh }
             val peakSnow = if (isSnow) maxOf(matching.maxOf { it.snow_cmh }, peakRain) else 0.0
             val peakRate = if (isSnow) peakSnow else peakRain
-            val minRate = if (!isSnow && (current.humidity?.toDouble() ?: 100.0) < 80.0) 1.0 else 0.50
+            val minRate = 0.50
             if (peakRate < minRate) return@map slot
             val slotAmount = maxOf(PrecipitationSlot.wetThreshold, peakRate / 4.0)
             val rain = if (isSnow) slot.rain else maxOf(slot.rain, slotAmount)
@@ -137,31 +138,31 @@ object WeatherLoader {
 
     @Serializable
     data class RelayHazards(
-        val generated: Double? = null,
+        val generated: kotlin.Double? = null,
         val lightning: Lightning? = null,
         val hail: Hail? = null,
         val road: Road? = null,
     ) {
         @Serializable
-        data class Lightning(val count: Int = 0, val distance_km: Double? = null, val bearing: String? = null)
+        data class Lightning(val count: Int = 0, val distance_km: kotlin.Double? = null, val bearing: String? = null)
         @Serializable
-        data class Hail(val distance_km: Double? = null, val bearing: String? = null, val max_size_mm: Double? = null)
+        data class Hail(val distance_km: kotlin.Double? = null, val bearing: String? = null, val max_size_mm: kotlin.Double? = null)
         @Serializable
-        data class Road(val surface: String? = null, val ice_mm: Double? = null, val snow_mm: Double? = null)
+        data class Road(val surface: String? = null, val ice_mm: kotlin.Double? = null, val snow_mm: kotlin.Double? = null)
         data class Banner(val id: String, val kind: String, val text: String)
 
         fun banners(): List<Banner> {
             val out = mutableListOf<Banner>()
             lightning?.takeIf { it.count > 0 }?.let { l ->
-                val dist = l.distance_km?.let { "${it.rndInt()} km" } ?: "nearby"
+                val dist = l.distance_km?.let { "${it.roundToInt()} km" } ?: "nearby"
                 val dir = l.bearing?.let { " $it" } ?: ""
                 val plural = if (l.count == 1) "" else "s"
                 out += Banner("lightning", "lightning", "Lightning $dist$dir (${l.count} recent strike$plural).")
             }
             hail?.let { h ->
-                val dist = h.distance_km?.let { "${it.rndInt()} km" } ?: "nearby"
+                val dist = h.distance_km?.let { "${it.roundToInt()} km" } ?: "nearby"
                 val dir = h.bearing?.let { " $it" } ?: ""
-                val size = if ((h.max_size_mm ?: 0.0) > 0.0) " (up to ${h.max_size_mm!!.rndInt()} mm)" else ""
+                val size = if ((h.max_size_mm ?: 0.0) > 0.0) " (up to ${h.max_size_mm!!.roundToInt()} mm)" else ""
                 out += Banner("hail", "hail", "Hail threat $dist$dir$size.")
             }
             road?.let { r ->
@@ -185,19 +186,19 @@ object WeatherLoader {
 
     @Serializable
     data class RelayConsensus(
-        val generated: Double? = null,
+        val generated: kotlin.Double? = null,
         val sources: List<Source> = emptyList(),
-        val mean_temperature: Double? = null,
+        val mean_temperature: kotlin.Double? = null,
     ) {
         @Serializable
         data class Source(
             val provider: String,
-            val temperature: Double,
-            val feels_like: Double? = null,
-            val humidity: Double? = null,
-            val wind_kmh: Double? = null,
-            val high: Double? = null,
-            val low: Double? = null,
+            val temperature: kotlin.Double,
+            val feels_like: kotlin.Double? = null,
+            val humidity: kotlin.Double? = null,
+            val wind_kmh: kotlin.Double? = null,
+            val high: kotlin.Double? = null,
+            val low: kotlin.Double? = null,
             val condition: String? = null,
         )
     }
