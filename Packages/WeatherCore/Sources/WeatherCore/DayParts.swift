@@ -81,8 +81,9 @@ public extension Forecast {
     /// most common sky.
     static func partCondition(_ hours: [HourlyForecast]) -> WeatherCondition {
         let wet = hours.filter { $0.condition.isPrecipitation || $0.condition == .thunderstorm || $0.condition == .thunderstormHail }
+        let maxChance = hours.compactMap(\.precipitationProbability).max()
         let likely = hours.contains { ($0.precipitationProbability ?? 0) >= headlineChance && $0.condition.isPrecipitation }
-        if !wet.isEmpty && (likely || wet.count >= 2) {
+        if (maxChance ?? 100) >= 30 && !wet.isEmpty && (likely || wet.count >= 2) {
             var counts: [WeatherCondition: Int] = [:]
             for h in wet { counts[h.condition, default: 0] += 1 }
             return counts.max { $0.value < $1.value || ($0.value == $1.value && $0.key.rawValue > $1.key.rawValue) }!.key

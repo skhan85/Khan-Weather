@@ -45,7 +45,9 @@ fun Forecast.dayParts(date: Epoch = nowEpoch(), count: Int = 4): List<DayPart> {
 /** Rain or snow when it's likely in the part (or falls in at least two hours); otherwise the most common sky. */
 fun partCondition(hours: List<HourlyForecast>): WeatherCondition {
     val wet = hours.filter { it.condition.isWetOrStorm }
+    val maxChance = hours.mapNotNull { it.precipitationProbability }.maxOrNull()
     val likely = hours.any { (it.precipitationProbability ?: 0.0) >= Forecast.headlineChance && it.condition.isPrecipitation }
-    if (wet.isNotEmpty() && (likely || wet.size >= 2)) return Forecast.mostCommon(wet.map { it.condition })!!
-    return Forecast.mostCommon(hours.filter { !it.condition.isWetOrStorm }.map { it.condition }) ?: hours[0].condition
+    if ((maxChance ?: 100.0) >= 30.0 && wet.isNotEmpty() && (likely || wet.size >= 2)) return Forecast.mostCommon(wet.map { it.condition })!!
+    return Forecast.mostCommon(hours.filter { !it.condition.isWetOrStorm }.map { it.condition })
+        ?: if ((maxChance ?: 100.0) < 30.0) WeatherCondition.overcast else hours[0].condition
 }
