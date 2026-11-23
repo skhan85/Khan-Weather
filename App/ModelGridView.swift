@@ -14,7 +14,7 @@ struct ModelGridView: View {
 
     private let nameWidth: CGFloat = 112
     private let cellWidth: CGFloat = 58
-    private let rowHeight: CGFloat = 54
+    private let rowHeight: CGFloat = 72
 
     private var models: [WeatherModel] {
         let used = WeatherModel.usedForTemperatures(at: location)
@@ -97,11 +97,12 @@ struct ModelGridView: View {
     @ViewBuilder
     private func cell(_ day: ModelDay?) -> some View {
         if let day {
-            VStack(spacing: 1) {
+            VStack(spacing: 2) {
                 ConditionIcon(condition: day.condition).font(.caption)
                 Text(WeatherFormat.temperature(day.high)).font(.subheadline.weight(.bold))
                 Text(WeatherFormat.temperature(day.low)).font(.caption.weight(.medium)).foregroundStyle(.white.opacity(0.7))
             }
+            .padding(.vertical, 4)
         } else {
             Text("–").foregroundStyle(.white.opacity(0.4))
         }
