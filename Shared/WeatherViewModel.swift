@@ -143,6 +143,7 @@ final class WeatherViewModel: ObservableObject {
                 .smoothed(after: previous)
         }
         let radarTask = Task { try? await ECCCRadarProvider().now(at: target) }
+        let nowcastTask = Task { await RelayExtrasProvider().nowcast(near: target, cold: false) }
         let alertsTask = Task { try? await alertProvider.alerts(near: target) }
         let airTask = Task { try? await AirQualityProvider().airQuality(at: target) }
         let normalsTask = Task { try? await ClimateNormalsProvider().normals(at: target) }
@@ -192,9 +193,10 @@ final class WeatherViewModel: ObservableObject {
             group.addTask { @MainActor in
                 let observed = await observedTask.value
                 let radar = await radarTask.value ?? nil
+                let radarNowcast = await nowcastTask.value
                 guard gen == self.generation else { return }
                 if let observed { self.lastObservation[spot] = observed }
-                self.state = .loaded(base.applying(observed).applyingRadar(radar))
+                self.state = .loaded(base.applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast))
             }
         }
         guard gen == generation, case .loaded(let shown) = state else { return }

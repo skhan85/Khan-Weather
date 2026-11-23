@@ -20,6 +20,13 @@ import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import java.util.concurrent.TimeUnit
+import android.net.Uri
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import java.net.HttpURLConnection
+import java.net.URL
 
 /**
  * The app's own notifications, no third-party service: every 30 minutes or so WorkManager runs
@@ -31,6 +38,7 @@ object Notifier {
     private const val ALERTS = "alerts"
     private const val RAIN = "rain"
     private const val FROST = "frost"
+    private const val UPDATES = "updates"
     private val json = Json
 
     fun createChannels(context: Context) {
@@ -39,6 +47,7 @@ object Notifier {
         nm.createNotificationChannel(NotificationChannel(ALERTS, "Weather alerts", NotificationManager.IMPORTANCE_HIGH))
         nm.createNotificationChannel(NotificationChannel(RAIN, "Rain and snow starting", NotificationManager.IMPORTANCE_DEFAULT))
         nm.createNotificationChannel(NotificationChannel(FROST, "Frost tonight", NotificationManager.IMPORTANCE_DEFAULT))
+        nm.createNotificationChannel(NotificationChannel(UPDATES, "App updates", NotificationManager.IMPORTANCE_DEFAULT))
     }
 
     /** Background checks also keep the widgets fresh, so they always run. */
@@ -163,12 +172,64 @@ object Notifier {
         post(context, FROST, 3, "Frost likely tonight",
             "${frost.agreeing} of ${frost.total} forecast models drop to ${WeatherFormat.temperature(0.0)} or below by about ${TimeText.hour(frost.time, forecast.timeZoneIdentifier)}. Cover plants and watch for icy spots.")
     }
+
+    /** Checks GitHub's fixed `android-latest` release at most once every 6 hours and notifies when a newer build is posted. */
+    suspend fun checkAppUpdate(context: Context) {
+        val now = nowEpoch()
+        val lastCheck = Prefs.prefs.getString("lastUpdateCheck", null)?.toDoubleOrNull() ?: 0.0
+        if (now - lastCheck < 6 * 3600.0) return
+        Prefs.prefs.edit().putString("lastUpdateCheck", now.toString()).apply()
+
+        val remoteBuild = withContext(Dispatchers.IO) {
+            runCatching {
+                val conn = (URL("https://api.github.com/repos/skhan85/Khan-Weather/releases/tags/android-latest").openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 6000; readTimeout = 6000
+                    setRequestProperty("Accept", "application/vnd.github+json")
+                    setRequestProperty("User-Agent", "KhanWeather-Android")
+                }
+                try {
+                    if (conn.responseCode != 200) return@runCatching null
+                    val obj = json.parseToJsonElement(conn.inputStream.bufferedReader().readText()).jsonObject
+                    val body = obj["body"]?.jsonPrimitive?.content ?: ""
+                    Regex("Android build (\\d+)").find(body)?.groupValues?.get(1)?.toIntOrNull()
+                } finally {
+                    conn.disconnect()
+                }
+            }.getOrNull()
+        } ?: return
+
+        val info = runCatching { context.packageManager.getPackageInfo(context.packageName, 0) }.getOrNull() ?: return
+        val installed = if (Build.VERSION.SDK_INT >= 28) info.longVersionCode.toInt() else @Suppress("DEPRECATION") info.versionCode
+        val notifiedBuild = Prefs.prefs.getInt("notifiedUpdateBuild", 0)
+        if (remoteBuild <= installed || remoteBuild <= notifiedBuild) return
+
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) return
+
+        createChannels(context)
+        val downloadIntent = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse("https://github.com/skhan85/Khan-Weather/releases/download/android-latest/KhanWeather.apk"),
+        )
+        val pi = PendingIntent.getActivity(context, 9001, downloadIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val notif = NotificationCompat.Builder(context, UPDATES)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle("Khan Weather update available")
+            .setContentText("Build $remoteBuild (v1.0.$remoteBuild) is ready — tap to download.")
+            .setContentIntent(pi)
+            .setAutoCancel(true)
+            .build()
+        NotificationManagerCompat.from(context).notify(9001, notif)
+        Prefs.prefs.edit().putInt("notifiedUpdateBuild", remoteBuild).apply()
+    }
 }
 
 class CheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         Prefs.init(applicationContext)
         runCatching { Notifier.checkAll(applicationContext) }
+        runCatching { Notifier.checkAppUpdate(applicationContext) }
         return Result.success()
     }
 }

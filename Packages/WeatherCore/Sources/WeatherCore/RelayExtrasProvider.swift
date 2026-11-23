@@ -83,6 +83,45 @@ public struct RelayConsensus: Codable, Equatable, Sendable {
     public let mean_temperature: Double?
 }
 
+public struct RelayNowcast: Codable, Equatable, Sendable {
+    public struct Slot: Codable, Equatable, Sendable {
+        public let time: String
+        public let epoch: Double
+        public let precip_mmh: Double
+        public let rain_mmh: Double
+        public let snow_cmh: Double
+    }
+    public let generated: Double?
+    public let source: String?
+    public let step_minutes: Int?
+    public let slots: [Slot]
+}
+
+public extension Forecast {
+    /// Merges 6-minute radar extrapolation from the relay into 15-minute `minutely` slots.
+    func applyingRadarNowcast(_ nc: RelayNowcast?) -> Forecast {
+        guard let nc, !nc.slots.isEmpty, !minutely.isEmpty else { return self }
+        var copy = self
+        let isSnow = current.temperature <= 0
+        copy.minutely = minutely.map { slot in
+            let start = slot.time.timeIntervalSince1970
+            let end = start + 900
+            let matching = nc.slots.filter { $0.epoch >= start && $0.epoch < end }
+            guard !matching.isEmpty else { return slot }
+            let peakRain = matching.map(\.rain_mmh).max() ?? 0
+            let peakSnow = isSnow ? max(matching.map(\.snow_cmh).max() ?? 0, peakRain) : 0
+            let peakRate = isSnow ? peakSnow : peakRain
+            guard peakRate >= 0.20 else { return slot }
+            let slotAmount = max(PrecipitationSlot.wetThreshold, peakRate / 4.0)
+            let rain = isSnow ? slot.rain : max(slot.rain, slotAmount)
+            let snow = isSnow ? max(slot.snowfall, slotAmount) : slot.snowfall
+            let total = max(slot.precipitation, rain + snow)
+            return PrecipitationSlot(time: slot.time, precipitation: total, rain: rain, snowfall: snow)
+        }
+        return copy
+    }
+}
+
 public struct RelayExtrasProvider: Sendable {
     public static let defaultHost = URL(string: "https://weather-relay.khanofmilton.ca")!
     private let host: URL
@@ -127,5 +166,16 @@ public struct RelayExtrasProvider: Sendable {
               (resp as? HTTPURLResponse)?.statusCode == 200,
               let decoded = try? JSONDecoder().decode(R.self, from: data) else { return [] }
         return decoded.stations
+    }
+    public func nowcast(near c: Coordinate, cold: Bool = false) async -> RelayNowcast? {
+        var parts = URLComponents(url: host.appendingPathComponent("v1/nowcast"), resolvingAgainstBaseURL: false)!
+        parts.queryItems = [
+            URLQueryItem(name: "lat", value: String(format: "%.4f", c.latitude)),
+            URLQueryItem(name: "lon", value: String(format: "%.4f", c.longitude)),
+            URLQueryItem(name: "cold", value: cold ? "1" : "0"),
+        ]
+        guard let url = parts.url, let (data, resp) = try? await URLSession.shared.data(for: URLRequest(url: url, timeoutInterval: 8)),
+              (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        return try? JSONDecoder().decode(RelayNowcast.self, from: data)
     }
 }
