@@ -31,7 +31,7 @@ class NetatmoRelayProvider(
 
     companion object {
         const val defaultBaseURL = "https://weather-relay.khanofmilton.ca/v1/netatmo"
-        const val fillRadiusKm = 12.0
+        const val fillRadiusKm = 10.0
         const val outlierLimit = 2.5
 
         private class S(val temperature: Double?, val humidity: Double?, val city: String?, val rain: Double?,
@@ -99,7 +99,7 @@ class HyperlocalObservationProvider(
         fun merge(base: Observation?, netatmo: Observation): Observation {
             val local = netatmo.copy()
             val limit = if (base?.dataProvider == "ON-MTO") 3.0 else officialLimit
-            if (base != null && base.isLocal && abs(base.temperature - local.temperature) > limit &&
+            if (base != null && (base.distanceKm ?: 0.0) <= 10.0 && abs(base.temperature - local.temperature) > limit &&
                 base.observedAt - local.observedAt > -3600) {
                 val agreeing = (local.stationTemperatures ?: emptyList()).filter { abs(it - base.temperature) <= limit }
                 if (agreeing.isEmpty()) return base

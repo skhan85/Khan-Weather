@@ -60,7 +60,7 @@ data class Observation(
 
     companion object {
         /** Stations closer than this stand in for the user's own spot. */
-        const val localRadiusKm = 15.0
+        const val localRadiusKm = 10.0
         const val smoothingWindow = 45.0 * 60
         const val smoothingLimit = 1.5
     }
@@ -120,7 +120,8 @@ fun Forecast.applying(observation: Observation?): Forecast {
         val mid = median(shaded.take(3))
         o.temperature = if (mid != null) (mid * 10).rnd() / 10 else Double.POSITIVE_INFINITY
     }
-    val implausible = o.dataProvider == "NETATMO" && !(abs(o.temperature - current.temperature) <= 5)
+    val pwsLimit = if ((o.stationTemperatures?.size ?: 0) >= 2) 5.0 else 2.5
+    val implausible = o.dataProvider == "NETATMO" && !(abs(o.temperature - current.temperature) <= pwsLimit)
     if (!o.isLocal || implausible) {
         c.condition = o.condition ?: c.condition
         copy.current = c
@@ -169,11 +170,18 @@ fun Forecast.dailyIncluding(now: CurrentConditions, time: Epoch): List<DailyFore
     if (hours.none { abs(it.time - time) < 3600 }) return@map day
     val d = day.copy()
     val temps = hours.map { it.temperature } + now.temperature
-    d.high = max(d.high, temps.max())
-    d.low = min(d.low, temps.min())
     val feels = hours.mapNotNull { it.feelsLike } + now.feelsLike
-    d.feelsLikeHigh = d.feelsLikeHigh?.let { max(it, feels.max()) }
-    d.feelsLikeLow = d.feelsLikeLow?.let { min(it, feels.min()) }
+    if (hours.size >= 18) {
+        d.high = temps.max()
+        d.low = temps.min()
+        if (d.feelsLikeHigh != null) d.feelsLikeHigh = feels.max()
+        if (d.feelsLikeLow != null) d.feelsLikeLow = feels.min()
+    } else {
+        d.high = max(d.high, temps.max())
+        d.low = min(d.low, temps.min())
+        d.feelsLikeHigh = d.feelsLikeHigh?.let { max(it, feels.max()) }
+        d.feelsLikeLow = d.feelsLikeLow?.let { min(it, feels.min()) }
+    }
     d
 }
 
