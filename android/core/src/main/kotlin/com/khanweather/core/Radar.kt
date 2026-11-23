@@ -105,10 +105,11 @@ fun Forecast.applyingRadar(radarNow: RadarNow?): Forecast {
     val radar = radarNow?.typed(current.temperature) ?: return this
     // Virga guard: in dry surface air (RH < 80%), weak overhead radar (< 1.0 mm/h)
     // evaporates before reaching the ground; below 88% RH, ignore < 0.5 mm/h clutter.
+    if (current.temperature >= 3.0 && radar.isPrecipitating && (radarNow?.rainMmPerHour ?: 0.0) < 0.5) return this
     val rh = current.humidity?.toDouble()
     if (rh != null && radar.isRaining && !radar.isSnowing && current.temperature > 1.0 &&
         (observation?.rainLastHourMm ?: 0.0) < 0.1 &&
-        ((rh < 80.0 && radar.rainMmPerHour < 1.0) || (rh < 88.0 && radar.rainMmPerHour < 0.5))
+        ((rh < 90.0 && radar.rainMmPerHour < 1.0) || radar.rainMmPerHour < 0.5)
     ) return this
     val condition = radar.condition
     if (condition == null) {

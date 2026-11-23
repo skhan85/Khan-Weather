@@ -150,12 +150,16 @@ public extension Forecast {
     /// When the radar shows rain or snow falling here now, say so even if the model or a
     /// distant station says cloudy. A dry radar changes nothing: it can miss very light snow.
     func applyingRadar(_ radar: RadarNow?) -> Forecast {
+        let rawRadarRain = radar?.rainMmPerHour ?? 0
         guard let radar = radar?.typed(byTemperature: current.temperature) else { return self }
         // Virga guard: in dry surface air (RH < 80%), weak overhead radar (< 1.0 mm/h)
         // evaporates before reaching the ground; below 88% RH, ignore < 0.5 mm/h clutter.
+        if current.temperature >= 3, (radar.rainMmPerHour < 0.5 || (rawRadarRain < 0.5)) {
+            if radar.isPrecipitating { return self }
+        }
         if let rh = current.humidity.map(Double.init), radar.isRaining, !radar.isSnowing, current.temperature > 1,
            (observation?.rainLastHourMm ?? 0) < 0.1,
-           (rh < 80 && radar.rainMmPerHour < 1.0) || (rh < 88 && radar.rainMmPerHour < 0.5) {
+           (rh < 90 && radar.rainMmPerHour < 1.0) || radar.rainMmPerHour < 0.5 {
             return self
         }
         guard let condition = radar.condition else {
