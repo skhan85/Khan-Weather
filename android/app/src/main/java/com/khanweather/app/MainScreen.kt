@@ -9,6 +9,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.Grain
 import androidx.compose.material.icons.automirrored.filled.*
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Icon
@@ -70,9 +73,23 @@ fun ForecastList(
                 NoteRow(Icons.Filled.History, "Couldn't refresh. This is the forecast from ${TimeText.time(forecast.fetchedAt, zone)}; pull down to try again.")
             }
         }
+        var hazards by remember(forecast.fetchedAt) { mutableStateOf<WeatherLoader.RelayHazards?>(null) }
+        LaunchedEffect(forecast.fetchedAt) {
+            val storms = forecast.radar?.isPrecipitating == true || forecast.nowcast() != null
+            val cold = forecast.current.temperature <= 3.0
+            hazards = WeatherLoader.relayHazards(forecast.location, storms = storms, cold = cold)
+        }
         for (a in alerts) {
             AlertCard(a, zone)
             Spacer(Modifier.height(8.dp))
+        }
+        for (b in hazards?.banners().orEmpty()) {
+            val bIcon = when (b.kind) {
+                "lightning" -> Icons.Filled.Bolt
+                "hail" -> Icons.Filled.Grain
+                else -> Icons.Filled.DirectionsCar
+            }
+            Section(null, null) { LabelLine(bIcon, b.text) }
         }
         NowCard(forecast, placeName, isSavedPlace, today,
             Outlook.text(forecast, hourText = hourText),

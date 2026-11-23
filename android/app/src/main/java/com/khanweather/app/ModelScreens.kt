@@ -8,6 +8,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Public
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.TrackChanges
 import androidx.compose.material3.CircularProgressIndicator
@@ -53,13 +56,18 @@ fun ModelComparisonScreen(day: DailyForecast, forecast: Forecast, nav: (Screen) 
     val zone = forecast.timeZoneIdentifier
     val used = WeatherModel.usedForTemperatures(location)
     var rows by remember { mutableStateOf<List<ModelDay>?>(null) }
+    var extSources by remember { mutableStateOf<List<WeatherLoader.RelayConsensus.Source>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     LaunchedEffect(day.date) {
-        val all = loadModels(location)
-        if (all != null) {
-            val same = all.filter { forecast.cal.isSameDay(it.date, day.date) }
-            val ordered = same.filter { it.model == used } + same.filter { it.model != used }
-            rows = ModelComparisonProvider.showingApp(ordered, listOf(day) + forecast.displayDaily(), used, zone)
+        coroutineScope {
+            val extTask = async { WeatherLoader.relayConsensus(location) }
+            val all = loadModels(location)
+            if (all != null) {
+                val same = all.filter { forecast.cal.isSameDay(it.date, day.date) }
+                val ordered = same.filter { it.model == used } + same.filter { it.model != used }
+                rows = ModelComparisonProvider.showingApp(ordered, listOf(day) + forecast.displayDaily(), used, zone)
+            }
+            extSources = extTask.await()?.sources.orEmpty()
         }
         loading = false
     }
@@ -68,6 +76,28 @@ fun ModelComparisonScreen(day: DailyForecast, forecast: Forecast, nav: (Screen) 
         if (loading) Loading("Asking each model…")
         else if (r.isNullOrEmpty()) Section(null, null) { Text("Couldn't load the models. Check your connection and try again.", style = style(16.sp)) }
         else {
+            if (extSources.isNotEmpty()) {
+                Section("Other weather services", Icons.Filled.Public, PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
+                    extSources.forEachIndexed { i, src ->
+                        Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(src.provider, style = style(15.sp, FontWeight.SemiBold))
+                                src.condition?.let {
+                                    Text(it, style = style(12.sp, color = Color.White.copy(alpha = 0.72f)))
+                                }
+                            }
+                            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text("Now ${WeatherFormat.temperature(src.temperature)}", style = style(15.sp, FontWeight.Bold))
+                                if (src.high != null && src.low != null) {
+                                    Text("${WeatherFormat.temperature(src.high)} / ${WeatherFormat.temperature(src.low)}",
+                                        style = style(12.sp, color = Color.White.copy(alpha = 0.7f)))
+                                }
+                            }
+                        }
+                        if (i < extSources.size - 1) RowDivider()
+                    }
+                }
+            }
             val highs = r.mapNotNull { it.high }
             if (highs.size >= 2) {
                 val unit = UnitSettings.current.temperature
