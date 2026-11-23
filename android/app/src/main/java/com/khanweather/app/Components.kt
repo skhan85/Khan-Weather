@@ -85,11 +85,12 @@ fun ConditionIcon(condition: WeatherCondition, isDay: Boolean = true, size: Dp) 
 /** A weather icon sitting in a soft round badge. */
 @Composable
 fun IconBadge(condition: WeatherCondition, isDay: Boolean = true, size: Dp = 36.dp) {
+    val bg = if (condition.isPrecipitation) Color(0xFF0E1B2E).copy(alpha = 0.42f) else Color.White.copy(alpha = 0.14f)
     Box(
-        Modifier.size(size).clip(CircleShape).background(Color.White.copy(alpha = 0.14f))
-            .border(0.5.dp, Color.White.copy(alpha = 0.18f), CircleShape),
+        Modifier.size(size).clip(CircleShape).background(bg)
+            .border(0.5.dp, Color.White.copy(alpha = 0.22f), CircleShape),
         contentAlignment = Alignment.Center,
-    ) { ConditionIcon(condition, isDay, size * 0.62f) }
+    ) { ConditionIcon(condition, isDay, size * 0.72f) }
 }
 
 /** Section title that reads well on the sky. */

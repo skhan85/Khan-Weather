@@ -13,9 +13,21 @@ struct ConditionIcon: View {
     var body: some View {
         let image = Image(systemName: condition.symbolName(isDay: isDay))
         if colorScheme == .dark {
-            image
-                .symbolRenderingMode(.multicolor)
-                .foregroundStyle(.white)
+            let brightRain = Color(red: 0.24, green: 0.91, blue: 1.0)
+            switch condition {
+            case .drizzle, .rain:
+                image.symbolRenderingMode(.palette).foregroundStyle(.white, brightRain)
+            case .rainShowers:
+                if isDay {
+                    image.symbolRenderingMode(.palette).foregroundStyle(.white, .yellow, brightRain)
+                } else {
+                    image.symbolRenderingMode(.palette).foregroundStyle(.white, brightRain)
+                }
+            default:
+                image
+                    .symbolRenderingMode(.multicolor)
+                    .foregroundStyle(.white)
+            }
         } else if condition == .clear {
             image.symbolRenderingMode(.multicolor).foregroundStyle(isDay ? Color.yellow : Color.indigo)
         } else {

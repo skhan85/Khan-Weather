@@ -20,7 +20,7 @@ object WeatherIcons {
     private const val MOON = 0xFFF4EBC4.toInt()
     private const val CLOUD = 0xFFFFFFFF.toInt()
     private const val CLOUD_BACK = 0xFFC9D3E0.toInt()
-    private const val RAIN = 0xFF55B0FF.toInt()
+    private const val RAIN = 0xFF3CE8FF.toInt()
     private const val ICE = 0xFF5FE0E0.toInt()
     private const val SNOW = 0xFFE8F6FF.toInt()
     private const val BOLT = 0xFFFFD60A.toInt()
@@ -131,10 +131,10 @@ object WeatherIcons {
     }
 
     private fun drops(c: Canvas, color: Int, short: Boolean, stroke: Paint) {
-        stroke.color = color; stroke.strokeWidth = if (short) 5f else 6.5f
-        val len = if (short) 8f else 16f
-        for (x in listOf(34f, 50f, 66f)) c.drawLine(x, 66f, x - len * 0.35f, 66f + len, stroke)
-        if (!short) for (x in listOf(42f, 58f)) c.drawLine(x, 84f, x - 3f, 92f, stroke)
+        stroke.color = color; stroke.strokeWidth = if (short) 7.5f else 9f
+        val len = if (short) 13f else 20f
+        for (x in listOf(32f, 50f, 68f)) c.drawLine(x, 62f, x - len * 0.35f, 62f + len, stroke)
+        if (!short) for (x in listOf(41f, 59f)) c.drawLine(x, 84f, x - 3.5f, 94f, stroke)
     }
 
     private fun flake(c: Canvas, x: Float, y: Float, r: Float, color: Int, stroke: Paint) {
