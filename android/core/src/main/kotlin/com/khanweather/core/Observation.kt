@@ -228,8 +228,7 @@ fun Forecast.nudged(observation: Observation): List<HourlyForecast> {
     return hourly.map { hour ->
         val hoursAhead = (hour.time - time) / 3600
         if (hoursAhead <= -1) return@map hour
-        val span = if (abs(tempGap) >= 1.5 && hour.isDay) 9.0 else nudgeHours
-        val share = max(0.0, 1 - max(hoursAhead, 0.0) / span)
+        val share = max(0.0, 1 - max(hoursAhead, 0.0) / nudgeHours)
         if (share <= 0) return@map hour
         val h = hour.copy()
         h.temperature += tempGap * share
