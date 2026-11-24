@@ -149,9 +149,6 @@ public extension Forecast {
             } else if totalMm < 0.5, !out.condition.isPrecipitation, let p = out.precipitationProbability, p > 35 {
                 out.precipitationProbability = 35
             }
-            if (out.precipitationProbability ?? 0) < 30, totalMm < 1, out.condition.isPrecipitation {
-                out.condition = .overcast
-            }
             return out
         }
         return copy
