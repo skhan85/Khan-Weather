@@ -148,7 +148,8 @@ fun HourlyCurve(hours: List<HourlyForecast>, zone: String, firstIsNow: Boolean, 
                 }
             }
         }
-    }
+}
+
 }
 
 /** Smooth curve through the points (Catmull-Rom as cubic Béziers). */

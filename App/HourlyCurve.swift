@@ -131,7 +131,6 @@ struct HourlyCurve: View {
         }
     }
 
-    @ViewBuilder
     private var rainStrip: some View {
         let maxMm = max(hours.compactMap(\.precipitation).max() ?? 0, 2.0)
         return HStack(alignment: .bottom, spacing: 0) {
@@ -185,6 +184,7 @@ struct HourlyCurve: View {
         }
     }
 
+    @ViewBuilder
     private func timeLabel(index: Int, hour: HourlyForecast) -> some View {
         if index == 0 && firstIsNow {
             Text("Now")
