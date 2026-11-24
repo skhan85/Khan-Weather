@@ -96,6 +96,7 @@ struct HourlyCurve: View {
         }
     }
 
+    }
     private func select(at x: CGFloat) {
         let idx = Int(x / columnWidth)
         if hours.indices.contains(idx) { selectedIndex = idx }
@@ -129,7 +130,6 @@ struct HourlyCurve: View {
         .padding(.vertical, 6)
         .background(.black.opacity(0.35), in: Capsule())
         }
-    }
 
     private var rainStrip: some View {
         let maxMm = max(hours.compactMap(\.precipitation).max() ?? 0, 2.0)

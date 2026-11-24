@@ -152,6 +152,7 @@ fun HourlyCurve(hours: List<HourlyForecast>, zone: String, firstIsNow: Boolean, 
 
 }
 
+}
 /** Smooth curve through the points (Catmull-Rom as cubic Béziers). */
 fun catmullRom(path: Path, pts: List<Offset>, moveFirst: Boolean) {
     if (pts.isEmpty()) return
@@ -165,5 +166,4 @@ fun catmullRom(path: Path, pts: List<Offset>, moveFirst: Boolean) {
             p2.x - (p3.x - p1.x) / 6, p2.y - (p3.y - p1.y) / 6, p2.x, p2.y)
     }
     }
-}
 
