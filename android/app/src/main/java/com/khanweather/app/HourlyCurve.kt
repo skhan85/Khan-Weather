@@ -11,8 +11,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.draw.clip
-import com.khanweather.core.PrecipitationUnit
-import com.khanweather.core.UnitSettings
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -84,7 +82,6 @@ fun HourlyCurve(hours: List<HourlyForecast>, zone: String, firstIsNow: Boolean, 
                         val pop = h.precipitationProbability ?: 0.0
                         val frac = if (mm >= 0.1) minOf(1.0, mm / maxMm) else if (pop >= 20.0) 0.12 else 0.0
                         val lbl = when {
-                            mm >= 0.1 && UnitSettings.current.precipitation == PrecipitationUnit.inches -> String.format("%.1f\"", max(0.1, mm / 25.4))
                             mm >= 0.1 -> String.format("%.1f", mm)
                             pop >= 10.0 -> "${pop.toInt()}%"
                             else -> "–"
@@ -93,7 +90,7 @@ fun HourlyCurve(hours: List<HourlyForecast>, zone: String, firstIsNow: Boolean, 
                         Column(Modifier.width(col).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
                             Text(lbl, style = style(11.sp, FontWeight.Bold, if (frac > 0) Color(0xFF3CE8FF) else Color.White.copy(alpha = 0.55f)), maxLines = 1)
                             Spacer(Modifier.height(4.dp))
-                            Box(Modifier.width(18.dp).height(maxOf(3.0, frac * 46.0).dp).clip(RoundedCornerShape(4.dp)).background(barColor))
+                            Box(Modifier.width(18.dp).height(maxOf(3f, (frac * 46.0).toFloat()).dp).clip(RoundedCornerShape(4.dp)).background(barColor))
                         }
                     }
                 }
@@ -108,7 +105,7 @@ fun HourlyCurve(hours: List<HourlyForecast>, zone: String, firstIsNow: Boolean, 
                         Column(Modifier.width(col).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
                             Text(WeatherFormat.wind(w), style = style(10.sp, FontWeight.Bold), maxLines = 1)
                             Spacer(Modifier.height(4.dp))
-                            Box(Modifier.width(18.dp).height(maxOf(4.0, frac * 44.0).dp).clip(RoundedCornerShape(4.dp)).background(barColor))
+                            Box(Modifier.width(18.dp).height(maxOf(4f, (frac * 44.0).toFloat()).dp).clip(RoundedCornerShape(4.dp)).background(barColor))
                         }
                     }
                 }
