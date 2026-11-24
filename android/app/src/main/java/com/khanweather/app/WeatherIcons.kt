@@ -25,13 +25,13 @@ object WeatherIcons {
     private const val SNOW = 0xFFE8F6FF.toInt()
     private const val BOLT = 0xFFFFD60A.toInt()
 
-    fun bitmap(condition: WeatherCondition, isDay: Boolean, px: Int): Bitmap {
+    fun bitmap(condition: WeatherCondition, isDay: Boolean, px: Int, heavy: Boolean = false): Bitmap {
         val bmp = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
-        draw(Canvas(bmp), px.toFloat(), condition, isDay)
+        draw(Canvas(bmp), px.toFloat(), condition, isDay, heavy)
         return bmp
     }
 
-    fun draw(canvas: Canvas, size: Float, condition: WeatherCondition, isDay: Boolean) {
+    fun draw(canvas: Canvas, size: Float, condition: WeatherCondition, isDay: Boolean, heavy: Boolean = false) {
         canvas.save()
         canvas.scale(size / 100f, size / 100f)
         val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
@@ -56,8 +56,8 @@ object WeatherIcons {
             }
             drizzle -> { cloud(canvas, 50f, 40f, 0.95f, CLOUD, fill); drops(canvas, RAIN, short = true, stroke) }
             rain, rainShowers -> {
-                if (condition == rainShowers && isDay) sun(canvas, 70f, 26f, 12f, fill, stroke)
-                cloud(canvas, 50f, 40f, 0.95f, CLOUD, fill); drops(canvas, RAIN, short = false, stroke)
+                if (condition == rainShowers && isDay && !heavy) sun(canvas, 70f, 26f, 12f, fill, stroke)
+                cloud(canvas, 50f, if (heavy) 36f else 40f, 0.95f, CLOUD, fill); drops(canvas, RAIN, short = false, stroke, heavy = heavy)
             }
             freezingDrizzle, freezingRain -> {
                 cloud(canvas, 50f, 40f, 0.95f, CLOUD, fill)
@@ -130,9 +130,18 @@ object WeatherIcons {
         c.drawPath(p, fill)
     }
 
-    private fun drops(c: Canvas, color: Int, short: Boolean, stroke: Paint) {
-        stroke.color = color; stroke.strokeWidth = if (short) 7.5f else 9f
-        val len = if (short) 13f else 20f
+    private fun drops(c: Canvas, color: Int, short: Boolean, stroke: Paint, heavy: Boolean = false) {
+        stroke.color = color; stroke.strokeWidth = when {
+            short -> 7.5f
+            heavy -> 9.5f
+            else -> 8.5f
+        }
+        if (heavy) {
+            for (x in listOf(28f, 50f, 72f)) c.drawLine(x, 58f, x - 6f, 75f, stroke)
+            for (x in listOf(24f, 46f, 68f)) c.drawLine(x, 81f, x - 5f, 95f, stroke)
+            return
+        }
+        val len = if (short) 13f else 18f
         for (x in listOf(32f, 50f, 68f)) c.drawLine(x, 62f, x - len * 0.35f, 62f + len, stroke)
         if (!short) for (x in listOf(41f, 59f)) c.drawLine(x, 84f, x - 3.5f, 94f, stroke)
     }

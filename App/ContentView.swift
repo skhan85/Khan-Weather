@@ -432,7 +432,7 @@ struct DailyRow: View {
             }
             .frame(width: 62, alignment: .leading)
             VStack(spacing: 1) {
-                IconBadge(condition: day.condition, size: 34)
+                IconBadge(condition: day.condition, size: 34, heavy: (day.rainSum ?? 0) >= 12)
                 PrecipChance(probability: day.precipitationProbability, kind: day.precipitationKind,
                              font: .caption2.weight(.semibold), showsIcon: false)
             }

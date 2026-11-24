@@ -76,21 +76,21 @@ fun SkyBackground(condition: WeatherCondition, isDay: Boolean, modifier: Modifie
 
 /** A weather symbol, drawn in code. */
 @Composable
-fun ConditionIcon(condition: WeatherCondition, isDay: Boolean = true, size: Dp) {
+fun ConditionIcon(condition: WeatherCondition, isDay: Boolean = true, size: Dp, heavy: Boolean = false) {
     Canvas(Modifier.size(size)) {
-        drawIntoCanvas { WeatherIcons.draw(it.nativeCanvas, this.size.minDimension, condition, isDay) }
+        drawIntoCanvas { WeatherIcons.draw(it.nativeCanvas, this.size.minDimension, condition, isDay, heavy) }
     }
 }
 
 /** A weather icon sitting in a soft round badge. */
 @Composable
-fun IconBadge(condition: WeatherCondition, isDay: Boolean = true, size: Dp = 36.dp) {
+fun IconBadge(condition: WeatherCondition, isDay: Boolean = true, size: Dp = 36.dp, heavy: Boolean = false) {
     val bg = if (condition.isPrecipitation) Color(0xFF0E1B2E).copy(alpha = 0.42f) else Color.White.copy(alpha = 0.14f)
     Box(
         Modifier.size(size).clip(CircleShape).background(bg)
             .border(0.5.dp, Color.White.copy(alpha = 0.22f), CircleShape),
         contentAlignment = Alignment.Center,
-    ) { ConditionIcon(condition, isDay, size * 0.72f) }
+    ) { ConditionIcon(condition, isDay, size * 0.72f, heavy) }
 }
 
 /** Section title that reads well on the sky. */

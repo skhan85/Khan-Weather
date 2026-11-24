@@ -241,7 +241,7 @@ fun DailyRow(day: DailyForecast, isToday: Boolean, zone: String, weekLow: Double
         }
         Spacer(Modifier.width(6.dp))
         Column(Modifier.width(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            IconBadge(day.condition, true, 34.dp)
+            IconBadge(day.condition, true, 34.dp, heavy = (day.rainSum ?: 0.0) >= 12.0)
             PrecipChance(day.precipitationProbability, day.precipitationKind, 11.sp, showsIcon = false)
         }
         Spacer(Modifier.width(6.dp))

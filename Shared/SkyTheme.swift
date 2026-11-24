@@ -238,13 +238,17 @@ struct IconBadge: View {
     let condition: WeatherCondition
     var isDay: Bool = true
     var size: CGFloat = 36
+    var heavy: Bool = false
 
     var body: some View {
-        ConditionIcon(condition: condition, isDay: isDay)
-            .font(.system(size: size * 0.5))
+        let fill = condition.isPrecipitation
+            ? Color(red: 0.055, green: 0.106, blue: 0.18).opacity(0.42)
+            : Color.white.opacity(0.14)
+        ConditionIcon(condition: condition, isDay: isDay, heavy: heavy)
+            .font(.system(size: size * (condition.isPrecipitation ? 0.56 : 0.5)))
             .frame(width: size, height: size)
-            .background(Circle().fill(.white.opacity(0.14)))
-            .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 0.5))
+            .background(Circle().fill(fill))
+            .overlay(Circle().stroke(.white.opacity(0.22), lineWidth: 0.5))
     }
 }
 

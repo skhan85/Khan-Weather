@@ -8,17 +8,19 @@ import WeatherCore
 struct ConditionIcon: View {
     let condition: WeatherCondition
     var isDay: Bool = true
+    var heavy: Bool = false
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        let image = Image(systemName: condition.symbolName(isDay: isDay))
+        let name = (heavy && (condition == .rain || condition == .rainShowers)) ? "cloud.heavyrain.fill" : condition.symbolName(isDay: isDay)
+        let image = Image(systemName: name)
         if colorScheme == .dark {
             let brightRain = Color(red: 0.24, green: 0.91, blue: 1.0)
             switch condition {
             case .drizzle, .rain:
                 image.symbolRenderingMode(.palette).foregroundStyle(.white, brightRain)
             case .rainShowers:
-                if isDay {
+                if isDay && !heavy {
                     image.symbolRenderingMode(.palette).foregroundStyle(.white, .yellow, brightRain)
                 } else {
                     image.symbolRenderingMode(.palette).foregroundStyle(.white, brightRain)
