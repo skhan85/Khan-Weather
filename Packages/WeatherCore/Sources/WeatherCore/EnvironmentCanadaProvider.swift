@@ -506,7 +506,8 @@ public extension Forecast {
         return hourly.map { hour in
             let hoursAhead = hour.time.timeIntervalSince(time) / 3600
             guard hoursAhead > -1 else { return hour }
-            let share = max(0, 1 - max(hoursAhead, 0) / Self.nudgeHours)
+            let span = (abs(tempGap) >= 1.5 && hour.isDay) ? 9.0 : Self.nudgeHours
+            let share = max(0, 1 - max(hoursAhead, 0) / span)
             guard share > 0 else { return hour }
             var h = hour
             h.temperature += tempGap * share

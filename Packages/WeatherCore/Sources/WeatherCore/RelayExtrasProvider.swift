@@ -121,7 +121,33 @@ public extension Forecast {
         }
         return copy
     }
+    /// Blends hourly & daily rain chance with 8-model wet agreement so a single outlier model
+    /// doesn't inflate dry days.
+    func calibratingEnsemblePop() -> Forecast {
+        var copy = self
+        copy.hourly = hourly.map { h in
+            guard let n = h.modelCount, n >= 3, let w = h.modelsWet, let raw = h.precipitationProbability else { return h }
+            var out = h
+            let ens = (Double(w) / Double(n)) * 100.0
+            out.precipitationProbability = (0.6 * raw + 0.4 * ens).rounded()
+            return out
+        }
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = timeZone
+        copy.daily = daily.map { d in
+            let dayHours = copy.hourly.filter { cal.isDate($0.time, inSameDayAs: d.date) }
+            guard dayHours.count >= 6,
+                  let ensMax = dayHours.compactMap(\.precipitationProbability).max() else { return d }
+            var out = d
+            if let raw = d.precipitationProbability {
+                out.precipitationProbability = (0.5 * raw + 0.5 * ensMax).rounded()
+            }
+            return out
+        }
+        return copy
+    }
 }
+
 
 public struct RelayExtrasProvider: Sendable {
     public static let defaultHost = URL(string: "https://weather-relay.khanofmilton.ca")!
@@ -178,5 +204,17 @@ public struct RelayExtrasProvider: Sendable {
         guard let url = parts.url, let (data, resp) = try? await URLSession.shared.data(for: URLRequest(url: url, timeoutInterval: 8)),
               (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
         return try? JSONDecoder().decode(RelayNowcast.self, from: data)
+    }
+    public func regionalWeights(near c: Coordinate) async -> [String: Double]? {
+        var parts = URLComponents(url: host.appendingPathComponent("v1/weights"), resolvingAgainstBaseURL: false)!
+        parts.queryItems = [
+            URLQueryItem(name: "lat", value: String(format: "%.2f", c.latitude)),
+            URLQueryItem(name: "lon", value: String(format: "%.2f", c.longitude)),
+        ]
+        struct R: Decodable { let weights: [String: Double]? }
+        guard let url = parts.url, let (data, resp) = try? await URLSession.shared.data(for: URLRequest(url: url, timeoutInterval: 8)),
+              (resp as? HTTPURLResponse)?.statusCode == 200,
+              let decoded = try? JSONDecoder().decode(R.self, from: data) else { return nil }
+        return decoded.weights
     }
 }

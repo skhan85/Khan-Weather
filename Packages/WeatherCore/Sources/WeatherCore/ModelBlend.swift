@@ -28,12 +28,30 @@ public enum ModelBlend {
     }
 
     /// The weight of `model` at `leadHours` from now, in `region`.
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var _regional: [WeatherModel: Double] = [:]
+
+    public static func setRegionalWeights(_ raw: [String: Double]) {
+        let map: [String: WeatherModel] = [
+            "europeAI": .europeAI, "europe": .europe, "germany": .germany,
+            "canada": .canada, "us": .us, "uk": .uk,
+            "canadaHighRes": .canadaHighRes, "usHighRes": .usHighRes,
+        ]
+        var parsed: [WeatherModel: Double] = [:]
+        for (k, v) in raw where v > 0 { if let m = map[k] { parsed[m] = v } }
+        guard !parsed.isEmpty else { return }
+        lock.lock(); _regional = parsed; lock.unlock()
+    }
+
     static func weight(_ model: WeatherModel, leadHours: Double, region: BlendRegion = .home) -> Double {
         let byDay = region.byDay
         guard !byDay.isEmpty else { return 1 }
         let x = min(max((leadHours - 12) / 24, 0), Double(byDay.count - 1))
         let i = Int(x), j = min(i + 1, byDay.count - 1), f = x - Double(i)
-        return (byDay[i][model] ?? 0) * (1 - f) + (byDay[j][model] ?? 0) * f
+        let prior = (byDay[i][model] ?? 0) * (1 - f) + (byDay[j][model] ?? 0) * f
+        lock.lock(); let reg = _regional[model]; lock.unlock()
+        if let reg { return 0.5 * prior + 0.5 * reg }
+        return prior
     }
 
     /// Weighted average of the models that have a value; nil if none do. If only models weighted

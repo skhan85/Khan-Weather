@@ -144,6 +144,7 @@ final class WeatherViewModel: ObservableObject {
         }
         let radarTask = Task { try? await ECCCRadarProvider().now(at: target) }
         let nowcastTask = Task { await RelayExtrasProvider().nowcast(near: target, cold: false) }
+        Task { if let w = await RelayExtrasProvider().regionalWeights(near: target) { ModelBlend.setRegionalWeights(w) } }
         let alertsTask = Task { try? await alertProvider.alerts(near: target) }
         let airTask = Task { try? await AirQualityProvider().airQuality(at: target) }
         let normalsTask = Task { try? await ClimateNormalsProvider().normals(at: target) }
@@ -196,7 +197,7 @@ final class WeatherViewModel: ObservableObject {
                 let radarNowcast = await nowcastTask.value
                 guard gen == self.generation else { return }
                 if let observed { self.lastObservation[spot] = observed }
-                self.state = .loaded(base.applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast))
+                self.state = .loaded(base.applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast).calibratingEnsemblePop())
             }
         }
         guard gen == generation, case .loaded(let shown) = state else { return }

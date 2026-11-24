@@ -129,11 +129,58 @@ object WeatherLoader {
         return copy(minutely = merged)
     }
 
+
+    @Serializable
+    data class RelayWeights(val weights: Map<String, kotlin.Double> = emptyMap())
+
+    suspend fun loadRegionalWeights(target: Coordinate) {
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val u = String.format(
+                    Locale.US,
+                    "https://weather-relay.khanofmilton.ca/v1/weights?lat=%.2f&lon=%.2f",
+                    target.latitude, target.longitude,
+                )
+                val conn = (URL(u).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 5000; readTimeout = 6000
+                }
+                try {
+                    if (conn.responseCode != 200) return@runCatching
+                    val w = relayJson.decodeFromString(RelayWeights.serializer(), conn.inputStream.bufferedReader().readText()).weights
+                    if (w.isNotEmpty()) ModelBlend.setRegionalWeights(w)
+                } finally {
+                    conn.disconnect()
+                }
+            }
+        }
+    }
+
+    private fun Forecast.calibratingEnsemblePop(): Forecast {
+        val calHours = hourly.map { h ->
+            val n = h.modelCount; val w = h.modelsWet; val raw = h.precipitationProbability
+            if (n != null && n >= 3 && w != null && raw != null) {
+                val ens = (w.toDouble() / n.toDouble()) * 100.0
+                h.copy(precipitationProbability = (0.6 * raw + 0.4 * ens).roundToInt().toDouble())
+            } else h
+        }
+        val calendar = cal
+        val calDays = daily.map { d ->
+            val dayHours = calHours.filter { calendar.isSameDay(it.time, d.date) }
+            val ensMax = if (dayHours.size >= 6) dayHours.mapNotNull { it.precipitationProbability }.maxOrNull() else null
+            val raw = d.precipitationProbability
+            if (ensMax != null && raw != null) {
+                d.copy(precipitationProbability = (0.5 * raw + 0.5 * ensMax).roundToInt().toDouble())
+            } else d
+        }
+        return copy(hourly = calHours, daily = calDays)
+    }
+
     suspend fun full(target: Coordinate, observed: Observation?, radar: RadarNow?): Forecast = coroutineScope {
         val ncTask = async { radarNowcast(target) }
+        async { loadRegionalWeights(target) }
         val base = forecastProvider.forecast(target) { observed?.blendAnchor }
         observed?.let { ObservationMemory.remember(target, it) }
-        base.applying(observed).applyingRadar(radar).applyingRadarNowcast(ncTask.await())
+        base.applying(observed).applyingRadar(radar).applyingRadarNowcast(ncTask.await()).calibratingEnsemblePop()
     }
 
     @Serializable

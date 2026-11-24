@@ -53,6 +53,21 @@ object ModelBlend {
     data class Anchor(val temperature: Double, val time: Epoch)
 
     /** The weight of `model` at `leadHours` from now, in `region`. */
+    @Volatile private var regional: Map<WeatherModel, Double> = emptyMap()
+
+    fun setRegionalWeights(raw: Map<String, Double>) {
+        val map = mapOf(
+            "europeAI" to WeatherModel.europeAI, "europe" to WeatherModel.europe,
+            "germany" to WeatherModel.germany, "canada" to WeatherModel.canada,
+            "us" to WeatherModel.us, "uk" to WeatherModel.uk,
+            "canadaHighRes" to WeatherModel.canadaHighRes, "usHighRes" to WeatherModel.usHighRes,
+        )
+        val parsed = buildMap {
+            for ((k, v) in raw) if (v > 0.0) map[k]?.let { put(it, v) }
+        }
+        if (parsed.isNotEmpty()) regional = parsed
+    }
+
     fun weight(model: WeatherModel, leadHours: Double, region: BlendRegion = BlendRegion.home): Double {
         val byDay = region.byDay
         if (byDay.isEmpty()) return 1.0
@@ -60,7 +75,9 @@ object ModelBlend {
         val i = x.toInt()
         val j = min(i + 1, byDay.size - 1)
         val f = x - i
-        return (byDay[i][model] ?: 0.0) * (1 - f) + (byDay[j][model] ?: 0.0) * f
+        val prior = (byDay[i][model] ?: 0.0) * (1 - f) + (byDay[j][model] ?: 0.0) * f
+        val reg = regional[model]
+        return if (reg != null) 0.5 * prior + 0.5 * reg else prior
     }
 
     /**
