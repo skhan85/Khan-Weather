@@ -101,12 +101,16 @@ def netatmo():
 
 
 def main(path):
-    snap = {"fetched": int(dt.datetime.now(dt.timezone.utc).timestamp()), "sources": {}, "errors": {}}
+    now_utc = dt.datetime.now(dt.timezone.utc)
+    snap = {"fetched": int(now_utc.timestamp()), "sources": {}, "errors": {}}
+    google_every = max(1, int(os.environ.get("GOOGLE_EVERY_HOURS", "3")))
     jobs = [("open-meteo", open_meteo, None),
             ("pirate", pirate_weather, os.environ.get("PIRATE_WEATHER_KEY")),
             ("google", google, os.environ.get("GOOGLE_WEATHER_KEY")),
             ("netatmo", netatmo, None)]
     for name, fn, key in jobs:
+        if name == "google" and (now_utc.hour % google_every) != 0:
+            continue
         if fn in (pirate_weather, google) and not key:
             snap["errors"][name] = "no API key"
             continue
