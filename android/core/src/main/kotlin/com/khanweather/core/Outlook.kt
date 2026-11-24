@@ -93,4 +93,25 @@ object Outlook {
 }
 
 /** Swift's `String.capitalized`: every word's first letter upper case. */
-fun String.capitalizeWords(): String = split(" ").joinToString(" ") { w -> w.lowercase().replaceFirstChar { it.uppercase() } }
+fun String.capitalizeWords(): String = split(" ").joinToString(" ") { w -> w.lowercase().replaceFirstChar { it.uppercase() } 
+    /** On a day with rain or snow ahead, returns the longest contiguous dry stretch (>= 2 hr). */
+    fun dryWindow(forecast: Forecast, date: Epoch = nowEpoch(), hourText: (Epoch) -> String): String? {
+        val upcoming = forecast.hoursStartingNow(date, 14)
+        if (upcoming.size < 4 || upcoming.take(12).none { (it.precipitationProbability ?: 0.0) >= 40.0 }) return null
+        var bestStart = -1; var bestLen = 0; var curStart = -1; var curLen = 0
+        for ((i, h) in upcoming.withIndex()) {
+            val dry = (h.precipitationProbability ?: 0.0) < 25.0 && !h.condition.isPrecipitation
+            if (dry) {
+                if (curStart == -1) curStart = i
+                curLen += 1
+                if (curLen > bestLen) { bestLen = curLen; bestStart = curStart }
+            } else {
+                curStart = -1; curLen = 0
+            }
+        }
+        if (bestLen < 2 || bestStart < 0) return null
+        val start = upcoming[bestStart].time
+        val end = upcoming[bestStart + bestLen - 1].time + 3600.0
+        return "Driest window: ${hourText(start)} – ${hourText(end)}."
+    }
+}

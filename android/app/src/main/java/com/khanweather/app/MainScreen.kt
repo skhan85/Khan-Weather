@@ -93,7 +93,7 @@ fun ForecastList(
             Section(null, null) { LabelLine(bIcon, b.text) }
         }
         NowCard(forecast, placeName, isSavedPlace, today,
-            Outlook.text(forecast, hourText = hourText),
+            listOfNotNull(Outlook.text(forecast, hourText = hourText), Outlook.dryWindow(forecast, hourText = hourText)).joinToString("\n").ifEmpty { null },
             WhatToWear.tip(forecast.current, forecast.upcomingHours(count = 13).drop(1), hourText = hourText),
             vsNormal, vsYesterday)
         Spacer(Modifier.height(14.dp))

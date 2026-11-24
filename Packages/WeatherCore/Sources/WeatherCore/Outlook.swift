@@ -109,4 +109,28 @@ public enum Outlook {
         let hours = calendar.component(.hour, from: date) < 6 ? 9 : 33
         return calendar.date(byAdding: .hour, value: hours, to: start) ?? date
     }
+
+    /// On a day with rain or snow ahead, returns the longest contiguous dry stretch (>= 2 hr)
+    /// in the next 14 hours, e.g. "Driest window: 2 pm – 6 pm."
+    public static func dryWindow(_ forecast: Forecast, at date: Date = Date(),
+                                 hourText: (Date) -> String) -> String? {
+        let upcoming = Array(forecast.hoursStartingNow(from: date, count: 14))
+        guard upcoming.count >= 4,
+              upcoming.prefix(12).contains(where: { ($0.precipitationProbability ?? 0) >= 40 }) else { return nil }
+        var bestStart = -1, bestLen = 0, curStart = -1, curLen = 0
+        for (i, h) in upcoming.enumerated() {
+            let dry = (h.precipitationProbability ?? 0) < 25 && !h.condition.isPrecipitation
+            if dry {
+                if curStart == -1 { curStart = i }
+                curLen += 1
+                if curLen > bestLen { bestLen = curLen; bestStart = curStart }
+            } else {
+                curStart = -1; curLen = 0
+            }
+        }
+        guard bestLen >= 2, bestStart >= 0 else { return nil }
+        let start = upcoming[bestStart].time
+        let end = upcoming[bestStart + bestLen - 1].time.addingTimeInterval(3600)
+        return "Driest window: \(hourText(start)) – \(hourText(end))."
+    }
 }

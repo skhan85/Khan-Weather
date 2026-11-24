@@ -11,6 +11,8 @@ struct HourlyCurve: View {
     var firstIsNow = true
 
     private let columnWidth: CGFloat = 58
+    private enum CurveMode: String, CaseIterable { case temp = "Temp", rain = "Rain", wind = "Wind" }
+    @State private var mode: CurveMode = .temp
     @State private var selectedIndex: Int?
 
     private var low: Double { hours.map { min($0.temperature, $0.modelLow ?? $0.temperature) }.min() ?? 0 }
@@ -18,7 +20,23 @@ struct HourlyCurve: View {
     private var hasBand: Bool { hours.contains { $0.modelLow != nil } }
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                ForEach(CurveMode.allCases, id: \.self) { m in
+                    Button { mode = m; selectedIndex = nil } label: {
+                        Text(m.rawValue)
+                            .font(.caption.weight(.bold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .foregroundStyle(mode == m ? Color.black : Color.white.opacity(0.85))
+                            .background(Capsule().fill(mode == m ? Brand.gold : Color.white.opacity(0.12)))
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            ScrollView(.horizontal, showsIndicators: false) {
             VStack(spacing: 6) {
                 HStack(spacing: 0) {
                     ForEach(Array(hours.enumerated()), id: \.element.id) { index, hour in
@@ -35,9 +53,18 @@ struct HourlyCurve: View {
                         .buttonStyle(.plain)
                     }
                 }
-                ZStack {
-                    if hasBand { band }
-                    curve
+                Group {
+                    switch mode {
+                    case .temp:
+                        ZStack {
+                            if hasBand { band }
+                            curve
+                        }
+                    case .rain:
+                        rainStrip
+                    case .wind:
+                        windStrip
+                    }
                 }
                 .frame(width: columnWidth * CGFloat(hours.count), height: 74)
                 .contentShape(Rectangle())
@@ -101,9 +128,63 @@ struct HourlyCurve: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(.black.opacity(0.35), in: Capsule())
+        }
     }
 
     @ViewBuilder
+    private var rainStrip: some View {
+        let maxMm = max(hours.compactMap(\.precipitation).max() ?? 0, 2.0)
+        return HStack(alignment: .bottom, spacing: 0) {
+            ForEach(hours) { h in
+                let mm = h.precipitation ?? 0
+                let pop = h.precipitationProbability ?? 0
+                let frac = mm >= 0.1 ? min(1.0, mm / maxMm) : (pop >= 20 ? 0.12 : 0.0)
+                let label: String = {
+                    if mm >= 0.1 {
+                        return UnitSettings.current.precipitation == .inches
+                            ? String(format: "%.1f\"", max(0.1, mm / 25.4))
+                            : String(format: "%.1f", mm)
+                    }
+                    return pop >= 10 ? "\(Int(pop.rounded()))%" : "–"
+                }()
+                VStack(spacing: 4) {
+                    Spacer(minLength: 0)
+                    Text(label)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(mm >= 0.1 || pop >= 20 ? Color(red: 0.24, green: 0.91, blue: 1.0) : .white.opacity(0.55))
+                        .lineLimit(1)
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(frac > 0 ? Color(red: 0.24, green: 0.91, blue: 1.0) : Color.white.opacity(0.18))
+                        .frame(width: 18, height: max(3, CGFloat(frac) * 46))
+                }
+                .frame(width: columnWidth, height: 74, alignment: .bottom)
+            }
+        }
+    }
+
+    private var windStrip: some View {
+        let maxW = max(hours.compactMap(\.windSpeed).max() ?? 0, 25.0)
+        return HStack(alignment: .bottom, spacing: 0) {
+            ForEach(hours) { h in
+                let w = h.windSpeed ?? 0
+                let g = h.windGusts ?? 0
+                let frac = min(1.0, w / maxW)
+                VStack(spacing: 4) {
+                    Spacer(minLength: 0)
+                    Text(WeatherFormat.wind(w))
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(g >= 50 ? Color.orange : Brand.gold)
+                        .frame(width: 18, height: max(4, CGFloat(frac) * 44))
+                }
+                .frame(width: columnWidth, height: 74, alignment: .bottom)
+            }
+        }
+    }
+
     private func timeLabel(index: Int, hour: HourlyForecast) -> some View {
         if index == 0 && firstIsNow {
             Text("Now")

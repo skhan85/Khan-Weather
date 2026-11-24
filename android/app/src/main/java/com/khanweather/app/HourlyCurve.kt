@@ -6,7 +6,13 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.*
+import androidx.compose.ui.draw.clip
+import com.khanweather.core.PrecipitationUnit
+import com.khanweather.core.UnitSettings
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -40,8 +46,24 @@ fun HourlyCurve(hours: List<HourlyForecast>, zone: String, firstIsNow: Boolean, 
     val measurer = rememberTextMeasurer()
     val labelStyle = style(15.sp, FontWeight.Bold, shadow = true)
 
-    Row(Modifier.horizontalScroll(rememberScrollState())) {
-        Column(Modifier.padding(vertical = 4.dp)) {
+    var mode by remember { mutableStateOf("Temp") }
+    Column {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (m in listOf("Temp", "Rain", "Wind")) {
+                val on = mode == m
+                Text(
+                    m,
+                    style = style(12.sp, FontWeight.Bold, if (on) Color.Black else Color.White.copy(alpha = 0.85f)),
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(if (on) Gold else Color.White.copy(alpha = 0.12f))
+                        .clickable { mode = m }
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                )
+            }
+        }
+        Row(Modifier.horizontalScroll(rememberScrollState())) {
+            Column(Modifier.padding(vertical = 4.dp)) {
             Row {
                 hours.forEachIndexed { i, h ->
                     Column(Modifier.width(col).clickable { onHour(h) }, horizontalAlignment = Alignment.CenterHorizontally,
@@ -54,7 +76,43 @@ fun HourlyCurve(hours: List<HourlyForecast>, zone: String, firstIsNow: Boolean, 
                 }
             }
             Spacer(Modifier.height(6.dp))
-            Canvas(Modifier.width(col * hours.size).height(74.dp)) {
+            if (mode == "Rain") {
+                val maxMm = max(hours.maxOf { it.precipitation ?: 0.0 }, 2.0)
+                Row(Modifier.height(74.dp), verticalAlignment = Alignment.Bottom) {
+                    for (h in hours) {
+                        val mm = h.precipitation ?: 0.0
+                        val pop = h.precipitationProbability ?: 0.0
+                        val frac = if (mm >= 0.1) minOf(1.0, mm / maxMm) else if (pop >= 20.0) 0.12 else 0.0
+                        val lbl = when {
+                            mm >= 0.1 && UnitSettings.current.precipitation == PrecipitationUnit.inches -> String.format("%.1f\"", max(0.1, mm / 25.4))
+                            mm >= 0.1 -> String.format("%.1f", mm)
+                            pop >= 10.0 -> "${pop.toInt()}%"
+                            else -> "–"
+                        }
+                        val barColor = if (frac > 0) Color(0xFF3CE8FF) else Color.White.copy(alpha = 0.18f)
+                        Column(Modifier.width(col).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
+                            Text(lbl, style = style(11.sp, FontWeight.Bold, if (frac > 0) Color(0xFF3CE8FF) else Color.White.copy(alpha = 0.55f)), maxLines = 1)
+                            Spacer(Modifier.height(4.dp))
+                            Box(Modifier.width(18.dp).height(maxOf(3.0, frac * 46.0).dp).clip(RoundedCornerShape(4.dp)).background(barColor))
+                        }
+                    }
+                }
+            } else if (mode == "Wind") {
+                val maxW = max(hours.maxOf { it.windSpeed ?: 0.0 }, 25.0)
+                Row(Modifier.height(74.dp), verticalAlignment = Alignment.Bottom) {
+                    for (h in hours) {
+                        val w = h.windSpeed ?: 0.0
+                        val g = h.windGusts ?: 0.0
+                        val frac = minOf(1.0, w / maxW)
+                        val barColor = if (g >= 50.0) Color(0xFFFF9800) else Gold
+                        Column(Modifier.width(col).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
+                            Text(WeatherFormat.wind(w), style = style(10.sp, FontWeight.Bold), maxLines = 1)
+                            Spacer(Modifier.height(4.dp))
+                            Box(Modifier.width(18.dp).height(maxOf(4.0, frac * 44.0).dp).clip(RoundedCornerShape(4.dp)).background(barColor))
+                        }
+                    }
+                }
+            } else Canvas(Modifier.width(col * hours.size).height(74.dp)) {
                 val cw = col.toPx()
                 fun x(i: Int) = cw * i + cw / 2
                 fun y(t: Double) = (size.height * (1 - (t - floor) / (top - floor))).toFloat()
@@ -107,6 +165,7 @@ fun catmullRom(path: Path, pts: List<Offset>, moveFirst: Boolean) {
         val p3 = pts[if (i + 2 < pts.size) i + 2 else i + 1]
         path.cubicTo(p1.x + (p2.x - p0.x) / 6, p1.y + (p2.y - p0.y) / 6,
             p2.x - (p3.x - p1.x) / 6, p2.y - (p3.y - p1.y) / 6, p2.x, p2.y)
+    }
     }
 }
 
