@@ -135,12 +135,22 @@ public extension Forecast {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = timeZone
         copy.daily = daily.map { d in
-            let dayHours = copy.hourly.filter { cal.isDate($0.time, inSameDayAs: d.date) }
-            guard dayHours.count >= 6,
-                  let ensMax = dayHours.compactMap(\.precipitationProbability).max() else { return d }
             var out = d
-            if let raw = d.precipitationProbability {
+            let dayHours = copy.hourly.filter { cal.isDate($0.time, inSameDayAs: d.date) }
+            if dayHours.count >= 6, let ensMax = dayHours.compactMap(\.precipitationProbability).max(),
+               let raw = d.precipitationProbability {
                 out.precipitationProbability = (0.5 * raw + 0.5 * ensMax).rounded()
+            }
+            let totalMm = (out.rainSum ?? 0) + (out.snowfallSum ?? 0)
+            if totalMm >= 10, let p = out.precipitationProbability {
+                out.precipitationProbability = max(p, 60)
+            } else if totalMm >= 1, out.condition.isPrecipitation, let p = out.precipitationProbability {
+                out.precipitationProbability = max(p, 35)
+            } else if totalMm < 0.5, !out.condition.isPrecipitation, let p = out.precipitationProbability, p > 35 {
+                out.precipitationProbability = 35
+            }
+            if (out.precipitationProbability ?? 0) < 30, totalMm < 1, out.condition.isPrecipitation {
+                out.condition = .overcast
             }
             return out
         }

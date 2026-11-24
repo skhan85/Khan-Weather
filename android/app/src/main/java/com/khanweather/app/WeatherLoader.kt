@@ -167,10 +167,15 @@ object WeatherLoader {
         val calDays = daily.map { d ->
             val dayHours = calHours.filter { calendar.isSameDay(it.time, d.date) }
             val ensMax = if (dayHours.size >= 6) dayHours.mapNotNull { it.precipitationProbability }.maxOrNull() else null
-            val raw = d.precipitationProbability
-            if (ensMax != null && raw != null) {
-                d.copy(precipitationProbability = (0.5 * raw + 0.5 * ensMax).roundToInt().toDouble())
-            } else d
+            var pop = if (ensMax != null && d.precipitationProbability != null) {
+                (0.5 * d.precipitationProbability!! + 0.5 * ensMax).roundToInt().toDouble()
+            } else d.precipitationProbability
+            val totalMm = (d.rainSum ?: 0.0) + (d.snowfallSum ?: 0.0)
+            if (totalMm >= 10.0 && pop != null) pop = maxOf(pop, 60.0)
+            else if (totalMm >= 1.0 && d.condition.isPrecipitation && pop != null) pop = maxOf(pop, 35.0)
+            else if (totalMm < 0.5 && !d.condition.isPrecipitation && pop != null && pop > 35.0) pop = 35.0
+            val cond = if ((pop ?: 0.0) < 30.0 && totalMm < 1.0 && d.condition.isPrecipitation) WeatherCondition.overcast else d.condition
+            d.copy(precipitationProbability = pop, condition = cond)
         }
         return copy(hourly = calHours, daily = calDays)
     }
