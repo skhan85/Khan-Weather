@@ -462,12 +462,25 @@ enum RadarFrames {
 
     /// The loop for a place: Environment Canada's last hour plus RainViewer's nowcast where it has
     /// radar, otherwise RainViewer's worldwide radar for the last two hours.
+    /// ECCC 1 km radar extrapolation (+12 to +60 min) for Canada and the US.
+    static func extrapolation(after latest: Date) -> [RadarFrame] {
+        (1...5).map { step in
+            RadarFrame(
+                time: latest.addingTimeInterval(Double(step) * 12 * 60),
+                wmsLayers: "Radar_1km_RainPrecipRate-Extrapolation",
+                isForecast: true
+            )
+        }
+    }
+
     static func load(for c: Coordinate, hours: Int = 1) async -> [RadarFrame] {
+        if ECCCRadarProvider.covers(c) {
+            let past = recent(hours: hours)
+            let latest = past.last?.time ?? Date()
+            return past + extrapolation(after: latest)
+        }
         let rv = await rainViewer()
-        guard ECCCRadarProvider.covers(c) else { return rv.past + rv.nowcast }
-        let past = recent(hours: hours)
-        let latest = past.last?.time ?? .distantPast
-        return past + rv.nowcast.filter { $0.time > latest }
+        return rv.past + rv.nowcast
     }
 
     /// RainViewer's free frames, past and (if it still publishes them) nowcast. Empty on any failure.
@@ -508,7 +521,7 @@ final class RadarTileOverlay: MKTileOverlay {
 
     static func make(_ frame: RadarFrame) -> MKTileOverlay {
         guard let template = frame.tileTemplate else {
-            return RadarTileOverlay(time: frame.wmsLayers == nil ? frame.time : nil,
+            return RadarTileOverlay(time: (frame.wmsLayers == nil || frame.isForecast) ? frame.time : nil,
                                     layers: frame.wmsLayers ?? MapLayer.radar.wmsLayers)
         }
         let tiles = MKTileOverlay(urlTemplate: template)

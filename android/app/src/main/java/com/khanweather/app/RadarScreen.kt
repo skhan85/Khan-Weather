@@ -166,7 +166,7 @@ function latestPast(){for(var i=frames.length-1;i>=0;i--)if(!frames[i].forecast)
 function rel(f){var m=Math.round((f.time-frames[latestPast()].time)/60000);return m==0?'Now':m<0?(-m)+' min ago':'in '+m+' min';}
 function makeLayer(f){
  if(f.template)return L.tileLayer(f.template,{opacity:0,maxNativeZoom:7,maxZoom:12});
- return L.tileLayer.wms(WMS,{layers:'RADAR_1KM_RRAI,RADAR_1KM_RSNO',format:'image/png',transparent:true,version:'1.3.0',
+ return L.tileLayer.wms(WMS,{layers:f.layers||'RADAR_1KM_RRAI,RADAR_1KM_RSNO',format:'image/png',transparent:true,version:'1.3.0',
   time:f.time.toISOString().split('.')[0]+'Z',opacity:0});}
 function build(){layers.forEach(function(l){map.removeLayer(l)});layers=frames.map(function(f){var l=makeLayer(f);l.addTo(map);return l;});
  var s=document.getElementById('slider');s.max=Math.max(frames.length-1,1);idx=latestPast();hold=0;
@@ -179,14 +179,17 @@ function show(i){idx=i;layers.forEach(function(l,j){l.setOpacity(j==i&&mode=='ra
  var b=document.getElementById('badge');b.textContent=(f.forecast?'⟳ ':'')+fmtTime(f.time)+' · '+r;b.className=f.forecast?'fc':'';}
 var rv=null;
 function load(){
- frames=covered?recent(opt.hours):[];build();
+ if(covered){
+  var past=recent(opt.hours);
+  var latest=past.length?past[past.length-1].time.getTime():Date.now();
+  var ahead=[1,2,3,4,5].map(function(k){return{time:new Date(latest+k*720e3),forecast:true,layers:'Radar_1km_RainPrecipRate-Extrapolation'}});
+  frames=past.concat(ahead);build();return;
+ }
+ frames=[];build();
  fetch('https://api.rainviewer.com/public/weather-maps.json').then(function(r){return r.json()}).then(function(m){
   function conv(list,fc){return (list||[]).map(function(f){return{time:new Date(f.time*1000),forecast:fc,template:m.host+f.path+'/256/{z}/{x}/{y}/2/1_1.png'}})}
-  var past=conv(m.radar&&m.radar.past,false),ahead=conv(m.radar&&m.radar.nowcast,true);
-  if(!covered){frames=past.concat(ahead);build();return;}
-  var latest=frames.length?frames[frames.length-1].time.getTime():0;
-  ahead=ahead.filter(function(f){return f.time.getTime()>latest});
-  if(ahead.length){frames=frames.concat(ahead);build();}}).catch(function(){if(!covered)build();});}
+  frames=conv(m.radar&&m.radar.past,false).concat(conv(m.radar&&m.radar.nowcast,true));build();
+ }).catch(function(){build();});}
 // One frame every half second; linger on "now" and on the last frame before starting over.
 setInterval(function(){if(!playing||mode!='radar'||frames.length<2)return;var lp=latestPast();
  if((idx==lp||idx>=frames.length-1)&&hold<3){hold++;return;}hold=0;show(idx>=frames.length-1?0:idx+1)},500);
