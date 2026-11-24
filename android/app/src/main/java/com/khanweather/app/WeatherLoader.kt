@@ -171,9 +171,10 @@ object WeatherLoader {
                 (0.5 * d.precipitationProbability!! + 0.5 * ensMax).roundToInt().toDouble()
             } else d.precipitationProbability
             val totalMm = (d.rainSum ?: 0.0) + (d.snowfallSum ?: 0.0)
-            if (totalMm >= 10.0 && pop != null) pop = maxOf(pop, 60.0)
-            else if (totalMm >= 1.0 && d.condition.isPrecipitation && pop != null) pop = maxOf(pop, 35.0)
-            else if (totalMm < 0.5 && !d.condition.isPrecipitation && pop != null && pop > 35.0) pop = 35.0
+            if (totalMm >= 10.0 && pop != null) pop = maxOf(pop, 65.0)
+            else if (totalMm >= 5.0 && d.condition.isPrecipitation && pop != null) pop = maxOf(pop, 50.0)
+            else if (totalMm >= 1.0 && d.condition.isPrecipitation && pop != null) pop = maxOf(pop, 40.0)
+            else if (totalMm < 0.5 && !d.condition.isPrecipitation && pop != null && pop > 25.0) pop = 25.0
             val cond = if ((pop ?: 0.0) < 30.0 && totalMm < 1.0 && d.condition.isPrecipitation) WeatherCondition.overcast else d.condition
             d.copy(precipitationProbability = pop, condition = cond)
         }

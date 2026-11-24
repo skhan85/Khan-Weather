@@ -143,11 +143,13 @@ public extension Forecast {
             }
             let totalMm = (out.rainSum ?? 0) + (out.snowfallSum ?? 0)
             if totalMm >= 10, let p = out.precipitationProbability {
-                out.precipitationProbability = max(p, 60)
+                out.precipitationProbability = max(p, 65)
+            } else if totalMm >= 5, out.condition.isPrecipitation, let p = out.precipitationProbability {
+                out.precipitationProbability = max(p, 50)
             } else if totalMm >= 1, out.condition.isPrecipitation, let p = out.precipitationProbability {
-                out.precipitationProbability = max(p, 35)
-            } else if totalMm < 0.5, !out.condition.isPrecipitation, let p = out.precipitationProbability, p > 35 {
-                out.precipitationProbability = 35
+                out.precipitationProbability = max(p, 40)
+            } else if totalMm < 0.5, !out.condition.isPrecipitation, let p = out.precipitationProbability, p > 25 {
+                out.precipitationProbability = 25
             }
             return out
         }
