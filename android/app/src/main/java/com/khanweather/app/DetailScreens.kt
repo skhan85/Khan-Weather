@@ -26,11 +26,11 @@ import java.util.Locale
 
 /** The big card at the top of the hour and day screens, in the same style as the Now card. */
 @Composable
-fun DetailHero(tag: String, condition: WeatherCondition, isDay: Boolean, temperature: String, headline: String, detail: String?) {
+fun DetailHero(tag: String, condition: WeatherCondition, isDay: Boolean, temperature: String, headline: String, detail: String?, mixed: Boolean = false) {
     Column(Modifier.heroCard(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         GoldPill(tag.uppercase(), 12.sp)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconBadge(condition, isDay, 88.dp)
+            IconBadge(condition, isDay, 88.dp, mixed = mixed)
             Spacer(Modifier.width(16.dp))
             Column {
                 Text(temperature, style = style(56.sp, FontWeight.Bold, shadow = true), maxLines = 1)
@@ -63,13 +63,17 @@ private fun windText(speed: Double?, gusts: Double?, direction: Double?): String
     return text
 }
 
-private fun precipIcon(kind: PrecipitationKind) = if (kind == PrecipitationKind.snow) Icons.Filled.AcUnit else Icons.Filled.WaterDrop
+private fun precipIcon(kind: PrecipitationKind) = when (kind) {
+    PrecipitationKind.snow -> Icons.Filled.AcUnit
+    PrecipitationKind.mixed -> Icons.Filled.Grain
+    PrecipitationKind.rain -> Icons.Filled.WaterDrop
+}
 
 @Composable
 fun HourScreen(hour: HourlyForecast, zone: String) {
     Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
         DetailHero(TimeText.weekdayHour(hour.time, zone), hour.condition, hour.isDay, WeatherFormat.temperature(hour.temperature),
-            hour.condition.description, hour.feelsLike?.let { "Feels like ${WeatherFormat.temperature(it)}" })
+            hour.condition.description, hour.feelsLike?.let { "Feels like ${WeatherFormat.temperature(it)}" }, mixed = hour.isMixedPrecipitation)
         Spacer(Modifier.height(14.dp))
         Section("Details", Icons.AutoMirrored.Filled.List, PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
             DetailRow("Precipitation", chanceText(hour.precipitationProbability, hour.precipitationKind), precipIcon(hour.precipitationKind))
@@ -92,7 +96,7 @@ fun DayScreen(day: DailyForecast, forecast: Forecast, normals: ClimateNormals?, 
         val feels = if (day.feelsLikeHigh != null && day.feelsLikeLow != null)
             "Feels like ${WeatherFormat.temperature(day.feelsLikeHigh)} / ${WeatherFormat.temperature(day.feelsLikeLow)}" else null
         DetailHero(TimeText.weekday(day.date, zone), day.condition, true,
-            "${WeatherFormat.temperature(day.high)} / ${WeatherFormat.temperature(day.low)}", day.summary ?: day.condition.description, feels)
+            "${WeatherFormat.temperature(day.high)} / ${WeatherFormat.temperature(day.low)}", day.summary ?: day.condition.description, feels, mixed = day.isMixedPrecipitation)
         Spacer(Modifier.height(14.dp))
         if (hours.isNotEmpty()) Section("Hour by hour", Icons.Filled.Schedule, PaddingValues(vertical = 8.dp)) {
             HourlyCurve(hours, zone, firstIsNow = false) { nav(Screen.Hour(it, zone)) }

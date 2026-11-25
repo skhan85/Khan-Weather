@@ -241,7 +241,7 @@ fun DailyRow(day: DailyForecast, isToday: Boolean, zone: String, weekLow: Double
         }
         Spacer(Modifier.width(6.dp))
         Column(Modifier.width(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            IconBadge(day.condition, true, 34.dp, heavy = (day.rainSum ?: 0.0) >= 12.0)
+            IconBadge(day.condition, true, 34.dp, heavy = (day.rainSum ?: 0.0) >= 12.0, mixed = day.isMixedPrecipitation)
             PrecipChance(day.precipitationProbability, day.precipitationKind, 11.sp, showsIcon = false)
         }
         Spacer(Modifier.width(6.dp))
@@ -280,7 +280,12 @@ fun DayPartsRow(parts: List<DayPart>) {
 @Composable
 fun NextTwoHours(nowcast: Nowcast, slots: List<PrecipitationSlot>) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        LabelLine(if (nowcast.kind == Nowcast.Kind.snow) Icons.Filled.AcUnit else Icons.Filled.Umbrella, nowcast.text)
+        val nowcastIcon = when (nowcast.kind) {
+            Nowcast.Kind.snow -> Icons.Filled.AcUnit
+            Nowcast.Kind.mixed -> Icons.Filled.Grain
+            Nowcast.Kind.rain -> Icons.Filled.Umbrella
+        }
+        LabelLine(nowcastIcon, nowcast.text)
         Row(Modifier.fillMaxWidth().height(62.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.Bottom) {
             for (s in slots) {
                 val h = if (!s.isWet) 3.0 else 10 + 50 * min(sqrt(max(s.precipitation, s.snowfall) / 1.0), 1.0)
@@ -341,8 +346,20 @@ fun TodayDetails(forecast: Forecast) {
     }
     if (day != null && (day.rainSum != null || day.snowfallSum != null)) {
         val t = WeatherFormat.precipitationTotals(day.rainSum, day.snowfallSum) ?: "None"
-        val week = forecast.precipitationTotals(7)?.let { WeatherFormat.precipitationTotals(it.first, it.second) ?: "none" }
-        tiles += Tile("Rain and snow today", t, Icons.Filled.WaterDrop, week?.let { "Next 7 days: $it." } ?: "")
+        val weekTotals = forecast.precipitationTotals(7)
+        val week = weekTotals?.let { WeatherFormat.precipitationTotals(it.first, it.second) ?: "none" }
+        val r = day.rainSum ?: 0.0
+        val s = day.snowfallSum ?: 0.0
+        val icon = when {
+            r > 0 && s > 0 -> Icons.Filled.Grain
+            s > 0 -> Icons.Filled.AcUnit
+            r > 0 -> Icons.Filled.WaterDrop
+            weekTotals != null && weekTotals.first > 0 && weekTotals.second > 0 -> Icons.Filled.Grain
+            weekTotals != null && weekTotals.second > 0 -> Icons.Filled.AcUnit
+            weekTotals != null && weekTotals.first > 0 -> Icons.Filled.WaterDrop
+            else -> Icons.Filled.Grain
+        }
+        tiles += Tile("Rain and snow today", t, icon, week?.let { "Next 7 days: $it." } ?: "")
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {

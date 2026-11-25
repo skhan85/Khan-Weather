@@ -69,6 +69,10 @@ data class HourlyForecast(
     val precipitationKind: PrecipitationKind
         get() = PrecipitationKind.guess(rain, snowfall, condition, temperature, temperature)
 
+    /** True when both rain and snow are expected in meaningful amounts this hour. */
+    val isMixedPrecipitation: Boolean
+        get() = condition.isPrecipitation && (rain ?: 0.0) >= 0.2 && (snowfall ?: 0.0) >= 0.2
+
     /**
      * Makes this hour's rain and snow one kind: the amounts move to rain (mm) or snow (cm, at
      * 0.7 mm of water per cm) and the condition follows. Freezing rain is left alone.
@@ -123,6 +127,10 @@ data class DailyForecast(
 
     val precipitationKind: PrecipitationKind
         get() = PrecipitationKind.guess(rainSum, snowfallSum, condition, low, high)
+
+    /** True when the day brings both rain and snow. */
+    val isMixedPrecipitation: Boolean
+        get() = condition.isPrecipitation && (((rainSum ?: 0.0) >= 0.2 && (snowfallSum ?: 0.0) >= 0.2) || summary != null)
 }
 
 /** Fifteen minutes of precipitation from the short-range forecast. */

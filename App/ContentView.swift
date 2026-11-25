@@ -432,7 +432,7 @@ struct DailyRow: View {
             }
             .frame(width: 62, alignment: .leading)
             VStack(spacing: 1) {
-                IconBadge(condition: day.condition, size: 34, heavy: (day.rainSum ?? 0) >= 12)
+                IconBadge(condition: day.condition, size: 34, heavy: (day.rainSum ?? 0) >= 12, mixed: day.isMixedPrecipitation)
                 PrecipChance(probability: day.precipitationProbability, kind: day.precipitationKind,
                              font: .caption2.weight(.semibold), showsIcon: false)
             }
@@ -657,10 +657,28 @@ struct TodayDetailsView: View {
         }
         if let day, day.rainSum != nil || day.snowfallSum != nil {
             let today = WeatherFormat.precipitationTotals(rainMm: day.rainSum, snowCm: day.snowfallSum) ?? "None"
-            let week = forecast.precipitationTotals(days: 7).map {
+            let weekTotals = forecast.precipitationTotals(days: 7)
+            let week = weekTotals.map {
                 WeatherFormat.precipitationTotals(rainMm: $0.rainMm, snowCm: $0.snowCm) ?? "none"
             }
-            add("Rain and snow today", today, "drop", note: week.map { "Next 7 days: \($0)." } ?? "")
+            let r = day.rainSum ?? 0, s = day.snowfallSum ?? 0
+            let icon: String
+            if r > 0 && s > 0 {
+                icon = "cloud.sleet.fill"
+            } else if s > 0 {
+                icon = "snowflake"
+            } else if r > 0 {
+                icon = "drop.fill"
+            } else if let w = weekTotals, w.rainMm > 0 && w.snowCm > 0 {
+                icon = "cloud.sleet.fill"
+            } else if let w = weekTotals, w.snowCm > 0 {
+                icon = "snowflake"
+            } else if let w = weekTotals, w.rainMm > 0 {
+                icon = "drop.fill"
+            } else {
+                icon = "cloud.sleet.fill"
+            }
+            add("Rain and snow today", today, icon, note: week.map { "Next 7 days: \($0)." } ?? "")
         }
         return list
     }

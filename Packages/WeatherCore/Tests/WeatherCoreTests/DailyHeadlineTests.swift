@@ -48,6 +48,7 @@ final class DailyHeadlineTests: XCTestCase {
         let d = forecast(day, hours).withDailyHeadlines().daily[0]
         XCTAssertEqual(d.summary, "Rain then snow")
         XCTAssertEqual(d.condition, .rain)
+        XCTAssertTrue(d.isMixedPrecipitation)
     }
 
     func testAllRainDayFlaggedSnowBecomesRain() {
@@ -57,6 +58,7 @@ final class DailyHeadlineTests: XCTestCase {
         let d = forecast(day, hours).withDailyHeadlines().daily[0]
         XCTAssertEqual(d.condition, .rain)
         XCTAssertNil(d.summary)
+        XCTAssertFalse(d.isMixedPrecipitation)
     }
 
     func testRealSnowDayUnchanged() {
@@ -66,6 +68,7 @@ final class DailyHeadlineTests: XCTestCase {
         let d = forecast(day, hours).withDailyHeadlines().daily[0]
         XCTAssertEqual(d.condition, .snow)
         XCTAssertNil(d.summary)
+        XCTAssertFalse(d.isMixedPrecipitation)
     }
 
     func testLowChanceButSteadyRainStaysRain() {

@@ -168,7 +168,9 @@ struct NextTwoHoursView: View {
             Label {
                 Text(nowcast.text).font(.headline)
             } icon: {
-                Image(systemName: nowcast.kind == .snow ? "cloud.snow.fill" : "cloud.rain.fill")
+                let symbol = nowcast.kind == .snow ? "cloud.snow.fill"
+                    : nowcast.kind == .mixed ? "cloud.sleet.fill" : "cloud.rain.fill"
+                Image(systemName: symbol)
                     .foregroundStyle(Brand.gold)
             }
             HStack(alignment: .bottom, spacing: 4) {

@@ -66,6 +66,7 @@ struct DetailHero: View {
     let tag: String
     let condition: WeatherCondition
     var isDay = true
+    var mixed = false
     let temperature: String
     let headline: String
     var detail: String? = nil
@@ -80,7 +81,7 @@ struct DetailHero: View {
                 .padding(.vertical, 3)
                 .background(Capsule().fill(Brand.gold))
             HStack(spacing: 16) {
-                IconBadge(condition: condition, isDay: isDay, size: 88)
+                IconBadge(condition: condition, isDay: isDay, size: 88, mixed: mixed)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(temperature)
                         .font(.system(size: 56, weight: .bold, design: .rounded))
@@ -138,7 +139,7 @@ struct HourDetailView: View {
         List {
             Section {
                 DetailHero(tag: hour.time.formatted(Date.FormatStyle(timeZone: timeZone).weekday(.wide).hour()),
-                           condition: hour.condition, isDay: hour.isDay,
+                           condition: hour.condition, isDay: hour.isDay, mixed: hour.isMixedPrecipitation,
                            temperature: WeatherFormat.temperature(hour.temperature),
                            headline: hour.condition.description,
                            detail: hour.feelsLike.map { "Feels like \(WeatherFormat.temperature($0))" })
@@ -184,7 +185,7 @@ struct DayDetailView: View {
         List {
             Section {
                 DetailHero(tag: day.date.formatted(Date.FormatStyle(timeZone: timeZone).weekday(.wide)),
-                           condition: day.condition,
+                           condition: day.condition, mixed: day.isMixedPrecipitation,
                            temperature: "\(WeatherFormat.temperature(day.high)) / \(WeatherFormat.temperature(day.low))",
                            headline: day.summary ?? day.condition.description,
                            detail: day.feelsLikeHigh.flatMap { hi in day.feelsLikeLow.map { lo in

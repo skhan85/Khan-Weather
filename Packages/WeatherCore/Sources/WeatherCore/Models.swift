@@ -104,6 +104,11 @@ public struct HourlyForecast: Equatable, Codable, Sendable, Identifiable {
                                 low: temperature, high: temperature)
     }
 
+    /// True when both rain and snow are expected in meaningful amounts this hour.
+    public var isMixedPrecipitation: Bool {
+        condition.isPrecipitation && (rain ?? 0) >= 0.2 && (snowfall ?? 0) >= 0.2
+    }
+
     /// Makes this hour's rain and snow one kind: the amounts move to rain (mm) or snow (cm, at
     /// 0.7 mm of water per cm) and the condition follows. Freezing rain is left alone.
     mutating func setPrecipitationType(_ type: PrecipitationKind) {
@@ -166,6 +171,11 @@ public struct DailyForecast: Equatable, Codable, Sendable, Identifiable {
     /// What the day's precipitation chance is a chance of.
     public var precipitationKind: PrecipitationKind {
         PrecipitationKind.guess(rain: rainSum, snow: snowfallSum, condition: condition, low: low, high: high)
+    }
+
+    /// True when the day brings both rain and snow.
+    public var isMixedPrecipitation: Bool {
+        condition.isPrecipitation && (((rainSum ?? 0) >= 0.2 && (snowfallSum ?? 0) >= 0.2) || summary != nil)
     }
 
     public init(date: Date, high: Double, low: Double, feelsLikeHigh: Double? = nil, feelsLikeLow: Double? = nil,

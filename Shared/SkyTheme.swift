@@ -239,12 +239,13 @@ struct IconBadge: View {
     var isDay: Bool = true
     var size: CGFloat = 36
     var heavy: Bool = false
+    var mixed: Bool = false
 
     var body: some View {
         let fill = condition.isPrecipitation
             ? Color(red: 0.055, green: 0.106, blue: 0.18).opacity(0.42)
             : Color.white.opacity(0.14)
-        ConditionIcon(condition: condition, isDay: isDay, heavy: heavy)
+        ConditionIcon(condition: condition, isDay: isDay, heavy: heavy, mixed: mixed)
             .font(.system(size: size * (condition.isPrecipitation ? 0.56 : 0.5)))
             .frame(width: size, height: size)
             .background(Circle().fill(fill))

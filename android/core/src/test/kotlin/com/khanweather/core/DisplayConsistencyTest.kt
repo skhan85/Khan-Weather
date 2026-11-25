@@ -50,4 +50,13 @@ class DisplayConsistencyTest {
         assertEquals(ModelBlend.Anchor(4.0, midnight), near.blendAnchor)
         assertNull(far.blendAnchor)
     }
+
+    @Test fun mixedPrecipitationDetectedForRainAndSnow() {
+        val mixedDay = DailyForecast(date = midnight, high = 3.0, low = -1.0, condition = WeatherCondition.rain, rainSum = 1.5, snowfallSum = 0.4)
+        val rainDay = DailyForecast(date = midnight, high = 8.0, low = 3.0, condition = WeatherCondition.rain, rainSum = 4.0, snowfallSum = 0.0)
+        val dryMixedSummary = DailyForecast(date = midnight, high = 3.0, low = -1.0, condition = WeatherCondition.overcast, rainSum = 1.5, snowfallSum = 0.4)
+        assertEquals(true, mixedDay.isMixedPrecipitation)
+        assertEquals(false, rainDay.isMixedPrecipitation)
+        assertEquals(false, dryMixedSummary.isMixedPrecipitation)
+    }
 }

@@ -355,7 +355,7 @@ struct KhanWeatherWidgetView: View {
                             .font(.caption.weight(.bold))
                             .foregroundStyle(index == 0 ? Brand.gold : .white)
                             .frame(width: 42, alignment: .leading)
-                        IconBadge(condition: day.condition, size: 22)
+                        IconBadge(condition: day.condition, size: 22, mixed: day.isMixedPrecipitation)
                         Text(temp(day.high))
                             .font(.caption.weight(.bold))
                             .frame(width: 30, alignment: .trailing)

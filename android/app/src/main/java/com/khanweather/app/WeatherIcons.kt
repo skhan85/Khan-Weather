@@ -25,20 +25,21 @@ object WeatherIcons {
     private const val SNOW = 0xFFE8F6FF.toInt()
     private const val BOLT = 0xFFFFD60A.toInt()
 
-    fun bitmap(condition: WeatherCondition, isDay: Boolean, px: Int, heavy: Boolean = false): Bitmap {
+    fun bitmap(condition: WeatherCondition, isDay: Boolean, px: Int, heavy: Boolean = false, mixed: Boolean = false): Bitmap {
         val bmp = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
-        draw(Canvas(bmp), px.toFloat(), condition, isDay, heavy)
+        draw(Canvas(bmp), px.toFloat(), condition, isDay, heavy, mixed)
         return bmp
     }
 
-    fun draw(canvas: Canvas, size: Float, condition: WeatherCondition, isDay: Boolean, heavy: Boolean = false) {
+    fun draw(canvas: Canvas, size: Float, condition: WeatherCondition, isDay: Boolean, heavy: Boolean = false, mixed: Boolean = false) {
         canvas.save()
         canvas.scale(size / 100f, size / 100f)
         val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
         val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
         }
-        when (condition) {
+        val effective = if (mixed && condition.isPrecipitation) freezingRain else condition
+        when (effective) {
             clear -> if (isDay) sun(canvas, 50f, 50f, 22f, fill, stroke) else moon(canvas, 50f, 50f, 26f, fill)
             mainlyClear, partlyCloudy -> {
                 if (isDay) sun(canvas, 38f, 38f, 16f, fill, stroke) else moon(canvas, 38f, 36f, 19f, fill)

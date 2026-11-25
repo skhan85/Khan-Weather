@@ -45,7 +45,7 @@ struct HourlyCurve: View {
                         } label: {
                             VStack(spacing: 8) {
                                 timeLabel(index: index, hour: hour)
-                                IconBadge(condition: hour.condition, isDay: hour.isDay, size: 38)
+                                IconBadge(condition: hour.condition, isDay: hour.isDay, size: 38, mixed: hour.isMixedPrecipitation)
                             }
                             .frame(width: columnWidth)
                             .contentShape(Rectangle())

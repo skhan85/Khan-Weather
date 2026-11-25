@@ -9,26 +9,38 @@ struct ConditionIcon: View {
     let condition: WeatherCondition
     var isDay: Bool = true
     var heavy: Bool = false
+    var mixed: Bool = false
     @Environment(\.colorScheme) private var colorScheme
 
+    private var effectiveSymbol: String {
+        if mixed && condition.isPrecipitation { return "cloud.sleet.fill" }
+        if heavy && (condition == .rain || condition == .rainShowers) { return "cloud.heavyrain.fill" }
+        return condition.symbolName(isDay: isDay)
+    }
+
     var body: some View {
-        let name = (heavy && (condition == .rain || condition == .rainShowers)) ? "cloud.heavyrain.fill" : condition.symbolName(isDay: isDay)
-        let image = Image(systemName: name)
+        let image = Image(systemName: effectiveSymbol)
         if colorScheme == .dark {
             let brightRain = Color(red: 0.24, green: 0.91, blue: 1.0)
-            switch condition {
-            case .drizzle, .rain:
-                image.symbolRenderingMode(.palette).foregroundStyle(.white, brightRain)
-            case .rainShowers:
-                if isDay && !heavy {
-                    image.symbolRenderingMode(.palette).foregroundStyle(.white, .yellow, brightRain)
-                } else {
-                    image.symbolRenderingMode(.palette).foregroundStyle(.white, brightRain)
-                }
-            default:
+            if mixed && condition.isPrecipitation {
                 image
                     .symbolRenderingMode(.multicolor)
                     .foregroundStyle(.white)
+            } else {
+                switch condition {
+                case .drizzle, .rain:
+                    image.symbolRenderingMode(.palette).foregroundStyle(.white, brightRain)
+                case .rainShowers:
+                    if isDay && !heavy {
+                        image.symbolRenderingMode(.palette).foregroundStyle(.white, .yellow, brightRain)
+                    } else {
+                        image.symbolRenderingMode(.palette).foregroundStyle(.white, brightRain)
+                    }
+                default:
+                    image
+                        .symbolRenderingMode(.multicolor)
+                        .foregroundStyle(.white)
+                }
             }
         } else if condition == .clear {
             image.symbolRenderingMode(.multicolor).foregroundStyle(isDay ? Color.yellow : Color.indigo)
@@ -39,6 +51,7 @@ struct ConditionIcon: View {
 
     /// Colour for the sun, moon, drops or flakes.
     private var accent: Color {
+        if mixed && condition.isPrecipitation { return .teal }
         switch condition {
         case .clear, .mainlyClear, .partlyCloudy: return isDay ? .orange : .indigo
         case .overcast, .fog, .unknown: return .gray
