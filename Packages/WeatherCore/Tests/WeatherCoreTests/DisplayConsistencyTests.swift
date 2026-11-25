@@ -68,6 +68,7 @@ final class DisplayConsistencyTests: XCTestCase {
         XCTAssertEqual(f.displayDay(at: noon)?.low, 10)
     }
 
+    /// At 9 AM when it is -3° outside and tonight stays at 1°, Today's low stays at -3° instead of jumping to 1°.
     func testColdMorningLowIncludesCurrentTemperature() {
         var f = forecast { h in h <= 9 ? -3 : (h == 14 ? 3 : 1) }
         let nineAM = midnight.addingTimeInterval(9 * 3600)
