@@ -64,6 +64,8 @@ final class SettingsUnitsTests: XCTestCase {
         XCTAssertEqual(WeatherFormat.roughDistance(0.05, unit: .mi), "200 ft")
         XCTAssertEqual(WeatherFormat.rainAmount(0.4, unit: .metric), "0.4 mm")
         XCTAssertEqual(WeatherFormat.rainAmount(2.54, unit: .inches), "0.10 in")
+        XCTAssertEqual(WeatherFormat.snowAmount(1.2, unit: .metric), "1.2 cm")
+        XCTAssertEqual(WeatherFormat.snowAmount(2.54, unit: .inches), "1.00 in snow")
     }
 
     func testParsesPressureAndGusts() throws {

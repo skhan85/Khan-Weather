@@ -72,8 +72,9 @@ fun Forecast.nowcastSlots(now: Epoch = nowEpoch()): List<PrecipitationSlot> {
     } else if (r != null && r.isPrecipitating && !slots[0].isWet) {
         val hourlyRate = max(r.rainMmPerHour, r.snowCmPerHour)
         val slotAmount = max(PrecipitationSlot.wetThreshold, hourlyRate / 4.0)
-        val isSnow = r.isSnowing && !r.isRaining
-        slots[0] = PrecipitationSlot(slots[0].time, slotAmount, if (isSnow) 0.0 else slotAmount, if (isSnow) slotAmount else 0.0)
+        val rainPart = if (r.isRaining) max(if (r.isSnowing) PrecipitationSlot.wetThreshold else slotAmount, r.rainMmPerHour / 4.0) else 0.0
+        val snowPart = if (r.isSnowing) max(if (r.isRaining) PrecipitationSlot.wetThreshold else slotAmount, r.snowCmPerHour / 4.0) else 0.0
+        slots[0] = PrecipitationSlot(slots[0].time, max(slotAmount, rainPart + snowPart), rainPart, snowPart)
     }
     return slots
 }

@@ -239,4 +239,46 @@ final class OpenMeteoProviderTests: XCTestCase {
         XCTAssertEqual(WeatherFormat.temperature(-0.3), "0°")
         XCTAssertEqual(WeatherFormat.temperature(21.6), "22°")
     }
+
+    func testRegionalWeightsIsolateLocationsAndTaperWithLead() {
+        let milton = Coordinate(latitude: 43.513, longitude: -79.882)
+        let london = Coordinate(latitude: 51.5, longitude: -0.12)
+        ModelBlend.setRegionalWeights(["germany": 0.9, "europeAI": 0.1], for: milton)
+        ModelBlend.setRegionalWeights(["europe": 0.9, "uk": 0.1], for: london)
+
+        let miltonDay0 = ModelBlend.weight(.germany, leadHours: 12, region: .at(milton), coordinate: milton)
+        let londonDay0 = ModelBlend.weight(.germany, leadHours: 12, region: .at(milton), coordinate: london)
+        XCTAssertNotEqual(miltonDay0, londonDay0)
+
+        let baselineDay6 = ModelBlend.weight(.germany, leadHours: 150, region: .at(milton))
+        let miltonDay6 = ModelBlend.weight(.germany, leadHours: 150, region: .at(milton), coordinate: milton)
+        XCTAssertEqual(miltonDay6, baselineDay6, accuracy: 0.0001)
+    }
+
+    func testEnsemblePrecipitationMeanReplacesSingleModelSpike() async throws {
+        let blend = """
+        {
+          "hourly": { "time": [1762952400],
+                      "temperature_2m_gfs_seamless": [6.0], "temperature_2m_ecmwf_ifs025": [6.0],
+                      "temperature_2m_icon_seamless": [6.0], "temperature_2m_ukmo_seamless": [6.0],
+                      "precipitation_gfs_seamless": [0.4], "precipitation_ecmwf_ifs025": [0.4],
+                      "precipitation_icon_seamless": [0.4], "precipitation_ukmo_seamless": [0.4],
+                      "snowfall_gfs_seamless": [0.0], "snowfall_ecmwf_ifs025": [0.0],
+                      "snowfall_icon_seamless": [0.0], "snowfall_ukmo_seamless": [0.0] }
+        }
+        """.data(using: .utf8)!
+        let provider = OpenMeteoProvider(loader: { request in
+            let isBlend = request.url!.query!.contains("models=")
+            return (isBlend ? blend : Self.sample,
+                    HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        })
+        let forecast = try await provider.forecast(for: .fallback)
+        XCTAssertEqual(try XCTUnwrap(forecast.hourly[0].precipitation), 0.4, accuracy: 0.001)
+    }
+
+    func testRegionSummaryMentionsRegionName() {
+        let summary = BlendRegion.summary(at: Coordinate(latitude: 51.5, longitude: -0.12))
+        XCTAssertTrue(summary.contains("Europe"))
+        XCTAssertFalse(summary.contains("Milton"))
+    }
 }

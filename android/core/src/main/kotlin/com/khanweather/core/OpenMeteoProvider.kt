@@ -20,10 +20,14 @@ class OpenMeteoProvider(
 
     /**
      * `anchor` gives the local station temperature that re-weights the first hours of the blend.
-     * It is awaited only once the model data has arrived.
+     * Both `anchor` and `regionalWeights` are awaited once the model data has arrived.
      */
-    suspend fun forecast(coordinate: Coordinate, anchor: suspend () -> ModelBlend.Anchor? = { null }): Forecast = coroutineScope {
-        val blended = if (usesBlend(coordinate)) async { blendedTemperatures(coordinate, anchor) } else null
+    suspend fun forecast(
+        coordinate: Coordinate,
+        regionalWeights: (suspend () -> Map<String, Double>?)? = null,
+        anchor: suspend () -> ModelBlend.Anchor? = { null },
+    ): Forecast = coroutineScope {
+        val blended = if (usesBlend(coordinate)) async { blendedTemperatures(coordinate, regionalWeights, anchor) } else null
         val data = loader.fetch(url(coordinate), timeoutSeconds = 20)
         val forecast = parse(data, nowEpoch())
         val temps = blended?.await() ?: return@coroutineScope forecast
@@ -34,7 +38,11 @@ class OpenMeteoProvider(
      * Blended hourly temperatures; null if the request fails, so the default stays. If the
      * region's own models are refused, it tries again with the worldwide models and weights.
      */
-    suspend fun blendedTemperatures(coordinate: Coordinate, anchor: suspend () -> ModelBlend.Anchor? = { null }): ModelTemperatures? {
+    suspend fun blendedTemperatures(
+        coordinate: Coordinate,
+        regionalWeights: (suspend () -> Map<String, Double>?)? = null,
+        anchor: suspend () -> ModelBlend.Anchor? = { null },
+    ): ModelTemperatures? {
         val region = BlendRegion.at(coordinate)
         val tries = if (region == BlendRegion.fallback) listOf(region) else listOf(region, BlendRegion.fallback)
         for (r in tries) {
@@ -43,8 +51,10 @@ class OpenMeteoProvider(
                 if (e is HttpStatusException) continue
                 return null
             }
+            val weights = regionalWeights?.invoke()
+            if (!weights.isNullOrEmpty()) ModelBlend.setRegionalWeights(weights, coordinate)
             val observed = anchor()
-            return try { parseBlend(data, r, observed, nowEpoch()) } catch (e: Exception) { null }
+            return try { parseBlend(data, r, observed, nowEpoch(), coordinate) } catch (e: Exception) { null }
         }
         return null
     }
@@ -84,6 +94,8 @@ class OpenMeteoProvider(
             val freezing: Int,
             val precipitation: Map<WeatherModel, Double> = emptyMap(),
             val type: PrecipitationKind? = null,
+            val precipitationMean: Double? = null,
+            val snowfallMean: Double? = null,
         )
 
         val hourly = mutableMapOf<Long, Hour>()
@@ -135,7 +147,13 @@ class OpenMeteoProvider(
         }
 
         /** With several models, Open-Meteo suffixes each field: "temperature_2m_gem_seamless". */
-        fun parseBlend(data: ByteArray, region: BlendRegion = BlendRegion.home, anchor: ModelBlend.Anchor? = null, now: Epoch): ModelTemperatures {
+        fun parseBlend(
+            data: ByteArray,
+            region: BlendRegion = BlendRegion.home,
+            anchor: ModelBlend.Anchor? = null,
+            now: Epoch,
+            coordinate: Coordinate? = null,
+        ): ModelTemperatures {
             val root = parseJson(data)
             val hourly = root["hourly"].obj ?: throw ForecastException("The weather service response was missing hourly.")
             val times = hourly["time"].arr?.map { it.numOnly ?: 0.0 } ?: throw ForecastException("missing hourly")
@@ -157,17 +175,20 @@ class OpenMeteoProvider(
                     return m
                 }
                 val hourTemps = at(temps)
-                val temp = ModelBlend.blend(hourTemps, lead, region, observedTemperature, currentModelTemps) ?: continue
+                val temp = ModelBlend.blend(hourTemps, lead, region, observedTemperature, currentModelTemps, coordinate) ?: continue
                 val values = hourTemps.values.toList()
                 val hourPrecip = at(precip).filterKeys { hourTemps.containsKey(it) }
+                val hourSnow = at(snow).filterKeys { hourTemps.containsKey(it) }
                 val wet = hourPrecip.count { it.value >= ModelBlend.wetHourMm }
                 out.hourly[t.toLong()] = ModelTemperatures.Hour(
                     temperature = temp,
-                    feelsLike = ModelBlend.blend(at(feels), lead, region, observedTemperature, currentModelTemps),
+                    feelsLike = ModelBlend.blend(at(feels), lead, region, observedTemperature, currentModelTemps, coordinate),
                     low = values.min(), high = values.max(), count = values.size,
                     wet = wet, freezing = values.count { it <= 0 },
                     precipitation = hourPrecip,
-                    type = ModelBlend.precipitationType(temp, hourPrecip, at(snow).filterKeys { hourTemps.containsKey(it) }),
+                    type = ModelBlend.precipitationType(temp, hourPrecip, hourSnow),
+                    precipitationMean = ModelBlend.blendedPrecipitation(hourPrecip, lead, region, coordinate),
+                    snowfallMean = ModelBlend.blendedPrecipitation(hourSnow, lead, region, coordinate),
                 )
             }
             return out
@@ -306,6 +327,12 @@ fun Forecast.applying(temps: OpenMeteoProvider.ModelTemperatures): Forecast {
             h.modelsWet = t.wet
             h.modelsFreezing = t.freezing
             h.precipitationProbability = ModelBlend.hourlyChance(h.precipitationProbability, t.wet, t.count)
+            t.precipitationMean?.let { p ->
+                val s = t.snowfallMean ?: 0.0
+                h.precipitation = p
+                h.snowfall = s
+                h.rain = max(0.0, p - s * 0.7)
+            }
             t.type?.let { h.setPrecipitationType(it) }
         }
         h

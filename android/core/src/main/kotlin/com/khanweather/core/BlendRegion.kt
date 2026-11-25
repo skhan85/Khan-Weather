@@ -58,5 +58,37 @@ data class BlendRegion(
 
         /** The region of the app's default spot (Toronto); used when a caller names none. */
         val home: BlendRegion get() = at(Coordinate.fallback)
+
+        /** Plain-English explanation of how temperatures are blended at `coordinate`. */
+        fun summary(c: Coordinate): String {
+            val region = at(c)
+            val regionLabel = region.name.ifBlank { "your region" }
+            fun topNames(weights: Map<WeatherModel, Double>?): String? {
+                if (weights.isNullOrEmpty()) return null
+                val picked = weights.entries.filter { it.value > 0.0 }
+                    .sortedByDescending { it.value }
+                    .take(3)
+                    .map { it.key.displayName }
+                return when (picked.size) {
+                    0 -> null
+                    1 -> picked[0]
+                    2 -> "${picked[0]} and ${picked[1]}"
+                    else -> "${picked[0]}, ${picked[1]} and ${picked[2]}"
+                }
+            }
+            val today = topNames(region.byDay.firstOrNull())
+            val laterDay = if (region.byDay.size > 2) region.byDay[2] else region.byDay.lastOrNull()
+            val later = topNames(laterDay)
+            val parts = mutableListOf(
+                "Khan Weather's temperatures are a blend tailored for $regionLabel, tuned by regional accuracy and updated with recent performance nearby."
+            )
+            if (today != null && later != null && today != later) {
+                parts += "Today $today lead; further out $later carry the most weight."
+            } else if (today != null) {
+                parts += "$today carry the most weight."
+            }
+            parts += "The first hours are also eased toward nearby station readings."
+            return parts.joinToString(" ")
+        }
     }
 }

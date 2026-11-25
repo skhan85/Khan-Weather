@@ -85,14 +85,22 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
         }
         val fallbackName = if (usingFallbackLocation) "Toronto" else null
 
+        val knownTemp = ObservationMemory.last(target)?.temperature ?: cache[key]?.forecast?.current?.temperature
+        val likelyCold = knownTemp?.let { it <= 4.0 } ?: (kotlin.math.abs(target.latitude) >= 25.0)
+
         val nameTask = async { place?.name ?: PlaceNames.name(context, target) }
         val observedTask = async { WeatherLoader.observation(target) }
         val radarTask = async { WeatherLoader.radar(target) }
+        val nowcastTask = async { WeatherLoader.radarNowcast(target, cold = likelyCold) }
+        val weightsTask = async { WeatherLoader.regionalWeights(target) }
         val alertsTask = async { WeatherLoader.alerts(target) }
         val normalsTask = async { WeatherLoader.normals(context, target) }
 
         val base = try {
-            WeatherLoader.forecastProvider.forecast(target) { observedTask.await()?.blendAnchor }
+            WeatherLoader.forecastProvider.forecast(
+                target,
+                regionalWeights = { weightsTask.await() },
+            ) { observedTask.await()?.blendAnchor }
         } catch (e: Exception) {
             if (gen != generation) return@coroutineScope
             if (state is LoadState.Loaded) return@coroutineScope
@@ -106,7 +114,9 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
             return@coroutineScope
         }
         if (gen != generation) return@coroutineScope
-        if (state !is LoadState.Loaded) state = LoadState.Loaded(base)
+        if (state !is LoadState.Loaded) {
+            state = LoadState.Loaded(with(WeatherLoader) { base.calibratingEnsemblePop() })
+        }
         val airTask = async { WeatherLoader.airQuality(target, base.timeZoneIdentifier) }
 
         launch {
@@ -118,9 +128,12 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
         launch { val n = normalsTask.await(); if (n != null && gen == generation) normals = n }
         val observed = observedTask.await()
         val radar = radarTask.await()
+        val radarNowcast = nowcastTask.await()
         if (gen != generation) return@coroutineScope
         observed?.let { ObservationMemory.remember(target, it) }
-        val loaded = base.applying(observed).applyingRadar(radar)
+        val loaded = with(WeatherLoader) {
+            base.applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast).calibratingEnsemblePop()
+        }
         state = LoadState.Loaded(loaded)
         // Keep score of the models for where the user actually is, not saved places.
         if (place == null && !usingFallbackLocation) launch { runCatching { AccuracyTracker.update(loaded) } }

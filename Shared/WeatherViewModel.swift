@@ -134,6 +134,8 @@ final class WeatherViewModel: ObservableObject {
         let observations = currentObservationProvider()
         let spot = Self.spotKey(target)
         let previous = lastObservation[spot]
+        let knownTemp = previous?.temperature ?? cache[key]?.forecast.current.temperature
+        let likelyCold = knownTemp.map { $0 <= 4 } ?? (abs(target.latitude) >= 25)
 
         // Everything starts at once. The station reading has a deadline so a slow station can't
         // hold up the forecast, which waits for it to re-weight the blend (as the widget does).
@@ -143,8 +145,8 @@ final class WeatherViewModel: ObservableObject {
                 .smoothed(after: previous)
         }
         let radarTask = Task { try? await ECCCRadarProvider().now(at: target) }
-        let nowcastTask = Task { await RelayExtrasProvider().nowcast(near: target, cold: false) }
-        Task { if let w = await RelayExtrasProvider().regionalWeights(near: target) { ModelBlend.setRegionalWeights(w) } }
+        let nowcastTask = Task { await RelayExtrasProvider().nowcast(near: target, cold: likelyCold) }
+        let weightsTask = Task { await Deadline.run(3) { await RelayExtrasProvider().regionalWeights(near: target) } ?? nil }
         let alertsTask = Task { try? await alertProvider.alerts(near: target) }
         let airTask = Task { try? await AirQualityProvider().airQuality(at: target) }
         let normalsTask = Task { try? await ClimateNormalsProvider().normals(at: target) }
@@ -152,7 +154,11 @@ final class WeatherViewModel: ObservableObject {
         let base: Forecast
         do {
             if let om = provider as? OpenMeteoProvider {
-                base = try await om.forecast(for: target, anchor: { await observedTask.value?.blendAnchor })
+                base = try await om.forecast(
+                    for: target,
+                    anchor: { await observedTask.value?.blendAnchor },
+                    regionalWeights: { await weightsTask.value }
+                )
             } else {
                 base = try await provider.forecast(for: target)
             }
@@ -168,8 +174,8 @@ final class WeatherViewModel: ObservableObject {
             return
         }
         guard gen == generation else { return }
-        // First paint: the model forecast, unless a fuller one for this place is already on screen.
-        if case .loaded = state {} else { state = .loaded(base) }
+        // First paint: the model forecast with calibrated PoP, unless a fuller one for this place is already on screen.
+        if case .loaded = state {} else { state = .loaded(base.calibratingEnsemblePop()) }
 
         // The rest land in whatever order they answer.
         await withTaskGroup(of: Void.self) { group in
@@ -214,21 +220,31 @@ final class WeatherViewModel: ObservableObject {
             if let snap = cache[place.id], Date().timeIntervalSince(snap.at) < cacheAge / 2 { continue }
             try? await Task.sleep(nanoseconds: 600_000_000)
             let target = place.coordinate
+            let spot = Self.spotKey(target)
+            let knownTemp = lastObservation[spot]?.temperature ?? cache[place.id]?.forecast.current.temperature
+            let likelyCold = knownTemp.map { $0 <= 4 } ?? (abs(target.latitude) >= 25)
             let provider = self.provider, alertProvider = self.alertProvider
             let observations = currentObservationProvider()
             async let observed = Deadline.run(8) { try? await observations.observation(near: target) }
             async let radar = try? ECCCRadarProvider().now(at: target)
+            async let nowcast = RelayExtrasProvider().nowcast(near: target, cold: likelyCold)
+            async let weights = Deadline.run(3) { await RelayExtrasProvider().regionalWeights(near: target) }
             async let fetchedAlerts = try? alertProvider.alerts(near: target)
             async let air = try? AirQualityProvider().airQuality(at: target)
             let obs = await observed
             let base: Forecast?
             if let om = provider as? OpenMeteoProvider {
-                base = try? await om.forecast(for: target, anchor: obs?.blendAnchor)
+                base = try? await om.forecast(
+                    for: target,
+                    anchor: { obs?.blendAnchor },
+                    regionalWeights: { (await weights) ?? nil }
+                )
             } else {
                 base = try? await provider.forecast(for: target)
             }
             guard let base else { continue }
             let full = base.applying(obs).applyingRadar(await radar ?? nil)
+                .applyingRadarNowcast(await nowcast).calibratingEnsemblePop()
             let snap = Snapshot(forecast: full, name: place.name, alerts: await fetchedAlerts ?? [],
                                 airQuality: await air, at: Date())
             // Don't overwrite a fresher entry from a refresh that ran meanwhile.

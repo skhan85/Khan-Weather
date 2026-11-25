@@ -53,9 +53,16 @@ object ModelBlend {
     data class Anchor(val temperature: Double, val time: Epoch)
 
     /** The weight of `model` at `leadHours` from now, in `region`. */
-    @Volatile private var regional: Map<WeatherModel, Double> = emptyMap()
+    @Volatile private var regional: Map<String, Map<WeatherModel, Double>> = emptyMap()
 
-    fun setRegionalWeights(raw: Map<String, Double>) {
+    private val synopticModels = setOf(
+        WeatherModel.europeAI, WeatherModel.europe, WeatherModel.germany,
+        WeatherModel.canada, WeatherModel.us, WeatherModel.uk,
+    )
+
+    fun gridKey(c: Coordinate): String = "${(c.latitude * 2).rndInt()},${(c.longitude * 2).rndInt()}"
+
+    fun setRegionalWeights(raw: Map<String, Double>, coordinate: Coordinate? = null) {
         val map = mapOf(
             "europeAI" to WeatherModel.europeAI, "europe" to WeatherModel.europe,
             "germany" to WeatherModel.germany, "canada" to WeatherModel.canada,
@@ -65,19 +72,37 @@ object ModelBlend {
         val parsed = buildMap {
             for ((k, v) in raw) if (v > 0.0) map[k]?.let { put(it, v) }
         }
-        if (parsed.isNotEmpty()) regional = parsed
+        if (parsed.isNotEmpty()) {
+            val key = coordinate?.let(::gridKey) ?: "default"
+            regional = regional + (key to parsed)
+        }
     }
 
-    fun weight(model: WeatherModel, leadHours: Double, region: BlendRegion = BlendRegion.home): Double {
-        val byDay = region.byDay
-        if (byDay.isEmpty()) return 1.0
+    private fun interpolatedPrior(model: WeatherModel, leadHours: Double, byDay: List<Map<WeatherModel, Double>>): Double {
         val x = min(max((leadHours - 12) / 24, 0.0), (byDay.size - 1).toDouble())
         val i = x.toInt()
         val j = min(i + 1, byDay.size - 1)
         val f = x - i
-        val prior = (byDay[i][model] ?: 0.0) * (1 - f) + (byDay[j][model] ?: 0.0) * f
-        val reg = regional[model]
-        return if (reg != null) 0.5 * prior + 0.5 * reg else prior
+        return (byDay[i][model] ?: 0.0) * (1 - f) + (byDay[j][model] ?: 0.0) * f
+    }
+
+    fun weight(model: WeatherModel, leadHours: Double, region: BlendRegion = BlendRegion.home,
+               coordinate: Coordinate? = null): Double {
+        val byDay = region.byDay
+        if (byDay.isEmpty()) return 1.0
+        val prior = interpolatedPrior(model, leadHours, byDay)
+        val regMap = coordinate?.let { regional[gridKey(it)] } ?: regional["default"]
+        val reg = regMap?.get(model)
+        if (regMap != null && reg != null && model in synopticModels) {
+            val regTotal = regMap.values.sum()
+            val synopticMass = regMap.keys.sumOf { interpolatedPrior(it, leadHours, byDay) }
+            val regShare = if (leadHours <= 72.0) 0.5 else max(0.0, 0.5 * (1.0 - (leadHours - 72.0) / 72.0))
+            if (regTotal > 0.0 && synopticMass > 0.0 && regShare > 0.0) {
+                val scaledReg = (reg / regTotal) * synopticMass
+                return (1.0 - regShare) * prior + regShare * scaledReg
+            }
+        }
+        return prior
     }
 
     /**
@@ -88,7 +113,8 @@ object ModelBlend {
     fun blend(values: Map<WeatherModel, Double>, leadHours: Double,
               region: BlendRegion = BlendRegion.home,
               observedTemperature: Double? = null,
-              currentModelTemps: Map<WeatherModel, Double>? = null): Double? {
+              currentModelTemps: Map<WeatherModel, Double>? = null,
+              coordinate: Coordinate? = null): Double? {
         val present = values.filterKeys { it in region.models }
         if (present.isEmpty()) return null
 
@@ -101,7 +127,7 @@ object ModelBlend {
         if (liveShare > 0 && observedTemperature != null && currentModelTemps != null) {
             var invTotal = 0.0
             for (model in present.keys) {
-                val priorFloor = max(weight(model, leadHours, region), 0.04)
+                val priorFloor = max(weight(model, leadHours, region, coordinate), 0.04)
                 val nowTemp = currentModelTemps[model] ?: continue
                 val err = abs(nowTemp - observedTemperature)
                 val invSq = priorFloor / (err * err + errorSoftening)
@@ -114,7 +140,7 @@ object ModelBlend {
         var sum = 0.0
         var total = 0.0
         for ((model, value) in present) {
-            val prior = weight(model, leadHours, region)
+            val prior = weight(model, leadHours, region, coordinate)
             val dyn = errorWeights[model]
             val w = if (liveShare > 0 && dyn != null) prior * (1 - liveShare) + dyn * liveShare else prior
             sum += value * w
@@ -122,6 +148,21 @@ object ModelBlend {
         }
         if (total > 0) return sum / total
         return present.values.sum() / present.size
+    }
+
+    fun blendedPrecipitation(values: Map<WeatherModel, Double>, leadHours: Double,
+                             region: BlendRegion = BlendRegion.home, coordinate: Coordinate? = null): Double? {
+        val present = values.filterKeys { it in region.models }
+        if (present.size < 3) return null
+        var sum = 0.0
+        var total = 0.0
+        for ((model, value) in present) {
+            val w = weight(model, leadHours, region, coordinate)
+            sum += max(0.0, value) * w
+            total += w
+        }
+        if (total > 0) return sum / total
+        return present.values.sumOf { max(0.0, it) } / present.size
     }
 
     // Daily high and low: the real high and low fall between hours.

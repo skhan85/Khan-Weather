@@ -29,9 +29,19 @@ public enum ModelBlend {
 
     /// The weight of `model` at `leadHours` from now, in `region`.
     private static let lock = NSLock()
-    nonisolated(unsafe) private static var _regional: [WeatherModel: Double] = [:]
+    nonisolated(unsafe) private static var _regional: [String: [WeatherModel: Double]] = [:]
 
-    public static func setRegionalWeights(_ raw: [String: Double]) {
+    private static let synopticModels: Set<WeatherModel> = [
+        .europeAI, .europe, .germany, .canada, .us, .uk,
+    ]
+
+    static func gridKey(_ coordinate: Coordinate) -> String {
+        let lat = Int((coordinate.latitude * 2).rounded())
+        let lon = Int((coordinate.longitude * 2).rounded())
+        return "\(lat),\(lon)"
+    }
+
+    public static func setRegionalWeights(_ raw: [String: Double], for coordinate: Coordinate? = nil) {
         let map: [String: WeatherModel] = [
             "europeAI": .europeAI, "europe": .europe, "germany": .germany,
             "canada": .canada, "us": .us, "uk": .uk,
@@ -40,17 +50,35 @@ public enum ModelBlend {
         var parsed: [WeatherModel: Double] = [:]
         for (k, v) in raw where v > 0 { if let m = map[k] { parsed[m] = v } }
         guard !parsed.isEmpty else { return }
-        lock.lock(); _regional = parsed; lock.unlock()
+        let key = coordinate.map(gridKey) ?? "default"
+        lock.lock(); _regional[key] = parsed; lock.unlock()
     }
 
-    static func weight(_ model: WeatherModel, leadHours: Double, region: BlendRegion = .home) -> Double {
-        let byDay = region.byDay
-        guard !byDay.isEmpty else { return 1 }
+    private static func interpolatedPrior(_ model: WeatherModel, leadHours: Double, byDay: [[WeatherModel: Double]]) -> Double {
         let x = min(max((leadHours - 12) / 24, 0), Double(byDay.count - 1))
         let i = Int(x), j = min(i + 1, byDay.count - 1), f = x - Double(i)
-        let prior = (byDay[i][model] ?? 0) * (1 - f) + (byDay[j][model] ?? 0) * f
-        lock.lock(); let reg = _regional[model]; lock.unlock()
-        if let reg { return 0.5 * prior + 0.5 * reg }
+        return (byDay[i][model] ?? 0) * (1 - f) + (byDay[j][model] ?? 0) * f
+    }
+
+    static func weight(_ model: WeatherModel, leadHours: Double, region: BlendRegion = .home,
+                       coordinate: Coordinate? = nil) -> Double {
+        let byDay = region.byDay
+        guard !byDay.isEmpty else { return 1 }
+        let prior = interpolatedPrior(model, leadHours: leadHours, byDay: byDay)
+        lock.lock()
+        let regMap = coordinate.flatMap { _regional[gridKey($0)] } ?? _regional["default"]
+        lock.unlock()
+        // Regional relay weights are scored at 24h lead across synoptic models only; preserve high-res
+        // share on day 0-1 and taper back to the region's long-range prior between day 3 and day 6.
+        if let regMap, let reg = regMap[model], synopticModels.contains(model) {
+            let regTotal = regMap.values.reduce(0, +)
+            let synopticMass = regMap.keys.reduce(0.0) { $0 + interpolatedPrior($1, leadHours: leadHours, byDay: byDay) }
+            let regShare = leadHours <= 72 ? 0.5 : max(0, 0.5 * (1 - (leadHours - 72) / 72))
+            if regTotal > 0 && synopticMass > 0 && regShare > 0 {
+                let scaledReg = (reg / regTotal) * synopticMass
+                return (1 - regShare) * prior + regShare * scaledReg
+            }
+        }
         return prior
     }
 
@@ -62,7 +90,8 @@ public enum ModelBlend {
                              leadHours: Double,
                              region: BlendRegion = .home,
                              observedTemperature: Double? = nil,
-                             currentModelTemps: [WeatherModel: Double]? = nil) -> Double? {
+                             currentModelTemps: [WeatherModel: Double]? = nil,
+                             coordinate: Coordinate? = nil) -> Double? {
         let present = values.filter { region.models.contains($0.key) }
         guard !present.isEmpty else { return nil }
 
@@ -78,7 +107,7 @@ public enum ModelBlend {
         if liveShare > 0, let obs = observedTemperature, let currentModelTemps {
             var invTotal = 0.0
             for model in present.keys {
-                let priorFloor = max(weight(model, leadHours: leadHours, region: region), 0.04)
+                let priorFloor = max(weight(model, leadHours: leadHours, region: region, coordinate: coordinate), 0.04)
                 if let nowTemp = currentModelTemps[model] {
                     let err = abs(nowTemp - obs)
                     let invSq = priorFloor / (err * err + errorSoftening)
@@ -93,7 +122,7 @@ public enum ModelBlend {
 
         var sum = 0.0, total = 0.0
         for (model, value) in present {
-            let prior = weight(model, leadHours: leadHours, region: region)
+            let prior = weight(model, leadHours: leadHours, region: region, coordinate: coordinate)
             let w: Double
             if liveShare > 0, let dyn = errorWeights[model] {
                 w = prior * (1 - liveShare) + dyn * liveShare
@@ -105,6 +134,23 @@ public enum ModelBlend {
         }
         if total > 0 { return sum / total }
         return present.values.reduce(0, +) / Double(present.count)
+    }
+
+    /// Weighted ensemble precipitation/snowfall mean across blend models when enough report.
+    static func blendedPrecipitation(_ values: [WeatherModel: Double],
+                                     leadHours: Double,
+                                     region: BlendRegion = .home,
+                                     coordinate: Coordinate? = nil) -> Double? {
+        let present = values.filter { region.models.contains($0.key) }
+        guard present.count >= 3 else { return nil }
+        var sum = 0.0, total = 0.0
+        for (model, value) in present {
+            let w = weight(model, leadHours: leadHours, region: region, coordinate: coordinate)
+            sum += max(0, value) * w
+            total += w
+        }
+        if total > 0 { return sum / total }
+        return present.values.map { max(0, $0) }.reduce(0, +) / Double(present.count)
     }
 
     // MARK: Daily high and low

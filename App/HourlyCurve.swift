@@ -120,8 +120,13 @@ struct HourlyCurve: View {
                     .font(.caption2)
                     .foregroundStyle(.white.opacity(0.8))
             }
-            if let rain = hour.rain {
+            if let rain = hour.rain, rain >= 0.05 {
                 Text(WeatherFormat.rainAmount(rain))
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+            if let snow = hour.snowfall, snow >= 0.05 {
+                Text(WeatherFormat.snowAmount(snow))
                     .font(.caption2)
                     .foregroundStyle(.white.opacity(0.8))
             }
@@ -132,28 +137,52 @@ struct HourlyCurve: View {
         }
 
     private var rainStrip: some View {
-        let maxMm = max(hours.compactMap(\.precipitation).max() ?? 0, 2.0)
+        let maxWater = max(hours.map { max($0.precipitation ?? 0, ($0.snowfall ?? 0) * 0.7) }.max() ?? 0, 2.0)
         return HStack(alignment: .bottom, spacing: 0) {
             ForEach(hours) { h in
+                let snow = h.snowfall ?? 0
+                let rain = h.rain ?? 0
                 let mm = h.precipitation ?? 0
+                let water = max(mm, snow * 0.7)
                 let pop = h.precipitationProbability ?? 0
-                let frac = mm >= 0.1 ? min(1.0, mm / maxMm) : (pop >= 20 ? 0.12 : 0.0)
+                let isSnowOnly = snow >= 0.1 && rain < 0.1
+                let isMixed = h.isMixedPrecipitation
+                let hasAmount = water >= 0.1 || snow >= 0.1
+                let frac = hasAmount ? min(1.0, water / maxWater) : (pop >= 20 ? 0.12 : 0.0)
                 let label: String = {
-                    if mm >= 0.1 {
+                    if isSnowOnly {
+                        return UnitSettings.current.precipitation == .inches
+                            ? String(format: "%.1f\"", max(0.1, snow / 2.54))
+                            : String(format: "%.1f cm", snow)
+                    }
+                    if hasAmount {
                         return UnitSettings.current.precipitation == .inches
                             ? String(format: "%.1f\"", max(0.1, mm / 25.4))
                             : String(format: "%.1f", mm)
                     }
                     return pop >= 10 ? "\(Int(pop.rounded()))%" : "–"
                 }()
+                let barColor: Color = {
+                    if frac <= 0 { return Color.white.opacity(0.18) }
+                    if isSnowOnly { return .white }
+                    if isMixed { return Color(red: 0.78, green: 0.72, blue: 1.0) }
+                    return Color(red: 0.24, green: 0.91, blue: 1.0)
+                }()
+                let textColor: Color = {
+                    if !(hasAmount || pop >= 20) { return .white.opacity(0.55) }
+                    if isSnowOnly { return .white }
+                    if isMixed { return Color(red: 0.78, green: 0.72, blue: 1.0) }
+                    return Color(red: 0.24, green: 0.91, blue: 1.0)
+                }()
                 VStack(spacing: 4) {
                     Spacer(minLength: 0)
                     Text(label)
                         .font(.caption2.weight(.bold))
-                        .foregroundStyle(mm >= 0.1 || pop >= 20 ? Color(red: 0.24, green: 0.91, blue: 1.0) : .white.opacity(0.55))
+                        .foregroundStyle(textColor)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(frac > 0 ? Color(red: 0.24, green: 0.91, blue: 1.0) : Color.white.opacity(0.18))
+                        .fill(barColor)
                         .frame(width: 18, height: max(3, CGFloat(frac) * 46))
                 }
                 .frame(width: columnWidth, height: 74, alignment: .bottom)

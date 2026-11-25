@@ -93,12 +93,17 @@ public extension Forecast {
             // Only the radar says it's falling now; a gauge's last hour may be rain that has stopped.
             let hourlyRate = max(radar.rainMmPerHour, radar.snowCmPerHour)
             let slotAmount = max(PrecipitationSlot.wetThreshold, hourlyRate / 4.0)
-            let isSnow = radar.isSnowing && !radar.isRaining
+            let rainPart = radar.isRaining
+                ? max(radar.isSnowing ? PrecipitationSlot.wetThreshold : slotAmount, radar.rainMmPerHour / 4.0)
+                : 0
+            let snowPart = radar.isSnowing
+                ? max(radar.isRaining ? PrecipitationSlot.wetThreshold : slotAmount, radar.snowCmPerHour / 4.0)
+                : 0
             slots[0] = PrecipitationSlot(
                 time: slots[0].time,
-                precipitation: slotAmount,
-                rain: isSnow ? 0 : slotAmount,
-                snowfall: isSnow ? slotAmount : 0
+                precipitation: max(slotAmount, rainPart + snowPart),
+                rain: rainPart,
+                snowfall: snowPart
             )
         }
 

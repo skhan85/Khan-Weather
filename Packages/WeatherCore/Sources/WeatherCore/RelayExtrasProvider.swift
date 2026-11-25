@@ -102,31 +102,42 @@ public extension Forecast {
     func applyingRadarNowcast(_ nc: RelayNowcast?) -> Forecast {
         guard let nc, !nc.slots.isEmpty, !minutely.isEmpty else { return self }
         var copy = self
-        let isSnow = current.temperature <= 0
+        let temp = current.temperature
+        let rh = current.humidity ?? 100
         copy.minutely = minutely.map { slot in
             let start = slot.time.timeIntervalSince1970
             let end = start + 900
             let matching = nc.slots.filter { $0.epoch >= start && $0.epoch < end }
             guard !matching.isEmpty else { return slot }
-            let peakRain = matching.map(\.rain_mmh).max() ?? 0
-            let peakSnow = isSnow ? max(matching.map(\.snow_cmh).max() ?? 0, peakRain) : 0
-            let peakRate = isSnow ? peakSnow : peakRain
-            let minRate = (!isSnow && (current.humidity ?? 100) < 80) ? 1.0 : 0.50
+            let rawRain = matching.map(\.rain_mmh).max() ?? 0
+            let rawSnow = matching.map(\.snow_cmh).max() ?? 0
+            let rainRate: Double
+            let snowRate: Double
+            if temp <= 1 {
+                rainRate = 0
+                snowRate = max(rawSnow, rawRain)
+            } else if temp >= 3 {
+                rainRate = max(rawRain, rawSnow)
+                snowRate = 0
+            } else {
+                rainRate = rawRain
+                snowRate = rawSnow
+            }
+            let peakRate = max(rainRate, snowRate)
+            let minRate = (snowRate <= 0 && rh < 80) ? 1.0 : 0.50
             guard peakRate >= minRate else { return slot }
-            let slotAmount = max(PrecipitationSlot.wetThreshold, peakRate / 4.0)
-            let rain = isSnow ? slot.rain : max(slot.rain, slotAmount)
-            let snow = isSnow ? max(slot.snowfall, slotAmount) : slot.snowfall
+            let rain = rainRate >= minRate ? max(slot.rain, max(PrecipitationSlot.wetThreshold, rainRate / 4.0)) : slot.rain
+            let snow = snowRate >= minRate ? max(slot.snowfall, max(PrecipitationSlot.wetThreshold, snowRate / 4.0)) : slot.snowfall
             let total = max(slot.precipitation, rain + snow)
             return PrecipitationSlot(time: slot.time, precipitation: total, rain: rain, snowfall: snow)
         }
         return copy
     }
-    /// Blends hourly & daily rain chance with 8-model wet agreement so a single outlier model
-    /// doesn't inflate dry days.
+    /// Ensures daily rain chance stays consistent with ensemble model peaks and precipitation totals.
     func calibratingEnsemblePop() -> Forecast {
         var copy = self
         copy.hourly = hourly.map { h in
-            guard let n = h.modelCount, n >= 3, let w = h.modelsWet, let raw = h.precipitationProbability else { return h }
+            guard let n = h.modelCount, n == 3, let w = h.modelsWet, let raw = h.precipitationProbability else { return h }
             var out = h
             let ens = (Double(w) / Double(n)) * 100.0
             out.precipitationProbability = (0.6 * raw + 0.4 * ens).rounded()
@@ -150,6 +161,9 @@ public extension Forecast {
                 out.precipitationProbability = max(p, 40)
             } else if totalMm < 0.5, !out.condition.isPrecipitation, let p = out.precipitationProbability, p > 25 {
                 out.precipitationProbability = 25
+            }
+            if (out.precipitationProbability ?? 0) < 30, totalMm < 1.0, out.condition.isPrecipitation {
+                out.condition = .overcast
             }
             return out
         }

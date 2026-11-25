@@ -275,6 +275,11 @@ public extension WeatherFormat {
         unit == .inches ? String(format: "%.2f in", mm / 25.4) : String(format: "%.1f mm", mm)
     }
 
+    /// An hour's snow: "1.2 cm" or "0.47 in snow".
+    static func snowAmount(_ cm: Double, unit: PrecipitationUnit = UnitSettings.current.precipitation) -> String {
+        unit == .inches ? String(format: "%.2f in snow", cm / 2.54) : String(format: "%.1f cm", cm)
+    }
+
     /// "Low", "Moderate", "High", "Very high", "Extreme" (WHO UV index bands).
     static func uvLevel(_ uv: Double?) -> String? {
         guard let uv else { return nil }

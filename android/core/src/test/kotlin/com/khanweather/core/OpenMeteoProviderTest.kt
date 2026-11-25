@@ -4,6 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -203,6 +204,46 @@ class OpenMeteoProviderTest {
         assertEquals("0°", WeatherFormat.temperature(-0.3, TemperatureUnit.celsius))
         assertEquals("22°", WeatherFormat.temperature(21.6, TemperatureUnit.celsius))
         assertEquals("-3°", WeatherFormat.temperature(-2.5, TemperatureUnit.celsius), "halves round away from zero, like iOS")
+        assertEquals("1.2 cm", WeatherFormat.snowAmount(1.2, PrecipitationUnit.metric))
+        assertEquals("1.00 in snow", WeatherFormat.snowAmount(2.54, PrecipitationUnit.inches))
+    }
+
+    @Test fun regionalWeightsIsolateLocationsAndTaperWithLead() {
+        val milton = Coordinate(43.513, -79.882)
+        val london = Coordinate(51.5, -0.12)
+        ModelBlend.setRegionalWeights(mapOf("germany" to 0.9, "europeAI" to 0.1), milton)
+        ModelBlend.setRegionalWeights(mapOf("europe" to 0.9, "uk" to 0.1), london)
+
+        val miltonDay0 = ModelBlend.weight(WeatherModel.germany, 12.0, BlendRegion.at(milton), milton)
+        val londonDay0 = ModelBlend.weight(WeatherModel.germany, 12.0, BlendRegion.at(milton), london)
+        assertNotEquals(miltonDay0, londonDay0)
+
+        val baselineDay6 = ModelBlend.weight(WeatherModel.germany, 150.0, BlendRegion.at(milton))
+        val miltonDay6 = ModelBlend.weight(WeatherModel.germany, 150.0, BlendRegion.at(milton), milton)
+        close(baselineDay6, miltonDay6, 0.0001)
+    }
+
+    @Test fun ensemblePrecipitationMeanReplacesSingleModelSpike() {
+        val blend = """
+        {
+          "hourly": { "time": [1762952400],
+                      "temperature_2m_gfs_seamless": [6.0], "temperature_2m_ecmwf_ifs025": [6.0],
+                      "temperature_2m_icon_seamless": [6.0], "temperature_2m_ukmo_seamless": [6.0],
+                      "precipitation_gfs_seamless": [0.4], "precipitation_ecmwf_ifs025": [0.4],
+                      "precipitation_icon_seamless": [0.4], "precipitation_ukmo_seamless": [0.4],
+                      "snowfall_gfs_seamless": [0.0], "snowfall_ecmwf_ifs025": [0.0],
+                      "snowfall_icon_seamless": [0.0], "snowfall_ukmo_seamless": [0.0] }
+        }
+        """.toByteArray()
+        val p = OpenMeteoProvider(loader = loader { url -> 200 to (if (url.contains("models=")) blend else sample) })
+        val f = sync { p.forecast(Coordinate.fallback) }
+        close(0.4, f.hourly[0].precipitation, 0.001)
+    }
+
+    @Test fun regionSummaryMentionsRegionName() {
+        val summary = BlendRegion.summary(Coordinate(51.5, -0.12))
+        assertTrue(summary.contains("Europe"))
+        assertFalse(summary.contains("Milton"))
     }
 
     private val testRegion get() = Regions.testRegion

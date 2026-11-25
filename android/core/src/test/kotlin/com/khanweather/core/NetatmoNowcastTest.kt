@@ -194,5 +194,9 @@ class NowcastTest {
         val n = f.nowcast(start)
         assertEquals(Nowcast.Change.Stopping(30), n?.change)
         assertEquals(Nowcast.Kind.rain, n?.kind)
+
+        val mixed = forecast(listOf(0.0 to 0.0, 0.0 to 0.0))
+        mixed.radar = RadarNow(1.2, 0.8, start)
+        assertEquals(Nowcast.Kind.mixed, mixed.nowcast(start)?.kind)
     }
 }

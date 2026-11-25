@@ -2,6 +2,7 @@ package com.khanweather.app
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -19,12 +20,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.khanweather.core.HourlyForecast
+import com.khanweather.core.PrecipitationUnit
+import com.khanweather.core.UnitSettings
 import com.khanweather.core.WeatherFormat
 import kotlin.math.max
 
@@ -45,6 +50,8 @@ fun HourlyCurve(hours: List<HourlyForecast>, zone: String, firstIsNow: Boolean, 
     val labelStyle = style(15.sp, FontWeight.Bold, shadow = true)
 
     var mode by remember { mutableStateOf("Temp") }
+    var selectedIndex by remember { mutableStateOf<Int?>(null) }
+    val colPx = with(LocalDensity.current) { col.toPx() }
     Column {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             for (m in listOf("Temp", "Rain", "Wind")) {
@@ -55,103 +62,171 @@ fun HourlyCurve(hours: List<HourlyForecast>, zone: String, firstIsNow: Boolean, 
                     modifier = Modifier
                         .clip(CircleShape)
                         .background(if (on) Gold else Color.White.copy(alpha = 0.12f))
-                        .clickable { mode = m }
+                        .clickable { mode = m; selectedIndex = null }
                         .padding(horizontal = 10.dp, vertical = 4.dp),
                 )
             }
         }
-        Row(Modifier.horizontalScroll(rememberScrollState())) {
-            Column(Modifier.padding(vertical = 4.dp)) {
-            Row {
-                hours.forEachIndexed { i, h ->
-                    Column(Modifier.width(col).clickable { onHour(h) }, horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (i == 0 && firstIsNow) GoldPill("Now", 13.sp)
-                        else Text(TimeText.hour(h.time, zone), style = style(13.sp, FontWeight.SemiBold, Color.White.copy(alpha = 0.88f)),
-                            maxLines = 1, modifier = Modifier.padding(vertical = 2.dp))
-                        IconBadge(h.condition, h.isDay, 38.dp, mixed = h.isMixedPrecipitation)
+        Box {
+            Row(Modifier.horizontalScroll(rememberScrollState())) {
+                Column(Modifier.padding(vertical = 4.dp)) {
+                    Row {
+                        hours.forEachIndexed { i, h ->
+                            Column(Modifier.width(col).clickable { onHour(h) }, horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (i == 0 && firstIsNow) GoldPill("Now", 13.sp)
+                                else Text(TimeText.hour(h.time, zone), style = style(13.sp, FontWeight.SemiBold, Color.White.copy(alpha = 0.88f)),
+                                    maxLines = 1, modifier = Modifier.padding(vertical = 2.dp))
+                                IconBadge(h.condition, h.isDay, 38.dp, mixed = h.isMixedPrecipitation)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    val scrubModifier = Modifier
+                        .width(col * hours.size)
+                        .height(74.dp)
+                        .pointerInput(hours, colPx) {
+                            fun pick(x: Float) {
+                                val idx = (x / colPx).toInt()
+                                if (idx in hours.indices) selectedIndex = idx
+                            }
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = { pick(it.x) },
+                                onDrag = { change, _ -> change.consume(); pick(change.position.x) },
+                                onDragEnd = { selectedIndex = null },
+                                onDragCancel = { selectedIndex = null },
+                            )
+                        }
+                    if (mode == "Rain") {
+                        val maxWater = max(hours.maxOf { maxOf(it.precipitation ?: 0.0, (it.snowfall ?: 0.0) * 0.7) }, 2.0)
+                        val inches = UnitSettings.current.precipitation == PrecipitationUnit.inches
+                        Row(scrubModifier, verticalAlignment = Alignment.Bottom) {
+                            for (h in hours) {
+                                val snow = h.snowfall ?: 0.0
+                                val rain = h.rain ?: 0.0
+                                val mm = h.precipitation ?: 0.0
+                                val water = maxOf(mm, snow * 0.7)
+                                val pop = h.precipitationProbability ?: 0.0
+                                val isSnowOnly = snow >= 0.1 && rain < 0.1
+                                val isMixed = h.isMixedPrecipitation
+                                val hasAmount = water >= 0.1 || snow >= 0.1
+                                val frac = if (hasAmount) minOf(1.0, water / maxWater) else if (pop >= 20.0) 0.12 else 0.0
+                                val lbl = when {
+                                    isSnowOnly && inches -> String.format(java.util.Locale.US, "%.1f\"", maxOf(0.1, snow / 2.54))
+                                    isSnowOnly -> String.format(java.util.Locale.US, "%.1f cm", snow)
+                                    hasAmount && inches -> String.format(java.util.Locale.US, "%.1f\"", maxOf(0.1, mm / 25.4))
+                                    hasAmount -> String.format(java.util.Locale.US, "%.1f", mm)
+                                    pop >= 10.0 -> "${pop.toInt()}%"
+                                    else -> "–"
+                                }
+                                val barColor = when {
+                                    frac <= 0 -> Color.White.copy(alpha = 0.18f)
+                                    isSnowOnly -> Color.White
+                                    isMixed -> Color(0xFFC7B8FF)
+                                    else -> Color(0xFF3CE8FF)
+                                }
+                                val textColor = when {
+                                    !(hasAmount || pop >= 20.0) -> Color.White.copy(alpha = 0.55f)
+                                    isSnowOnly -> Color.White
+                                    isMixed -> Color(0xFFC7B8FF)
+                                    else -> Color(0xFF3CE8FF)
+                                }
+                                Column(Modifier.width(col).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
+                                    Text(lbl, style = style(11.sp, FontWeight.Bold, textColor), maxLines = 1)
+                                    Spacer(Modifier.height(4.dp))
+                                    Box(Modifier.width(18.dp).height(maxOf(3f, (frac * 46.0).toFloat()).dp).clip(RoundedCornerShape(4.dp)).background(barColor))
+                                }
+                            }
+                        }
+                    } else if (mode == "Wind") {
+                        val maxW = max(hours.maxOf { it.windSpeed ?: 0.0 }, 25.0)
+                        Row(scrubModifier, verticalAlignment = Alignment.Bottom) {
+                            for (h in hours) {
+                                val w = h.windSpeed ?: 0.0
+                                val g = h.windGusts ?: 0.0
+                                val frac = minOf(1.0, w / maxW)
+                                val barColor = if (g >= 50.0) Color(0xFFFF9800) else Gold
+                                Column(Modifier.width(col).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
+                                    Text(WeatherFormat.wind(w), style = style(10.sp, FontWeight.Bold), maxLines = 1)
+                                    Spacer(Modifier.height(4.dp))
+                                    Box(Modifier.width(18.dp).height(maxOf(4f, (frac * 44.0).toFloat()).dp).clip(RoundedCornerShape(4.dp)).background(barColor))
+                                }
+                            }
+                        }
+                    } else Canvas(scrubModifier) {
+                        val cw = col.toPx()
+                        fun x(i: Int) = cw * i + cw / 2
+                        fun y(t: Double) = (size.height * (1 - (t - floor) / (top - floor))).toFloat()
+                        // Where the models spread: the faint band behind the line.
+                        val banded = hours.withIndex().filter { it.value.modelLow != null && it.value.modelHigh != null }
+                        if (banded.size > 1) {
+                            val upper = banded.map { Offset(x(it.index), y(it.value.modelHigh!!)) }
+                            val lower = banded.map { Offset(x(it.index), y(it.value.modelLow!!)) }.reversed()
+                            val band = Path()
+                            catmullRom(band, upper, moveFirst = true)
+                            band.lineTo(lower.first().x, lower.first().y)
+                            catmullRom(band, lower, moveFirst = false)
+                            band.close()
+                            drawPath(band, Color.White.copy(alpha = 0.16f))
+                        }
+                        val pts = hours.mapIndexed { i, h -> Offset(x(i), y(h.temperature)) }
+                        val area = Path()
+                        catmullRom(area, pts, moveFirst = true)
+                        area.lineTo(pts.last().x, size.height); area.lineTo(pts.first().x, size.height); area.close()
+                        drawPath(area, Brush.verticalGradient(listOf(Gold.copy(alpha = 0.35f), Gold.copy(alpha = 0f)),
+                            startY = pts.minOf { it.y }, endY = size.height))
+                        val line = Path()
+                        catmullRom(line, pts, moveFirst = true)
+                        drawPath(line, Gold, style = Stroke(3.dp.toPx(), cap = StrokeCap.Round))
+                        pts.forEachIndexed { i, p ->
+                            val active = i == selectedIndex
+                            drawCircle(if (active) Gold else Color.White, (if (active) 5.2f else if (i == 0) 4.4f else 3f) * density, p)
+                            val label = measurer.measure(WeatherFormat.temperature(hours[i].temperature), labelStyle)
+                            drawText(label, topLeft = Offset(p.x - label.size.width / 2f, p.y - label.size.height - 6.dp.toPx()))
+                        }
+                    }
+                    Row {
+                        for (h in hours) {
+                            Box(Modifier.width(col).height(16.dp), contentAlignment = Alignment.Center) {
+                                PrecipChance(h.precipitationProbability, h.precipitationKind, 12.sp)
+                            }
+                        }
                     }
                 }
             }
-            Spacer(Modifier.height(6.dp))
-            if (mode == "Rain") {
-                val maxMm = max(hours.maxOf { it.precipitation ?: 0.0 }, 2.0)
-                Row(Modifier.height(74.dp), verticalAlignment = Alignment.Bottom) {
-                    for (h in hours) {
-                        val mm = h.precipitation ?: 0.0
-                        val pop = h.precipitationProbability ?: 0.0
-                        val frac = if (mm >= 0.1) minOf(1.0, mm / maxMm) else if (pop >= 20.0) 0.12 else 0.0
-                        val lbl = when {
-                            mm >= 0.1 -> String.format("%.1f", mm)
-                            pop >= 10.0 -> "${pop.toInt()}%"
-                            else -> "–"
-                        }
-                        val barColor = if (frac > 0) Color(0xFF3CE8FF) else Color.White.copy(alpha = 0.18f)
-                        Column(Modifier.width(col).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
-                            Text(lbl, style = style(11.sp, FontWeight.Bold, if (frac > 0) Color(0xFF3CE8FF) else Color.White.copy(alpha = 0.55f)), maxLines = 1)
-                            Spacer(Modifier.height(4.dp))
-                            Box(Modifier.width(18.dp).height(maxOf(3f, (frac * 46.0).toFloat()).dp).clip(RoundedCornerShape(4.dp)).background(barColor))
-                        }
-                    }
-                }
-            } else if (mode == "Wind") {
-                val maxW = max(hours.maxOf { it.windSpeed ?: 0.0 }, 25.0)
-                Row(Modifier.height(74.dp), verticalAlignment = Alignment.Bottom) {
-                    for (h in hours) {
-                        val w = h.windSpeed ?: 0.0
-                        val g = h.windGusts ?: 0.0
-                        val frac = minOf(1.0, w / maxW)
-                        val barColor = if (g >= 50.0) Color(0xFFFF9800) else Gold
-                        Column(Modifier.width(col).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
-                            Text(WeatherFormat.wind(w), style = style(10.sp, FontWeight.Bold), maxLines = 1)
-                            Spacer(Modifier.height(4.dp))
-                            Box(Modifier.width(18.dp).height(maxOf(4f, (frac * 44.0).toFloat()).dp).clip(RoundedCornerShape(4.dp)).background(barColor))
-                        }
-                    }
-                }
-            } else Canvas(Modifier.width(col * hours.size).height(74.dp)) {
-                val cw = col.toPx()
-                fun x(i: Int) = cw * i + cw / 2
-                fun y(t: Double) = (size.height * (1 - (t - floor) / (top - floor))).toFloat()
-                // Where the models spread: the faint band behind the line.
-                val banded = hours.withIndex().filter { it.value.modelLow != null && it.value.modelHigh != null }
-                if (banded.size > 1) {
-                    val upper = banded.map { Offset(x(it.index), y(it.value.modelHigh!!)) }
-                    val lower = banded.map { Offset(x(it.index), y(it.value.modelLow!!)) }.reversed()
-                    val band = Path()
-                    catmullRom(band, upper, moveFirst = true)
-                    band.lineTo(lower.first().x, lower.first().y)
-                    catmullRom(band, lower, moveFirst = false)
-                    band.close()
-                    drawPath(band, Color.White.copy(alpha = 0.16f))
-                }
-                val pts = hours.mapIndexed { i, h -> Offset(x(i), y(h.temperature)) }
-                val area = Path()
-                catmullRom(area, pts, moveFirst = true)
-                area.lineTo(pts.last().x, size.height); area.lineTo(pts.first().x, size.height); area.close()
-                drawPath(area, Brush.verticalGradient(listOf(Gold.copy(alpha = 0.35f), Gold.copy(alpha = 0f)),
-                    startY = pts.minOf { it.y }, endY = size.height))
-                val line = Path()
-                catmullRom(line, pts, moveFirst = true)
-                drawPath(line, Gold, style = Stroke(3.dp.toPx(), cap = StrokeCap.Round))
-                pts.forEachIndexed { i, p ->
-                    drawCircle(Color.White, (if (i == 0) 4.4f else 3f) * density, p)
-                    val label = measurer.measure(WeatherFormat.temperature(hours[i].temperature), labelStyle)
-                    drawText(label, topLeft = Offset(p.x - label.size.width / 2f, p.y - label.size.height - 6.dp.toPx()))
-                }
-            }
-            Row {
-                for (h in hours) {
-                    Box(Modifier.width(col).height(16.dp), contentAlignment = Alignment.Center) {
-                        PrecipChance(h.precipitationProbability, h.precipitationKind, 12.sp)
-                    }
-                }
+            val idx = selectedIndex
+            if (idx != null && idx in hours.indices) {
+                ScrubBanner(hours[idx], zone, Modifier.align(Alignment.TopCenter).padding(top = 2.dp))
             }
         }
+    }
 }
 
-}
-
+@Composable
+private fun ScrubBanner(hour: HourlyForecast, zone: String, modifier: Modifier = Modifier) {
+    Row(
+        modifier
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.45f))
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(TimeText.hour(hour.time, zone), style = style(12.sp, FontWeight.SemiBold, Gold))
+        Text(WeatherFormat.temperature(hour.temperature), style = style(12.sp, FontWeight.Bold))
+        hour.feelsLike?.let {
+            Text("Feels ${WeatherFormat.temperature(it)}", style = style(11.sp, color = Color.White.copy(alpha = 0.8f)))
+        }
+        hour.windSpeed?.let {
+            Text(WeatherFormat.wind(it), style = style(11.sp, color = Color.White.copy(alpha = 0.8f)))
+        }
+        hour.rain?.takeIf { it >= 0.05 }?.let {
+            Text(WeatherFormat.rainAmount(it), style = style(11.sp, color = Color.White.copy(alpha = 0.8f)))
+        }
+        hour.snowfall?.takeIf { it >= 0.05 }?.let {
+            Text(WeatherFormat.snowAmount(it), style = style(11.sp, color = Color.White.copy(alpha = 0.8f)))
+        }
+    }
 }
 /** Smooth curve through the points (Catmull-Rom as cubic Béziers). */
 fun catmullRom(path: Path, pts: List<Offset>, moveFirst: Boolean) {

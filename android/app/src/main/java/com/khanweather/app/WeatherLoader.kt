@@ -88,13 +88,13 @@ object WeatherLoader {
     @Serializable
     data class RelayNowcast(val slots: List<RelayNowcastSlot> = emptyList())
 
-    suspend fun radarNowcast(target: Coordinate): RelayNowcast? = deadline(6.0) {
+    suspend fun radarNowcast(target: Coordinate, cold: Boolean = false): RelayNowcast? = deadline(6.0) {
         withContext(Dispatchers.IO) {
             runCatching {
                 val u = String.format(
                     Locale.US,
-                    "https://weather-relay.khanofmilton.ca/v1/nowcast?lat=%.4f&lon=%.4f&cold=0",
-                    target.latitude, target.longitude,
+                    "https://weather-relay.khanofmilton.ca/v1/nowcast?lat=%.4f&lon=%.4f&cold=%d",
+                    target.latitude, target.longitude, if (cold) 1 else 0,
                 )
                 val conn = (URL(u).openConnection() as HttpURLConnection).apply {
                     connectTimeout = 5000; readTimeout = 5000
@@ -109,20 +109,32 @@ object WeatherLoader {
         }
     }
 
-    private fun Forecast.applyingRadarNowcast(nc: RelayNowcast?): Forecast {
+    fun Forecast.applyingRadarNowcast(nc: RelayNowcast?): Forecast {
         if (nc == null || nc.slots.isEmpty() || minutely.isEmpty()) return this
-        val isSnow = current.temperature <= 0.0
+        val temp = current.temperature
+        val rh = current.humidity ?: 100.0
         val merged = minutely.map { slot ->
             val matching = nc.slots.filter { it.epoch >= slot.time && it.epoch < slot.time + 900.0 }
             if (matching.isEmpty()) return@map slot
-            val peakRain = matching.maxOf { it.rain_mmh }
-            val peakSnow = if (isSnow) maxOf(matching.maxOf { it.snow_cmh }, peakRain) else 0.0
-            val peakRate = if (isSnow) peakSnow else peakRain
-            val minRate = 0.50
+            val rawRain = matching.maxOf { it.rain_mmh }
+            val rawSnow = matching.maxOf { it.snow_cmh }
+            val rainRate: kotlin.Double
+            val snowRate: kotlin.Double
+            if (temp <= 1.0) {
+                rainRate = 0.0
+                snowRate = maxOf(rawSnow, rawRain)
+            } else if (temp >= 3.0) {
+                rainRate = maxOf(rawRain, rawSnow)
+                snowRate = 0.0
+            } else {
+                rainRate = rawRain
+                snowRate = rawSnow
+            }
+            val peakRate = maxOf(rainRate, snowRate)
+            val minRate = if (snowRate <= 0.0 && rh < 80.0) 1.0 else 0.50
             if (peakRate < minRate) return@map slot
-            val slotAmount = maxOf(PrecipitationSlot.wetThreshold, peakRate / 4.0)
-            val rain = if (isSnow) slot.rain else maxOf(slot.rain, slotAmount)
-            val snow = if (isSnow) maxOf(slot.snowfall, slotAmount) else slot.snowfall
+            val rain = if (rainRate >= minRate) maxOf(slot.rain, maxOf(PrecipitationSlot.wetThreshold, rainRate / 4.0)) else slot.rain
+            val snow = if (snowRate >= minRate) maxOf(slot.snowfall, maxOf(PrecipitationSlot.wetThreshold, snowRate / 4.0)) else slot.snowfall
             val total = maxOf(slot.precipitation, rain + snow)
             slot.copy(precipitation = total, rain = rain, snowfall = snow)
         }
@@ -133,7 +145,7 @@ object WeatherLoader {
     @Serializable
     data class RelayWeights(val weights: Map<String, kotlin.Double> = emptyMap())
 
-    suspend fun loadRegionalWeights(target: Coordinate) {
+    suspend fun regionalWeights(target: Coordinate): Map<String, kotlin.Double>? = deadline(3.0) {
         withContext(Dispatchers.IO) {
             runCatching {
                 val u = String.format(
@@ -142,23 +154,23 @@ object WeatherLoader {
                     target.latitude, target.longitude,
                 )
                 val conn = (URL(u).openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 5000; readTimeout = 6000
+                    connectTimeout = 4000; readTimeout = 4000
                 }
                 try {
-                    if (conn.responseCode != 200) return@runCatching
+                    if (conn.responseCode != 200) return@runCatching null
                     val w = relayJson.decodeFromString(RelayWeights.serializer(), conn.inputStream.bufferedReader().readText()).weights
-                    if (w.isNotEmpty()) ModelBlend.setRegionalWeights(w)
+                    if (w.isNotEmpty()) w.also { ModelBlend.setRegionalWeights(it, target) } else null
                 } finally {
                     conn.disconnect()
                 }
-            }
+            }.getOrNull()
         }
     }
 
-    private fun Forecast.calibratingEnsemblePop(): Forecast {
+    fun Forecast.calibratingEnsemblePop(): Forecast {
         val calHours = hourly.map { h ->
             val n = h.modelCount; val w = h.modelsWet; val raw = h.precipitationProbability
-            if (n != null && n >= 3 && w != null && raw != null) {
+            if (n != null && n == 3 && w != null && raw != null) {
                 val ens = (w.toDouble() / n.toDouble()) * 100.0
                 h.copy(precipitationProbability = (0.6 * raw + 0.4 * ens).roundToInt().toDouble())
             } else h
@@ -182,9 +194,11 @@ object WeatherLoader {
     }
 
     suspend fun full(target: Coordinate, observed: Observation?, radar: RadarNow?): Forecast = coroutineScope {
-        val ncTask = async { radarNowcast(target) }
-        async { loadRegionalWeights(target) }
-        val base = forecastProvider.forecast(target) { observed?.blendAnchor }
+        val knownTemp = observed?.temperature ?: ObservationMemory.last(target)?.temperature
+        val likelyCold = knownTemp?.let { it <= 4.0 } ?: (kotlin.math.abs(target.latitude) >= 25.0)
+        val ncTask = async { radarNowcast(target, cold = likelyCold) }
+        val weightsTask = async { regionalWeights(target) }
+        val base = forecastProvider.forecast(target, regionalWeights = { weightsTask.await() }) { observed?.blendAnchor }
         observed?.let { ObservationMemory.remember(target, it) }
         base.applying(observed).applyingRadar(radar).applyingRadarNowcast(ncTask.await()).calibratingEnsemblePop()
     }

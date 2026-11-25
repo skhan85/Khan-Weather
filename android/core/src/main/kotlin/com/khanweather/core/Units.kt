@@ -188,6 +188,11 @@ object WeatherFormat {
         if (unit == PrecipitationUnit.inches) String.format(Locale.US, "%.2f in", mm / 25.4)
         else String.format(Locale.US, "%.1f mm", mm)
 
+    /** An hour's snow: "1.2 cm" or "0.47 in snow". */
+    fun snowAmount(cm: Double, unit: PrecipitationUnit = UnitSettings.current.precipitation): String =
+        if (unit == PrecipitationUnit.inches) String.format(Locale.US, "%.2f in snow", cm / 2.54)
+        else String.format(Locale.US, "%.1f cm", cm)
+
     /** "Low", "Moderate", "High", "Very high", "Extreme" (WHO UV index bands). */
     fun uvLevel(uv: Double?): String? {
         if (uv == null) return null

@@ -39,15 +39,20 @@ object AccuracyTracker {
         get() = Prefs.prefs.getString(LOCAL_KEY, null)?.let { runCatching { json.decodeFromString(rangesSerializer, it) }.getOrNull() } ?: emptyMap()
         set(v) { Prefs.prefs.edit().putString(LOCAL_KEY, json.encodeToString(rangesSerializer, v)).apply() }
 
-    /** Notes the temperature shown on the Now card when it came from a local station. */
+    /** Notes the day's temperature range from a nearby station (up to 25 km away when no hyperlocal reading exists). */
     private fun recordObservation(obs: Observation?, shown: Double, zone: ZoneId, now: Epoch) {
-        if (obs == null || !obs.isLocal || !shown.isFinite()) return
+        if (obs == null) return
+        val sample = when {
+            obs.isLocal && shown.isFinite() -> shown
+            (obs.distanceKm ?: Double.POSITIVE_INFINITY) <= 25.0 && obs.temperature.isFinite() -> obs.temperature
+            else -> return
+        }
         val today = AccuracyLog.dayString(now, zone)
         val night = AccuracyLog.LocalRange.isNight(now, zone)
         val ranges = localRanges.toMutableMap()
         val existing = ranges[today]
-        if (existing != null) existing.add(shown, obs.stationName, night)
-        else ranges[today] = AccuracyLog.LocalRange.start(today, shown, obs.stationName, night)
+        if (existing != null) existing.add(sample, obs.stationName, night)
+        else ranges[today] = AccuracyLog.LocalRange.start(today, sample, obs.stationName, night)
         // Keep about two weeks.
         val oldest = AccuracyLog.dayString(now, zone, offsetDays = -14)
         localRanges = ranges.filterKeys { it >= oldest }
@@ -104,7 +109,7 @@ fun AccuracyScreen() {
     Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
         Section("Average miss, day-ahead", Icons.Filled.TrackChanges) {
             if (scores.isEmpty()) {
-                Text("Khan Weather writes down tomorrow's forecast from every model each day, then checks it against Environment Canada's nearest climate station once the day's record is posted. Results show here after the first day is checked, usually within two days.",
+                Text("Khan Weather writes down tomorrow's forecast from every model each day, then checks it against Environment Canada's nearest climate station or nearby station readings. Results show here after the first day is checked, usually within two days.",
                     style = style(15.sp, FontWeight.Medium))
             } else {
                 scores.forEachIndexed { rank, score ->

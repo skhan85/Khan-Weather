@@ -29,19 +29,27 @@ enum AccuracyTracker {
         set { defaults.set(try? JSONEncoder().encode(newValue), forKey: localObsKey) }
     }
 
-    /// Notes the temperature shown on the Now card when it came from a local station. That is the
-    /// filtered value (sun-heated home stations set aside), not the station's raw reading.
+    /// Notes the day's temperature range from a nearby station (preferring local stations within
+    /// `localRadiusKm`, and falling back to stations within 25 km for areas without local gauges).
     @MainActor
     static func recordObservation(_ obs: Observation?, shownTemperature: Double, timeZone: TimeZone, now: Date = Date()) {
-        guard let obs, obs.isLocal, shownTemperature.isFinite else { return }
+        guard let obs else { return }
+        let sample: Double
+        if obs.isLocal, shownTemperature.isFinite {
+            sample = shownTemperature
+        } else if (obs.distanceKm ?? .infinity) <= 25, obs.temperature.isFinite {
+            sample = obs.temperature
+        } else {
+            return
+        }
         let today = AccuracyLog.dayString(now, timeZone: timeZone)
         let night = AccuracyLog.LocalRange.isNight(now, timeZone: timeZone)
         var ranges = localRanges
         if var existing = ranges[today] {
-            existing.add(shownTemperature, station: obs.stationName, isNight: night)
+            existing.add(sample, station: obs.stationName, isNight: night)
             ranges[today] = existing
         } else {
-            ranges[today] = AccuracyLog.LocalRange(day: today, temperature: shownTemperature,
+            ranges[today] = AccuracyLog.LocalRange(day: today, temperature: sample,
                                                    station: obs.stationName, isNight: night)
         }
         // Keep about two weeks.
@@ -96,7 +104,7 @@ struct AccuracyView: View {
         List {
             Section {
                 if scores.isEmpty {
-                    Text("Khan Weather writes down tomorrow's forecast from every model each day, then checks it against Environment Canada's nearest climate station once the day's record is posted. Results show here after the first day is checked, usually within two days.")
+                    Text("Khan Weather writes down tomorrow's forecast from every model each day, then checks it against Environment Canada's nearest climate station or nearby station readings. Results show here after the first day is checked, usually within two days.")
                         .font(.subheadline.weight(.medium))
                 } else {
                     ForEach(Array(scores.enumerated()), id: \.element.id) { rank, score in

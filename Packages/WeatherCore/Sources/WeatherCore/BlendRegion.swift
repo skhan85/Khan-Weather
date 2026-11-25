@@ -38,4 +38,34 @@ public struct BlendRegion: Equatable, Sendable {
 
     /// The region of the app's default spot (Toronto); used when a caller names none.
     public static let home = at(.fallback)
+
+    /// Plain-English explanation of how temperatures are blended at `coordinate`.
+    public static func summary(at coordinate: Coordinate) -> String {
+        let region = at(coordinate)
+        let regionLabel = region.name.isEmpty ? "your region" : region.name
+        func topNames(_ weights: [WeatherModel: Double]?) -> String? {
+            guard let weights, !weights.isEmpty else { return nil }
+            let picked = weights.filter { $0.value > 0 }
+                .sorted { $0.value > $1.value }
+                .prefix(3)
+                .map(\.key.name)
+            switch picked.count {
+            case 0: return nil
+            case 1: return picked[0]
+            case 2: return "\(picked[0]) and \(picked[1])"
+            default: return "\(picked[0]), \(picked[1]) and \(picked[2])"
+            }
+        }
+        let today = topNames(region.byDay.first)
+        let laterDay = region.byDay.count > 2 ? region.byDay[2] : region.byDay.last
+        let later = topNames(laterDay)
+        var parts = ["Khan Weather's temperatures are a blend tailored for \(regionLabel), tuned by regional accuracy and updated with recent performance nearby."]
+        if let today, let later, today != later {
+            parts.append("Today \(today) lead; further out \(later) carry the most weight.")
+        } else if let today {
+            parts.append("\(today) carry the most weight.")
+        }
+        parts.append("The first hours are also eased toward nearby station readings.")
+        return parts.joined(separator: " ")
+    }
 }

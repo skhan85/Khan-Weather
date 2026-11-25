@@ -137,7 +137,7 @@ struct ModelComparisonView: View {
 
     private var footer: String {
         let source = usedModel == .blend
-            ? "Khan Weather's temperatures are a blend of eight models, weighted by how accurate each model was near Milton over the past year. Today the German (ICON), European and Canadian models lead; from tomorrow the European AI model (AIFS) leads, with NOAA's GFS, the German and UK models close behind. The first hours are also eased toward nearby station readings."
+            ? BlendRegion.summary(at: location)
             : "Khan Weather's temperatures here come from \(usedModel.name)."
         return source + " The highlighted row's high and low are the ones the app shows, taken from its hourly forecast (today's low is tonight's low); the other rows are each model's midnight-to-midnight high and low." + " High-res models only reach a day or two ahead. Models via Open-Meteo.com (CC BY 4.0)."
     }

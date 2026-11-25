@@ -82,5 +82,10 @@ final class NowcastTests: XCTestCase {
         let n = f.nowcast(at: start)
         XCTAssertEqual(n?.change, .stopping(minutes: 30))
         XCTAssertEqual(n?.kind, .rain)
+
+        var mixed = forecast([(0, 0), (0, 0)])
+        mixed.radar = RadarNow(rainMmPerHour: 1.2, snowCmPerHour: 0.8, time: start)
+        let m = mixed.nowcast(at: start)
+        XCTAssertEqual(m?.kind, .mixed)
     }
 }
