@@ -74,14 +74,21 @@ data class HourlyForecast(
         get() = condition.isPrecipitation && (rain ?: 0.0) >= 0.2 && (snowfall ?: 0.0) >= 0.2
 
     /**
-     * Makes this hour's rain and snow one kind: the amounts move to rain (mm) or snow (cm, at
-     * 0.7 mm of water per cm) and the condition follows. Freezing rain is left alone.
+     * Makes this hour's rain and snow match `type`: pure rain/snow moves all water to one side;
+     * `mixed` splits water between rain (mm) and snow (cm) by `snowShare`. Freezing rain is left alone.
      */
-    fun setPrecipitationType(type: PrecipitationKind) {
-        if (type == PrecipitationKind.mixed || condition == WeatherCondition.freezingRain ||
-            condition == WeatherCondition.freezingDrizzle) return
-        condition = condition.converted(type)
+    fun setPrecipitationType(type: PrecipitationKind, snowShare: Double? = null) {
+        if (condition == WeatherCondition.freezingRain || condition == WeatherCondition.freezingDrizzle) return
         val water = max(precipitation ?: 0.0, (rain ?: 0.0) + (snowfall ?: 0.0) * 0.7)
+        if (type == PrecipitationKind.mixed) {
+            val share = min(0.8, max(0.2, snowShare ?: 0.5))
+            condition = condition.converted(if (share >= 0.5) PrecipitationKind.snow else PrecipitationKind.rain)
+            if (water <= 0) return
+            snowfall = (water * share) / 0.7
+            rain = water * (1.0 - share)
+            return
+        }
+        condition = condition.converted(type)
         if (water <= 0) return
         if (type == PrecipitationKind.snow) {
             snowfall = water / 0.7; rain = 0.0
@@ -307,7 +314,7 @@ data class Forecast(
     fun withDailyHeadlines(): Forecast {
         val copy = deepCopy()
         copy.daily = daily.map { day ->
-            val d = day.copy()
+            val d = day.copy(summary = null)
             val hours = hoursOn(day)
             if (!d.condition.isWetOrStorm || hours.isEmpty()) return@map d
             val wetHours = hours.count { (it.precipitation ?: 0.0) >= 0.1 }

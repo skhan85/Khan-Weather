@@ -93,6 +93,7 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
         val radarTask = async { WeatherLoader.radar(target) }
         val nowcastTask = async { WeatherLoader.radarNowcast(target, cold = likelyCold) }
         val weightsTask = async { WeatherLoader.regionalWeights(target) }
+        val googleTask = async { WeatherLoader.googleHourly(target) }
         val alertsTask = async { WeatherLoader.alerts(target) }
         val normalsTask = async { WeatherLoader.normals(context, target) }
 
@@ -129,10 +130,11 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
         val observed = observedTask.await()
         val radar = radarTask.await()
         val radarNowcast = nowcastTask.await()
+        val googleHourly = googleTask.await()
         if (gen != generation) return@coroutineScope
         observed?.let { ObservationMemory.remember(target, it) }
         val loaded = with(WeatherLoader) {
-            base.applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast).calibratingEnsemblePop()
+            base.applyingGoogleHourly(googleHourly).applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast).calibratingEnsemblePop()
         }
         state = LoadState.Loaded(loaded)
         // Keep score of the models for where the user actually is, not saved places.

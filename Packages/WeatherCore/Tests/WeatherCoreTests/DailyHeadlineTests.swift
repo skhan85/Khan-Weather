@@ -80,4 +80,16 @@ final class DailyHeadlineTests: XCTestCase {
         let d = forecast(day, hours).withDailyHeadlines().daily[0]
         XCTAssertEqual(d.condition, .rain)
     }
+
+    func testStaleMixedSummaryClearedWhenHoursBecomeAllRain() {
+        var hours = (0..<24).map { hour($0, 3, .overcast) }
+        for h in 19...23 { hours[h] = hour(h, 2, .rain, rain: 3.0) }
+        var day = DailyForecast(date: time(0), high: 5, low: 1, precipitationProbability: 90, condition: .rain,
+                                rainSum: 15.0, snowfallSum: 0.0)
+        day.summary = "Rain then snow"
+        let d = forecast(day, hours).withDailyHeadlines().daily[0]
+        XCTAssertEqual(d.condition, .rain)
+        XCTAssertNil(d.summary)
+        XCTAssertFalse(d.isMixedPrecipitation)
+    }
 }

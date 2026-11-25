@@ -97,16 +97,84 @@ public struct RelayNowcast: Codable, Equatable, Sendable {
     public let slots: [Slot]
 }
 
+public struct RelayGoogleHourly: Codable, Equatable, Sendable {
+    public struct Hour: Codable, Equatable, Sendable {
+        public let epoch: Double
+        public let temp: Double
+        public let feels_like: Double?
+        public let dew_point: Double?
+        public let wind_kmh: Double?
+        public let gust_kmh: Double?
+        public let pop: Double?
+        public let precip_mm: Double?
+        public let snow_mm: Double?
+    }
+    public let generated: Double?
+    public let provider: String?
+    public let hours: [Hour]
+}
+
 public extension Forecast {
+    /// Blends Google Weather's hourly forecast (0.25 weight over the next 96h) into `hourly`
+    /// and updates daily high/low and feels-like consistently.
+    func applyingGoogleHourly(_ gh: RelayGoogleHourly?) -> Forecast {
+        guard let gh, !gh.hours.isEmpty, !hourly.isEmpty else { return self }
+        var byHour: [Int: RelayGoogleHourly.Hour] = [:]
+        for g in gh.hours {
+            let k = Int((g.epoch / 3600).rounded()) * 3600
+            byHour[k] = g
+        }
+        var copy = self
+        let cutoff = current.time.addingTimeInterval(96 * 3600)
+        var changed = false
+        copy.hourly = hourly.map { hour in
+            guard hour.time <= cutoff else { return hour }
+            let k = Int((hour.time.timeIntervalSince1970 / 3600).rounded()) * 3600
+            guard let g = byHour[k] else { return hour }
+            var h = hour
+            h.temperature = 0.75 * h.temperature + 0.25 * g.temp
+            if let dp = h.dewPoint, let gdp = g.dew_point {
+                h.dewPoint = min(h.temperature, 0.75 * dp + 0.25 * gdp)
+            }
+            if let w = h.windSpeed, let gw = g.wind_kmh {
+                h.windSpeed = max(0, 0.75 * w + 0.25 * gw)
+            }
+            changed = true
+            return h
+        }
+        guard changed else { return self }
+        let hiAllow = extremesIncludePeak == true ? ModelBlend.highAllowance : 0
+        let loAllow = extremesIncludePeak == true ? ModelBlend.lowAllowance : 0
+        copy.daily = copy.daily.map { day in
+            let hrs = copy.hours(on: day)
+            guard hrs.count >= 18 else { return day }
+            var d = day
+            d.high = hrs.map(\.temperature).max()! + hiAllow
+            d.low = hrs.map(\.temperature).min()! - loAllow
+            return d
+        }
+        if let first = copy.hourly.first, abs(first.time.timeIntervalSince(current.time)) < 1800 {
+            copy.current.temperature = first.temperature
+        }
+        return copy.withStandardFeelsLike()
+    }
+
     /// Merges 6-minute radar extrapolation from the relay into 15-minute `minutely` slots.
     func applyingRadarNowcast(_ nc: RelayNowcast?) -> Forecast {
         guard let nc, !nc.slots.isEmpty, !minutely.isEmpty else { return self }
         var copy = self
         let temp = current.temperature
         let rh = current.humidity ?? 100
+        let startEpoch = minutely[0].time.timeIntervalSince1970
+        let nearRadarClean = nc.slots.filter { $0.epoch >= startEpoch - 360 && $0.epoch < startEpoch + 2700 }
+            .allSatisfy { $0.precip_mmh <= 0 }
+        let dryVeto = (observation?.gaugesSayDry == true) && temp > 1 && nearRadarClean
         copy.minutely = minutely.map { slot in
             let start = slot.time.timeIntervalSince1970
             let end = start + 900
+            if dryVeto, start < startEpoch + 2700, slot.snowfall == 0, slot.precipitation < 0.5 {
+                return PrecipitationSlot(time: slot.time, precipitation: 0, rain: 0, snowfall: 0)
+            }
             let matching = nc.slots.filter { $0.epoch >= start && $0.epoch < end }
             guard !matching.isEmpty else { return slot }
             let rawRain = matching.map(\.rain_mmh).max() ?? 0
@@ -164,6 +232,7 @@ public extension Forecast {
             }
             if (out.precipitationProbability ?? 0) < 30, totalMm < 1.0, out.condition.isPrecipitation {
                 out.condition = .overcast
+                out.summary = nil
             }
             return out
         }
@@ -239,5 +308,15 @@ public struct RelayExtrasProvider: Sendable {
               (resp as? HTTPURLResponse)?.statusCode == 200,
               let decoded = try? JSONDecoder().decode(R.self, from: data) else { return nil }
         return decoded.weights
+    }
+    public func googleHourly(near c: Coordinate) async -> RelayGoogleHourly? {
+        var parts = URLComponents(url: host.appendingPathComponent("v1/google-hourly"), resolvingAgainstBaseURL: false)!
+        parts.queryItems = [
+            URLQueryItem(name: "lat", value: String(format: "%.4f", c.latitude)),
+            URLQueryItem(name: "lon", value: String(format: "%.4f", c.longitude)),
+        ]
+        guard let url = parts.url, let (data, resp) = try? await URLSession.shared.data(for: URLRequest(url: url, timeoutInterval: 6)),
+              (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        return try? JSONDecoder().decode(RelayGoogleHourly.self, from: data)
     }
 }

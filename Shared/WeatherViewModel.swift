@@ -147,6 +147,7 @@ final class WeatherViewModel: ObservableObject {
         let radarTask = Task { try? await ECCCRadarProvider().now(at: target) }
         let nowcastTask = Task { await RelayExtrasProvider().nowcast(near: target, cold: likelyCold) }
         let weightsTask = Task { await Deadline.run(3) { await RelayExtrasProvider().regionalWeights(near: target) } }
+        let googleTask = Task { await Deadline.run(3) { await RelayExtrasProvider().googleHourly(near: target) } }
         let alertsTask = Task { try? await alertProvider.alerts(near: target) }
         let airTask = Task { try? await AirQualityProvider().airQuality(at: target) }
         let normalsTask = Task { try? await ClimateNormalsProvider().normals(at: target) }
@@ -201,9 +202,10 @@ final class WeatherViewModel: ObservableObject {
                 let observed = await observedTask.value
                 let radar = await radarTask.value ?? nil
                 let radarNowcast = await nowcastTask.value
+                let googleHourly = await googleTask.value
                 guard gen == self.generation else { return }
                 if let observed { self.lastObservation[spot] = observed }
-                self.state = .loaded(base.applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast).calibratingEnsemblePop())
+                self.state = .loaded(base.applyingGoogleHourly(googleHourly).applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast).calibratingEnsemblePop())
             }
         }
         guard gen == generation, case .loaded(let shown) = state else { return }
@@ -229,6 +231,7 @@ final class WeatherViewModel: ObservableObject {
             async let radar = try? ECCCRadarProvider().now(at: target)
             async let nowcast = RelayExtrasProvider().nowcast(near: target, cold: likelyCold)
             let weightsTask = Task { await Deadline.run(3) { await RelayExtrasProvider().regionalWeights(near: target) } }
+            async let googleHourly = Deadline.run(3) { await RelayExtrasProvider().googleHourly(near: target) }
             async let fetchedAlerts = try? alertProvider.alerts(near: target)
             async let air = try? AirQualityProvider().airQuality(at: target)
             let obs = await observed
@@ -243,7 +246,7 @@ final class WeatherViewModel: ObservableObject {
                 base = try? await provider.forecast(for: target)
             }
             guard let base else { continue }
-            let full = base.applying(obs).applyingRadar(await radar ?? nil)
+            let full = base.applyingGoogleHourly(await googleHourly).applying(obs).applyingRadar(await radar ?? nil)
                 .applyingRadarNowcast(await nowcast).calibratingEnsemblePop()
             let snap = Snapshot(forecast: full, name: place.name, alerts: await fetchedAlerts ?? [],
                                 airQuality: await air, at: Date())

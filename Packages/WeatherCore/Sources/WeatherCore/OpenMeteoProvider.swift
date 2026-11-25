@@ -89,7 +89,7 @@ public struct OpenMeteoProvider: ForecastProvider {
         components.queryItems = [
             URLQueryItem(name: "latitude", value: String(c.latitude)),
             URLQueryItem(name: "longitude", value: String(c.longitude)),
-            URLQueryItem(name: "hourly", value: "temperature_2m,apparent_temperature,precipitation,snowfall"),
+            URLQueryItem(name: "hourly", value: "temperature_2m,apparent_temperature,precipitation,snowfall,wind_speed_10m,wind_gusts_10m,dew_point_2m"),
             URLQueryItem(name: "models", value: region.models.map(\.rawValue).joined(separator: ",")),
             URLQueryItem(name: "timezone", value: "auto"),
             URLQueryItem(name: "timeformat", value: "unixtime"),
@@ -115,6 +115,10 @@ public struct OpenMeteoProvider: ForecastProvider {
             var snowfallMean: Double? = nil
             /// Rain or snow, from all the models (ModelBlend.precipitationType).
             var type: PrecipitationKind? = nil
+            var snowShare: Double? = nil
+            var windSpeed: Double? = nil
+            var windGusts: Double? = nil
+            var dewPoint: Double? = nil
         }
         var hourly: [Int: Hour] = [:]
     }
@@ -152,6 +156,9 @@ public struct OpenMeteoProvider: ForecastProvider {
         let feels = Dictionary(uniqueKeysWithValues: region.models.map { ($0, series("apparent_temperature", $0)) })
         let precip = Dictionary(uniqueKeysWithValues: region.models.map { ($0, series("precipitation", $0)) })
         let snow = Dictionary(uniqueKeysWithValues: region.models.map { ($0, series("snowfall", $0)) })
+        let winds = Dictionary(uniqueKeysWithValues: region.models.map { ($0, series("wind_speed_10m", $0)) })
+        let gusts = Dictionary(uniqueKeysWithValues: region.models.map { ($0, series("wind_gusts_10m", $0)) })
+        let dews = Dictionary(uniqueKeysWithValues: region.models.map { ($0, series("dew_point_2m", $0)) })
 
         let nowEpoch = now.timeIntervalSince1970
         let observedTemperature = anchor?.temperature
@@ -177,6 +184,7 @@ public struct OpenMeteoProvider: ForecastProvider {
             let hourPrecip = at(precip).filter { hourTemps[$0.key] != nil }
             let hourSnow = at(snow).filter { hourTemps[$0.key] != nil }
             let wet = hourPrecip.filter { $0.value >= ModelBlend.wetHourMm }.count
+            let snowShare = ModelBlend.precipitationSnowShare(temperature: temp, precipitation: hourPrecip, snowfall: hourSnow)
             out.hourly[t.intValue] = .init(temperature: temp,
                                            feelsLike: ModelBlend.blend(at(feels),
                                                                        leadHours: lead,
@@ -191,7 +199,11 @@ public struct OpenMeteoProvider: ForecastProvider {
                                            snowfallMean: ModelBlend.blendedPrecipitation(hourSnow, leadHours: lead, region: region, coordinate: coordinate),
                                            type: ModelBlend.precipitationType(
                                                temperature: temp, precipitation: hourPrecip,
-                                               snowfall: hourSnow))
+                                               snowfall: hourSnow),
+                                           snowShare: snowShare,
+                                           windSpeed: ModelBlend.blend(at(winds), leadHours: lead, region: region, coordinate: coordinate),
+                                           windGusts: ModelBlend.blend(at(gusts), leadHours: lead, region: region, coordinate: coordinate),
+                                           dewPoint: ModelBlend.blend(at(dews), leadHours: lead, region: region, coordinate: coordinate))
         }
         return out
     }
@@ -508,13 +520,16 @@ extension Forecast {
                 h.modelsFreezing = t.freezing
                 h.precipitationProbability = ModelBlend.hourlyChance(openMeteo: h.precipitationProbability,
                                                                      wet: t.wet, of: t.count)
+                if let w = t.windSpeed { h.windSpeed = max(0, w) }
+                if let g = t.windGusts { h.windGusts = max(h.windSpeed ?? 0, g) }
+                if let dp = t.dewPoint { h.dewPoint = min(h.temperature, dp) }
                 if let p = t.precipitationMean {
                     let s = t.snowfallMean ?? 0
                     h.precipitation = p
                     h.snowfall = s
                     h.rain = max(0, p - s * 0.7)
                 }
-                if let type = t.type { h.setPrecipitationType(type) }
+                if let type = t.type { h.setPrecipitationType(type, snowShare: t.snowShare) }
             }
             return h
         }

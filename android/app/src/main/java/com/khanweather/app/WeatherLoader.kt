@@ -113,7 +113,14 @@ object WeatherLoader {
         if (nc == null || nc.slots.isEmpty() || minutely.isEmpty()) return this
         val temp = current.temperature
         val rh = current.humidity ?: 100.0
+        val startEpoch = minutely[0].time
+        val nearRadarClean = nc.slots.filter { it.epoch >= startEpoch - 360.0 && it.epoch < startEpoch + 2700.0 }
+            .all { it.precip_mmh <= 0.0 }
+        val dryVeto = (observation?.gaugesSayDry == true) && temp > 1.0 && nearRadarClean
         val merged = minutely.map { slot ->
+            if (dryVeto && slot.time < startEpoch + 2700.0 && slot.snowfall == 0.0 && slot.precipitation < 0.5) {
+                return@map PrecipitationSlot(slot.time, 0.0, 0.0, 0.0)
+            }
             val matching = nc.slots.filter { it.epoch >= slot.time && it.epoch < slot.time + 900.0 }
             if (matching.isEmpty()) return@map slot
             val rawRain = matching.maxOf { it.rain_mmh }
@@ -144,6 +151,78 @@ object WeatherLoader {
 
     @Serializable
     data class RelayWeights(val weights: Map<String, kotlin.Double> = emptyMap())
+
+    @Serializable
+    data class RelayGoogleHour(
+        val epoch: kotlin.Double,
+        val temp: kotlin.Double,
+        val feels_like: kotlin.Double? = null,
+        val dew_point: kotlin.Double? = null,
+        val wind_kmh: kotlin.Double? = null,
+        val gust_kmh: kotlin.Double? = null,
+        val pop: kotlin.Double? = null,
+        val precip_mm: kotlin.Double? = null,
+        val snow_mm: kotlin.Double? = null,
+    )
+
+    @Serializable
+    data class RelayGoogleHourly(val hours: List<RelayGoogleHour> = emptyList())
+
+    suspend fun googleHourly(target: Coordinate): RelayGoogleHourly? = deadline(3.0) {
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val u = String.format(
+                    Locale.US,
+                    "https://weather-relay.khanofmilton.ca/v1/google-hourly?lat=%.4f&lon=%.4f",
+                    target.latitude, target.longitude,
+                )
+                val conn = (URL(u).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 4000; readTimeout = 4000
+                }
+                try {
+                    if (conn.responseCode != 200) return@runCatching null
+                    relayJson.decodeFromString(RelayGoogleHourly.serializer(), conn.inputStream.bufferedReader().readText())
+                } finally {
+                    conn.disconnect()
+                }
+            }.getOrNull()
+        }
+    }
+
+    fun Forecast.applyingGoogleHourly(gh: RelayGoogleHourly?): Forecast {
+        if (gh == null || gh.hours.isEmpty() || hourly.isEmpty()) return this
+        val byHour = gh.hours.associateBy { kotlin.math.round(it.epoch / 3600.0).toLong() * 3600L }
+        val cutoff = current.time + 96 * 3600.0
+        var changed = false
+        val copy = deepCopy()
+        copy.hourly = hourly.map { hour ->
+            if (hour.time > cutoff) return@map hour
+            val g = byHour[kotlin.math.round(hour.time / 3600.0).toLong() * 3600L] ?: return@map hour
+            val h = hour.copy()
+            h.temperature = 0.75 * h.temperature + 0.25 * g.temp
+            val dp = h.dewPoint; val gdp = g.dew_point
+            if (dp != null && gdp != null) h.dewPoint = minOf(h.temperature, 0.75 * dp + 0.25 * gdp)
+            val w = h.windSpeed; val gw = g.wind_kmh
+            if (w != null && gw != null) h.windSpeed = maxOf(0.0, 0.75 * w + 0.25 * gw)
+            changed = true
+            h
+        }
+        if (!changed) return this
+        val hiAllow = if (extremesIncludePeak == true) ModelBlend.highAllowance else 0.0
+        val loAllow = if (extremesIncludePeak == true) ModelBlend.lowAllowance else 0.0
+        copy.daily = copy.daily.map { day ->
+            val hrs = copy.hoursOn(day)
+            if (hrs.size < 18) day else day.copy(
+                high = hrs.maxOf { it.temperature } + hiAllow,
+                low = hrs.minOf { it.temperature } - loAllow,
+            )
+        }
+        val first = copy.hourly.firstOrNull()
+        if (first != null && kotlin.math.abs(first.time - current.time) < 1800.0) {
+            copy.current.temperature = first.temperature
+        }
+        return copy.withStandardFeelsLike()
+    }
 
     suspend fun regionalWeights(target: Coordinate): Map<String, kotlin.Double>? = deadline(3.0) {
         withContext(Dispatchers.IO) {
@@ -187,8 +266,9 @@ object WeatherLoader {
             else if (totalMm >= 5.0 && d.condition.isPrecipitation && pop != null) pop = maxOf(pop, 50.0)
             else if (totalMm >= 1.0 && d.condition.isPrecipitation && pop != null) pop = maxOf(pop, 40.0)
             else if (totalMm < 0.5 && !d.condition.isPrecipitation && pop != null && pop > 25.0) pop = 25.0
-            val cond = if ((pop ?: 0.0) < 30.0 && totalMm < 1.0 && d.condition.isPrecipitation) WeatherCondition.overcast else d.condition
-            d.copy(precipitationProbability = pop, condition = cond)
+            val downgraded = (pop ?: 0.0) < 30.0 && totalMm < 1.0 && d.condition.isPrecipitation
+            val cond = if (downgraded) WeatherCondition.overcast else d.condition
+            d.copy(precipitationProbability = pop, condition = cond, summary = if (downgraded) null else d.summary)
         }
         return copy(hourly = calHours, daily = calDays)
     }
@@ -198,9 +278,10 @@ object WeatherLoader {
         val likelyCold = knownTemp?.let { it <= 4.0 } ?: (kotlin.math.abs(target.latitude) >= 25.0)
         val ncTask = async { radarNowcast(target, cold = likelyCold) }
         val weightsTask = async { regionalWeights(target) }
+        val googleTask = async { googleHourly(target) }
         val base = forecastProvider.forecast(target, regionalWeights = { weightsTask.await() }) { observed?.blendAnchor }
         observed?.let { ObservationMemory.remember(target, it) }
-        base.applying(observed).applyingRadar(radar).applyingRadarNowcast(ncTask.await()).calibratingEnsemblePop()
+        base.applyingGoogleHourly(googleTask.await()).applying(observed).applyingRadar(radar).applyingRadarNowcast(ncTask.await()).calibratingEnsemblePop()
     }
 
     @Serializable

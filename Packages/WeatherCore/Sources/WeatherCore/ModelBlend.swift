@@ -136,7 +136,21 @@ public enum ModelBlend {
         return present.values.reduce(0, +) / Double(present.count)
     }
 
-    /// Weighted ensemble precipitation/snowfall mean across blend models when enough report.
+    /// Precipitation & rain/snow skill weights: prioritize high-res & physics NWP over AI/coarse models.
+    static func precipitationWeight(_ model: WeatherModel) -> Double {
+        switch model {
+        case .canadaHighRes, .usBlend, .europeHighRes: return 0.18
+        case .usHighRes: return 0.16
+        case .europe: return 0.14
+        case .germany, .france, .netherlands, .denmark: return 0.12
+        case .canada: return 0.10
+        case .us, .uk, .bestMatch: return 0.08
+        case .europeAI: return 0.04
+        case .blend: return 0
+        }
+    }
+
+    /// Weighted ensemble precipitation/snowfall mean across blend models using precipitation weights.
     static func blendedPrecipitation(_ values: [WeatherModel: Double],
                                      leadHours: Double,
                                      region: BlendRegion = .home,
@@ -145,7 +159,7 @@ public enum ModelBlend {
         guard present.count >= 3 else { return nil }
         var sum = 0.0, total = 0.0
         for (model, value) in present {
-            let w = weight(model, leadHours: leadHours, region: region, coordinate: coordinate)
+            let w = precipitationWeight(model)
             sum += max(0, value) * w
             total += w
         }
@@ -180,18 +194,33 @@ public enum ModelBlend {
     /// 2,000 rain and snow hours (Nov 2025-Apr 2026, tools/score_ptype.py), this was right 97% of
     /// the time today and 95% two days out, against 95% and 90% for Open-Meteo's single
     /// best-match model, which the app used before.
+    /// Weighted snow share among wet models (0...1), or nil when no model is wet.
+    static func precipitationSnowShare(temperature: Double,
+                                       precipitation: [WeatherModel: Double],
+                                       snowfall: [WeatherModel: Double]) -> Double? {
+        if temperature >= 3 { return 0 }
+        if temperature <= -2 { return 1 }
+        var wetWeight = 0.0, snowWeight = 0.0
+        for (m, p) in precipitation where p >= typeWetMm {
+            guard let s = snowfall[m] else { continue }
+            let w = max(0.01, precipitationWeight(m))
+            wetWeight += w
+            if s / 0.7 >= 0.5 * p { snowWeight += w }
+        }
+        guard wetWeight > 0 else { return nil }
+        return snowWeight / wetWeight
+    }
+
     public static func precipitationType(temperature: Double,
                                          precipitation: [WeatherModel: Double],
                                          snowfall: [WeatherModel: Double]) -> PrecipitationKind {
         if temperature >= 3 { return .rain }
         if temperature <= -2 { return .snow }
-        var wet = 0, snowy = 0
-        for (m, p) in precipitation where p >= typeWetMm {
-            guard let s = snowfall[m] else { continue }
-            wet += 1
-            if s / 0.7 >= 0.5 * p { snowy += 1 }
+        if let share = precipitationSnowShare(temperature: temperature, precipitation: precipitation, snowfall: snowfall) {
+            if share >= 0.7 { return .snow }
+            if share <= 0.3 { return .rain }
+            return .mixed
         }
-        if wet > 0 { return snowy * 2 >= wet ? .snow : .rain }
         return temperature <= 1 ? .snow : .rain
     }
 

@@ -246,6 +246,36 @@ class OpenMeteoProviderTest {
         assertFalse(summary.contains("Milton"))
     }
 
+    @Test fun mixedTransitionPreservesBothRainAndSnow() {
+        val precip = mapOf(WeatherModel.canadaHighRes to 1.0, WeatherModel.europeHighRes to 1.0)
+        val snow = mapOf(WeatherModel.canadaHighRes to 1.0, WeatherModel.europeHighRes to 0.0)
+        val share = ModelBlend.precipitationSnowShare(1.0, precip, snow)
+        assertEquals(PrecipitationKind.mixed, ModelBlend.precipitationType(1.0, precip, snow))
+        val hour = HourlyForecast(time = 0.0, temperature = 1.0, precipitation = 1.4, condition = WeatherCondition.rain)
+        hour.setPrecipitationType(PrecipitationKind.mixed, share)
+        close(0.7, hour.rain, 0.01)
+        close(1.0, hour.snowfall, 0.01)
+        assertTrue(hour.isMixedPrecipitation)
+    }
+
+    @Test fun staleMixedSummaryClearedWhenHoursBecomeAllRain() {
+        val midnight = torontoMidnight(2026, 11, 26)
+        val hours = (0 until 24).map { h ->
+            HourlyForecast(time = midnight + h * 3600.0, temperature = 2.0,
+                precipitation = if (h >= 19) 3.0 else 0.0,
+                condition = if (h >= 19) WeatherCondition.rain else WeatherCondition.overcast,
+                rain = if (h >= 19) 3.0 else 0.0, snowfall = 0.0)
+        }
+        val day = DailyForecast(date = midnight, high = 5.0, low = 1.0, precipitationProbability = 90.0,
+            condition = WeatherCondition.rain, rainSum = 15.0, snowfallSum = 0.0, summary = "Rain then snow")
+        val f = Forecast(Coordinate(43.5, -79.9), "America/Toronto",
+            CurrentConditions(midnight, 2.0, 2.0, FeelsLikeKind.apparent, condition = WeatherCondition.overcast, isDay = false),
+            hours, listOf(day), "test", midnight).withDailyHeadlines()
+        assertEquals(WeatherCondition.rain, f.daily[0].condition)
+        assertNull(f.daily[0].summary)
+        assertFalse(f.daily[0].isMixedPrecipitation)
+    }
+
     private val testRegion get() = Regions.testRegion
 
     object Regions {

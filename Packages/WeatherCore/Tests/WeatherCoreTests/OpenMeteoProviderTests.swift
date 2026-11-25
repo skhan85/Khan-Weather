@@ -281,4 +281,28 @@ final class OpenMeteoProviderTests: XCTestCase {
         XCTAssertTrue(summary.contains("Europe"))
         XCTAssertFalse(summary.contains("Milton"))
     }
+
+    func testMixedTransitionPreservesBothRainAndSnow() {
+        let precip: [WeatherModel: Double] = [.canadaHighRes: 1.0, .europeHighRes: 1.0]
+        let snow: [WeatherModel: Double] = [.canadaHighRes: 1.0, .europeHighRes: 0.0]
+        let share = ModelBlend.precipitationSnowShare(temperature: 1.0, precipitation: precip, snowfall: snow)
+        XCTAssertEqual(ModelBlend.precipitationType(temperature: 1.0, precipitation: precip, snowfall: snow), .mixed)
+        var hour = HourlyForecast(time: Date(), temperature: 1.0, precipitation: 1.4, condition: .rain)
+        hour.setPrecipitationType(.mixed, snowShare: share)
+        XCTAssertEqual(hour.rain ?? 0, 0.7, accuracy: 0.01)
+        XCTAssertEqual(hour.snowfall ?? 0, 1.0, accuracy: 0.01)
+        XCTAssertTrue(hour.isMixedPrecipitation)
+    }
+
+    func testGoogleHourlyBlendsIntoForecastHours() throws {
+        var f = try OpenMeteoProvider.parse(Self.sample, fetchedAt: Date())
+        let t0 = f.hourly[0].time.timeIntervalSince1970
+        let gh = RelayGoogleHourly(generated: t0, provider: "Google Weather",
+                                   hours: [RelayGoogleHourly.Hour(epoch: t0, temp: 2.0, feels_like: nil,
+                                                                  dew_point: nil, wind_kmh: nil, gust_kmh: nil,
+                                                                  pop: nil, precip_mm: nil, snow_mm: nil)])
+        let blended = f.applyingGoogleHourly(gh)
+        // Sample hour[0] is -2.0°C; 0.75 * (-2.0) + 0.25 * 2.0 = -1.0°C
+        XCTAssertEqual(blended.hourly[0].temperature, -1.0, accuracy: 0.001)
+    }
 }

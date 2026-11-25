@@ -150,6 +150,17 @@ object ModelBlend {
         return present.values.sum() / present.size
     }
 
+    fun precipitationWeight(model: WeatherModel): Double = when (model) {
+        WeatherModel.canadaHighRes, WeatherModel.usBlend, WeatherModel.europeHighRes -> 0.18
+        WeatherModel.usHighRes -> 0.16
+        WeatherModel.europe -> 0.14
+        WeatherModel.germany, WeatherModel.france, WeatherModel.netherlands, WeatherModel.denmark -> 0.12
+        WeatherModel.canada -> 0.10
+        WeatherModel.us, WeatherModel.uk, WeatherModel.bestMatch -> 0.08
+        WeatherModel.europeAI -> 0.04
+        WeatherModel.blend -> 0.0
+    }
+
     fun blendedPrecipitation(values: Map<WeatherModel, Double>, leadHours: Double,
                              region: BlendRegion = BlendRegion.home, coordinate: Coordinate? = null): Double? {
         val present = values.filterKeys { it in region.models }
@@ -157,7 +168,7 @@ object ModelBlend {
         var sum = 0.0
         var total = 0.0
         for ((model, value) in present) {
-            val w = weight(model, leadHours, region, coordinate)
+            val w = precipitationWeight(model)
             sum += max(0.0, value) * w
             total += w
         }
@@ -172,20 +183,37 @@ object ModelBlend {
     /** A model hour counts as wet for its rain-or-snow call from this much (mm). */
     const val typeWetMm = 0.05
 
-    /** Rain or snow this hour, from the blend's models (97% right at Pearson and Hamilton). */
+    /** Weighted snow share among wet models (0..1), or null when no model is wet. */
+    fun precipitationSnowShare(temperature: Double, precipitation: Map<WeatherModel, Double>,
+                               snowfall: Map<WeatherModel, Double>): Double? {
+        if (temperature >= 3) return 0.0
+        if (temperature <= -2) return 1.0
+        var wetWeight = 0.0
+        var snowWeight = 0.0
+        for ((m, p) in precipitation) {
+            if (p < typeWetMm) continue
+            val s = snowfall[m] ?: continue
+            val w = max(0.01, precipitationWeight(m))
+            wetWeight += w
+            if (s / 0.7 >= 0.5 * p) snowWeight += w
+        }
+        if (wetWeight <= 0.0) return null
+        return snowWeight / wetWeight
+    }
+
+    /** Rain or snow this hour, from the blend's models (preserving mixed transitions). */
     fun precipitationType(temperature: Double, precipitation: Map<WeatherModel, Double>,
                           snowfall: Map<WeatherModel, Double>): PrecipitationKind {
         if (temperature >= 3) return PrecipitationKind.rain
         if (temperature <= -2) return PrecipitationKind.snow
-        var wet = 0
-        var snowy = 0
-        for ((m, p) in precipitation) {
-            if (p < typeWetMm) continue
-            val s = snowfall[m] ?: continue
-            wet += 1
-            if (s / 0.7 >= 0.5 * p) snowy += 1
+        val share = precipitationSnowShare(temperature, precipitation, snowfall)
+        if (share != null) {
+            return when {
+                share >= 0.7 -> PrecipitationKind.snow
+                share <= 0.3 -> PrecipitationKind.rain
+                else -> PrecipitationKind.mixed
+            }
         }
-        if (wet > 0) return if (snowy * 2 >= wet) PrecipitationKind.snow else PrecipitationKind.rain
         return if (temperature <= 1) PrecipitationKind.snow else PrecipitationKind.rain
     }
 

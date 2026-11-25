@@ -63,7 +63,7 @@ class OpenMeteoProvider(
         val c = coordinate.rounded
         return buildUrl(baseURL,
             "latitude" to dstr(c.latitude), "longitude" to dstr(c.longitude),
-            "hourly" to "temperature_2m,apparent_temperature,precipitation,snowfall",
+            "hourly" to "temperature_2m,apparent_temperature,precipitation,snowfall,wind_speed_10m,wind_gusts_10m,dew_point_2m",
             "models" to region.models.joinToString(",") { it.raw },
             "timezone" to "auto", "timeformat" to "unixtime", "forecast_days" to forecastDays.toString())
     }
@@ -96,6 +96,10 @@ class OpenMeteoProvider(
             val type: PrecipitationKind? = null,
             val precipitationMean: Double? = null,
             val snowfallMean: Double? = null,
+            val snowShare: Double? = null,
+            val windSpeed: Double? = null,
+            val windGusts: Double? = null,
+            val dewPoint: Double? = null,
         )
 
         val hourly = mutableMapOf<Long, Hour>()
@@ -162,6 +166,9 @@ class OpenMeteoProvider(
             val feels = series("apparent_temperature")
             val precip = series("precipitation")
             val snow = series("snowfall")
+            val winds = series("wind_speed_10m")
+            val gusts = series("wind_gusts_10m")
+            val dews = series("dew_point_2m")
 
             val observedTemperature = anchor?.temperature
             val currentModelTemps = anchor?.let { valuesAt(it.time, times, temps) }
@@ -180,6 +187,7 @@ class OpenMeteoProvider(
                 val hourPrecip = at(precip).filterKeys { hourTemps.containsKey(it) }
                 val hourSnow = at(snow).filterKeys { hourTemps.containsKey(it) }
                 val wet = hourPrecip.count { it.value >= ModelBlend.wetHourMm }
+                val snowShare = ModelBlend.precipitationSnowShare(temp, hourPrecip, hourSnow)
                 out.hourly[t.toLong()] = ModelTemperatures.Hour(
                     temperature = temp,
                     feelsLike = ModelBlend.blend(at(feels), lead, region, observedTemperature, currentModelTemps, coordinate),
@@ -189,6 +197,10 @@ class OpenMeteoProvider(
                     type = ModelBlend.precipitationType(temp, hourPrecip, hourSnow),
                     precipitationMean = ModelBlend.blendedPrecipitation(hourPrecip, lead, region, coordinate),
                     snowfallMean = ModelBlend.blendedPrecipitation(hourSnow, lead, region, coordinate),
+                    snowShare = snowShare,
+                    windSpeed = ModelBlend.blend(at(winds), lead, region, coordinate = coordinate),
+                    windGusts = ModelBlend.blend(at(gusts), lead, region, coordinate = coordinate),
+                    dewPoint = ModelBlend.blend(at(dews), lead, region, coordinate = coordinate),
                 )
             }
             return out
@@ -327,13 +339,16 @@ fun Forecast.applying(temps: OpenMeteoProvider.ModelTemperatures): Forecast {
             h.modelsWet = t.wet
             h.modelsFreezing = t.freezing
             h.precipitationProbability = ModelBlend.hourlyChance(h.precipitationProbability, t.wet, t.count)
+            t.windSpeed?.let { h.windSpeed = max(0.0, it) }
+            t.windGusts?.let { h.windGusts = max(h.windSpeed ?: 0.0, it) }
+            t.dewPoint?.let { h.dewPoint = min(h.temperature, it) }
             t.precipitationMean?.let { p ->
                 val s = t.snowfallMean ?: 0.0
                 h.precipitation = p
                 h.snowfall = s
                 h.rain = max(0.0, p - s * 0.7)
             }
-            t.type?.let { h.setPrecipitationType(it) }
+            t.type?.let { h.setPrecipitationType(it, t.snowShare) }
         }
         h
     }

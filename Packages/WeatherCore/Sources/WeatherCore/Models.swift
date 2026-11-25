@@ -109,12 +109,20 @@ public struct HourlyForecast: Equatable, Codable, Sendable, Identifiable {
         condition.isPrecipitation && (rain ?? 0) >= 0.2 && (snowfall ?? 0) >= 0.2
     }
 
-    /// Makes this hour's rain and snow one kind: the amounts move to rain (mm) or snow (cm, at
-    /// 0.7 mm of water per cm) and the condition follows. Freezing rain is left alone.
-    mutating func setPrecipitationType(_ type: PrecipitationKind) {
-        guard type != .mixed, condition != .freezingRain, condition != .freezingDrizzle else { return }
-        condition = condition.converted(to: type)
+    /// Makes this hour's rain and snow match `type`: pure rain/snow moves all water to one side;
+    /// `.mixed` splits water between rain (mm) and snow (cm) according to `snowShare`. Freezing rain stays alone.
+    mutating func setPrecipitationType(_ type: PrecipitationKind, snowShare: Double? = nil) {
+        guard condition != .freezingRain, condition != .freezingDrizzle else { return }
         let water = max(precipitation ?? 0, (rain ?? 0) + (snowfall ?? 0) * 0.7)
+        if type == .mixed {
+            let share = min(0.8, max(0.2, snowShare ?? 0.5))
+            condition = condition.converted(to: share >= 0.5 ? .snow : .rain)
+            guard water > 0 else { return }
+            snowfall = (water * share) / 0.7
+            rain = water * (1 - share)
+            return
+        }
+        condition = condition.converted(to: type)
         guard water > 0 else { return }
         if type == .snow { snowfall = water / 0.7; rain = 0 } else { rain = water; snowfall = 0 }
     }
@@ -488,6 +496,7 @@ public extension Forecast {
         var copy = self
         copy.daily = daily.map { day in
             var d = day
+            d.summary = nil
             let hours = self.hours(on: day)
             guard d.condition.isPrecipitation || d.condition == .thunderstorm || d.condition == .thunderstormHail,
                   !hours.isEmpty else { return d }
