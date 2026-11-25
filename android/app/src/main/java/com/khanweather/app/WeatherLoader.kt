@@ -197,18 +197,18 @@ object WeatherLoader {
     fun Forecast.applyingGoogleHourly(gh: RelayGoogleHourly?): Forecast {
         if (gh == null || gh.hours.isEmpty() || hourly.isEmpty()) return this
         val byHour = gh.hours.associateBy { kotlin.math.round(it.epoch / 3600.0).toLong() * 3600L }
-        val cutoff = current.time + 96 * 3600.0
+        val cutoff = current.time + 120 * 3600.0
         var changed = false
         val copy = deepCopy()
         copy.hourly = hourly.map { hour ->
             if (hour.time > cutoff) return@map hour
             val g = byHour[kotlin.math.round(hour.time / 3600.0).toLong() * 3600L] ?: return@map hour
             val h = hour.copy()
-            h.temperature = 0.75 * h.temperature + 0.25 * g.temp
+            h.temperature = 0.65 * h.temperature + 0.35 * g.temp
             val dp = h.dewPoint; val gdp = g.dew_point
-            if (dp != null && gdp != null) h.dewPoint = minOf(h.temperature, 0.75 * dp + 0.25 * gdp)
+            if (dp != null && gdp != null) h.dewPoint = minOf(h.temperature, 0.65 * dp + 0.35 * gdp)
             val w = h.windSpeed; val gw = g.wind_kmh
-            if (w != null && gw != null) h.windSpeed = maxOf(0.0, 0.75 * w + 0.25 * gw)
+            if (w != null && gw != null) h.windSpeed = maxOf(0.0, 0.65 * w + 0.35 * gw)
             changed = true
             h
         }

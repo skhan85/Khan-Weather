@@ -92,14 +92,14 @@ object ModelBlend {
         if (byDay.isEmpty()) return 1.0
         val prior = interpolatedPrior(model, leadHours, byDay)
         val regMap = coordinate?.let { regional[gridKey(it)] } ?: regional["default"]
-        val reg = regMap?.get(model)
-        if (regMap != null && reg != null && model in synopticModels) {
+        if (regMap != null) {
             val regTotal = regMap.values.sum()
-            val synopticMass = regMap.keys.sumOf { interpolatedPrior(it, leadHours, byDay) }
-            val regShare = if (leadHours <= 72.0) 0.5 else max(0.0, 0.5 * (1.0 - (leadHours - 72.0) / 72.0))
-            if (regTotal > 0.0 && synopticMass > 0.0 && regShare > 0.0) {
-                val scaledReg = (reg / regTotal) * synopticMass
-                return (1.0 - regShare) * prior + regShare * scaledReg
+            if (regTotal > 0.0) {
+                val reg = regMap[model]
+                if (reg != null && model in synopticModels) {
+                    return 0.5 * prior + 0.5 * (reg / regTotal)
+                }
+                return 0.5 * prior
             }
         }
         return prior

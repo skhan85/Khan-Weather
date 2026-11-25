@@ -252,7 +252,7 @@ final class OpenMeteoProviderTests: XCTestCase {
 
         let baselineDay6 = ModelBlend.weight(.germany, leadHours: 150, region: .at(milton))
         let miltonDay6 = ModelBlend.weight(.germany, leadHours: 150, region: .at(milton), coordinate: milton)
-        XCTAssertEqual(miltonDay6, baselineDay6, accuracy: 0.0001)
+        XCTAssertGreaterThan(miltonDay6, baselineDay6)
     }
 
     func testEnsemblePrecipitationMeanReplacesSingleModelSpike() async throws {
@@ -302,7 +302,7 @@ final class OpenMeteoProviderTests: XCTestCase {
                                                                   dew_point: nil, wind_kmh: nil, gust_kmh: nil,
                                                                   pop: nil, precip_mm: nil, snow_mm: nil)])
         let blended = f.applyingGoogleHourly(gh)
-        // Sample hour[0] is -2.0°C; 0.75 * (-2.0) + 0.25 * 2.0 = -1.0°C
-        XCTAssertEqual(blended.hourly[0].temperature, -1.0, accuracy: 0.001)
+        // Sample hour[0] is -2.0°C; 0.65 * (-2.0) + 0.35 * 2.0 = -0.6°C
+        XCTAssertEqual(blended.hourly[0].temperature, -0.6, accuracy: 0.001)
     }
 }

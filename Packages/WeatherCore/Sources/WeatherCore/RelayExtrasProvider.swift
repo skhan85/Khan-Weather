@@ -115,7 +115,7 @@ public struct RelayGoogleHourly: Codable, Equatable, Sendable {
 }
 
 public extension Forecast {
-    /// Blends Google Weather's hourly forecast (0.25 weight over the next 96h) into `hourly`
+    /// Blends Google Weather's hourly forecast (0.35 weight over the full 120h window) into `hourly`
     /// and updates daily high/low and feels-like consistently.
     func applyingGoogleHourly(_ gh: RelayGoogleHourly?) -> Forecast {
         guard let gh, !gh.hours.isEmpty, !hourly.isEmpty else { return self }
@@ -125,19 +125,19 @@ public extension Forecast {
             byHour[k] = g
         }
         var copy = self
-        let cutoff = current.time.addingTimeInterval(96 * 3600)
+        let cutoff = current.time.addingTimeInterval(120 * 3600)
         var changed = false
         copy.hourly = hourly.map { hour in
             guard hour.time <= cutoff else { return hour }
             let k = Int((hour.time.timeIntervalSince1970 / 3600).rounded()) * 3600
             guard let g = byHour[k] else { return hour }
             var h = hour
-            h.temperature = 0.75 * h.temperature + 0.25 * g.temp
+            h.temperature = 0.65 * h.temperature + 0.35 * g.temp
             if let dp = h.dewPoint, let gdp = g.dew_point {
-                h.dewPoint = min(h.temperature, 0.75 * dp + 0.25 * gdp)
+                h.dewPoint = min(h.temperature, 0.65 * dp + 0.35 * gdp)
             }
             if let w = h.windSpeed, let gw = g.wind_kmh {
-                h.windSpeed = max(0, 0.75 * w + 0.25 * gw)
+                h.windSpeed = max(0, 0.65 * w + 0.35 * gw)
             }
             changed = true
             return h

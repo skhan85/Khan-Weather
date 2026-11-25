@@ -68,15 +68,15 @@ public enum ModelBlend {
         lock.lock()
         let regMap = coordinate.flatMap { _regional[gridKey($0)] } ?? _regional["default"]
         lock.unlock()
-        // Regional relay weights are scored at 24h lead across synoptic models only; preserve high-res
-        // share on day 0-1 and taper back to the region's long-range prior between day 3 and day 6.
-        if let regMap, let reg = regMap[model], synopticModels.contains(model) {
+        // Regional relay weights are scored across synoptic models; mix 50/50 with the regional
+        // prior across all lead times while scaling non-synoptic models by 0.5 so total weight stays balanced.
+        if let regMap {
             let regTotal = regMap.values.reduce(0, +)
-            let synopticMass = regMap.keys.reduce(0.0) { $0 + interpolatedPrior($1, leadHours: leadHours, byDay: byDay) }
-            let regShare = leadHours <= 72 ? 0.5 : max(0, 0.5 * (1 - (leadHours - 72) / 72))
-            if regTotal > 0 && synopticMass > 0 && regShare > 0 {
-                let scaledReg = (reg / regTotal) * synopticMass
-                return (1 - regShare) * prior + regShare * scaledReg
+            if regTotal > 0 {
+                if let reg = regMap[model], synopticModels.contains(model) {
+                    return 0.5 * prior + 0.5 * (reg / regTotal)
+                }
+                return 0.5 * prior
             }
         }
         return prior

@@ -412,8 +412,10 @@ public extension Forecast {
             let temps = hours.map(\.temperature) + [now.temperature]
            let feels = hours.compactMap(\.feelsLike) + [now.feelsLike]
            if hours.count >= 18 {
-               d.high = temps.max()!
-               d.low = temps.min()!
+               let hiAllow = extremesIncludePeak == true ? ModelBlend.highAllowance : 0
+               let loAllow = extremesIncludePeak == true ? ModelBlend.lowAllowance : 0
+               d.high = max(hours.map(\.temperature).max()! + hiAllow, now.temperature)
+               d.low = min(hours.map(\.temperature).min()! - loAllow, now.temperature)
                if d.feelsLikeHigh != nil { d.feelsLikeHigh = feels.max() }
                if d.feelsLikeLow != nil { d.feelsLikeLow = feels.min() }
            } else {

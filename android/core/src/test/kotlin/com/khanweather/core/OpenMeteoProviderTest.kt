@@ -220,7 +220,7 @@ class OpenMeteoProviderTest {
 
         val baselineDay6 = ModelBlend.weight(WeatherModel.germany, 150.0, BlendRegion.at(milton))
         val miltonDay6 = ModelBlend.weight(WeatherModel.germany, 150.0, BlendRegion.at(milton), milton)
-        close(baselineDay6, miltonDay6, 0.0001)
+        assertTrue(miltonDay6 > baselineDay6)
     }
 
     @Test fun ensemblePrecipitationMeanReplacesSingleModelSpike() {

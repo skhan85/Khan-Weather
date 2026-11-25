@@ -172,8 +172,10 @@ fun Forecast.dailyIncluding(now: CurrentConditions, time: Epoch): List<DailyFore
     val temps = hours.map { it.temperature } + now.temperature
     val feels = hours.mapNotNull { it.feelsLike } + now.feelsLike
     if (hours.size >= 18) {
-        d.high = temps.max()
-        d.low = temps.min()
+        val hiAllow = if (extremesIncludePeak == true) ModelBlend.highAllowance else 0.0
+        val loAllow = if (extremesIncludePeak == true) ModelBlend.lowAllowance else 0.0
+        d.high = max(hours.maxOf { it.temperature } + hiAllow, now.temperature)
+        d.low = min(hours.minOf { it.temperature } - loAllow, now.temperature)
         if (d.feelsLikeHigh != null) d.feelsLikeHigh = feels.max()
         if (d.feelsLikeLow != null) d.feelsLikeLow = feels.min()
     } else {
