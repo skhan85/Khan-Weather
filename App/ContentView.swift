@@ -341,7 +341,7 @@ private struct ForecastList: View {
             Section {
                 ForEach(Array(days.enumerated()), id: \.element.id) { index, day in
                     NavigationLink {
-                        DayDetailView(day: day, hours: forecast.hours(on: day), timeZone: forecast.timeZone,
+                        DayDetailView(day: day, hours: forecast.displayHours(on: day), timeZone: forecast.timeZone,
                                       location: forecast.location, appDays: days,
                                       normal: localNormals?.normal(for: day.date, timeZone: forecast.timeZone))
                     } label: {

@@ -150,4 +150,23 @@ class OutlookTest {
         assertEquals("Warming to a high of 16° by 1 pm.", Outlook.text(f, now, ::hourText))
         assertEquals(3.4, curve.minOf { it.temperature })
     }
+
+    @Test fun overnightLowMatchesCurveWhenAllowanceDiffers() {
+        val temps = listOf(3.0, 2.5, 2.0, 1.8, 1.5, 1.1, 0.8, 0.6, 0.7, 0.9, 1.2, 1.6, 2.5, 4.0, 6.0)
+        val f = forecast(18, temps, 7.0, 1.0).copy(extremesIncludePeak = true)
+        val now = local(18) + 15 * 60.0
+        f.current.time = now
+        close(0.1, f.displayDay(now)?.low, 0.01)
+        val elevenPM = f.hoursStartingNow(now, 24).firstOrNull { it.time == local(23) }
+        assertEquals("1°", elevenPM?.let { WeatherFormat.temperature(it.temperature) })
+        assertEquals("Cooling to 1° by 11 pm.", Outlook.text(f, now, ::hourText))
+    }
+
+    @Test fun warmingNightWithAllowanceDoesNotSayCooling() {
+        val temps = listOf(2.9, 3.2, 3.5, 4.0, 4.5, 5.0, 6.0, 8.0, 10.0, 12.0, 14.0, 15.0, 16.0)
+        val f = forecast(21, temps, 14.0, 3.0).copy(extremesIncludePeak = true)
+        val now = local(21) + 15 * 60.0
+        f.current.time = now
+        assertEquals("Warming to 16° by 9 am.", Outlook.text(f, now, ::hourText))
+    }
 }

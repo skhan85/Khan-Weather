@@ -68,4 +68,20 @@ class DisplayConsistencyTest {
         assertEquals(false, rainDay.isMixedPrecipitation)
         assertEquals(false, dryMixedSummary.isMixedPrecipitation)
     }
+
+    @Test fun hoursStartingNowIsConsistentAcrossSliceLengthsAndDisplayHours() {
+        val f = forecast { h -> if (h in 18..22) (if (h == 19) 6.5 else 6.4) else (h % 12).toDouble() }
+        val atMidnight = midnight + 300.0
+        f.current.time = atMidnight
+        f.current.temperature = 0.0
+        val h19 = f.hoursStartingNow(atMidnight, 19)
+        val h24 = f.hoursStartingNow(atMidnight, 24)
+        val h48 = f.hoursStartingNow(atMidnight, 48)
+        assertEquals(h24.take(19).map { it.temperature }, h19.map { it.temperature })
+        assertEquals(h48.take(24).map { it.temperature }, h24.map { it.temperature })
+        val dayHours = f.displayHours(f.daily[0], atMidnight)
+        assertEquals(24, dayHours.size)
+        assertEquals(0.0, dayHours[0].temperature)
+        close(6.4, dayHours[19].temperature, 0.001)
+    }
 }

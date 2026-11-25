@@ -107,6 +107,31 @@ final class OutlookTests: XCTestCase {
         let onePM = curve.first { $0.time == local(13) }
         XCTAssertEqual(onePM.map { WeatherFormat.temperature($0.temperature) }, "15°")
     }
+
+    func testOvernightLowMatchesHourlyCurveWhenAllowanceDiffers() {
+        // 6:15 pm, 3°. Hourly curve reaches 1° at 11 pm (and 0.6° -> 1° at 1 am), while
+        // extremesIncludePeak subtracts 0.5° from displayDay.low (0.1° -> 0°).
+        // Outlook must quote 1° at 11 pm to match the Next 24 hours curve, never "0° by 11 pm".
+        let temps: [Double] = [3.0, 2.5, 2.0, 1.8, 1.5, 1.1, 0.8, 0.6, 0.7, 0.9, 1.2, 1.6, 2.5, 4.0, 6.0]
+        var f = forecast(startHour: 18, temps: temps, high: 7, low: 1)
+        f.extremesIncludePeak = true
+        let now = local(18).addingTimeInterval(15 * 60)
+        f.current.time = now
+        XCTAssertEqual(f.displayDay(at: now)?.low ?? 99, 0.1, accuracy: 0.01)
+        let elevenPM = f.hoursStartingNow(from: now, count: 24).first { $0.time == local(23) }
+        XCTAssertEqual(elevenPM.map { WeatherFormat.temperature($0.temperature) }, "1°")
+        XCTAssertEqual(Outlook.text(f, at: now, hourText: hourText), "Cooling to 1° by 11 pm.")
+    }
+
+    func testWarmingNightWithAllowanceDoesNotSayCooling() {
+        // 9:15 pm, 2.9° (3°), warming all night; lowAllowance on now must not trigger "Cooling".
+        let temps: [Double] = [2.9, 3.2, 3.5, 4.0, 4.5, 5.0, 6.0, 8.0, 10.0, 12.0, 14.0, 15.0, 16.0]
+        var f = forecast(startHour: 21, temps: temps, high: 14, low: 3)
+        f.extremesIncludePeak = true
+        let now = local(21).addingTimeInterval(15 * 60)
+        f.current.time = now
+        XCTAssertEqual(Outlook.text(f, at: now, hourText: hourText), "Warming to 16° by 9 am.")
+    }
 }
 
 final class CompareRowMatchesAppTests: XCTestCase {

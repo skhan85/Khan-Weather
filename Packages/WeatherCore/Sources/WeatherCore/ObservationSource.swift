@@ -24,7 +24,7 @@ public extension Observation {
     /// (see `Forecast.applying`), so it mustn't steer the models either.
     var blendAnchor: ModelBlend.Anchor? {
         guard isLocal, temperature.isFinite else { return nil }
-        return ModelBlend.Anchor(temperature: temperature, time: observedAt)
+        return ModelBlend.Anchor(temperature: temperature, time: observedAt, isHomeStation: dataProvider == "NETATMO")
     }
 }
 

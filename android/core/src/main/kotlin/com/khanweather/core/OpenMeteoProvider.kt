@@ -170,8 +170,16 @@ class OpenMeteoProvider(
             val gusts = series("wind_gusts_10m")
             val dews = series("dew_point_2m")
 
-            val observedTemperature = anchor?.temperature
-            val currentModelTemps = anchor?.let { valuesAt(it.time, times, temps) }
+            var observedTemperature = anchor?.temperature
+            var currentModelTemps = anchor?.let { valuesAt(it.time, times, temps) }
+            if (anchor != null && anchor.isHomeStation && observedTemperature != null && currentModelTemps != null && currentModelTemps.isNotEmpty()) {
+                val sorted = currentModelTemps.values.sorted()
+                val mid = if (sorted.size % 2 == 1) sorted[sorted.size / 2] else (sorted[sorted.size / 2 - 1] + sorted[sorted.size / 2]) / 2
+                if (kotlin.math.abs(observedTemperature - mid) > 5.0) {
+                    observedTemperature = null
+                    currentModelTemps = null
+                }
+            }
 
             val out = ModelTemperatures()
             for ((i, t) in times.withIndex()) {

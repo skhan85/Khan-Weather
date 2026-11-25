@@ -349,10 +349,10 @@ public extension Forecast {
             // (cloud they missed keeps it milder), so only a reading well above them is set aside.
             let limit = current.isDay ? Self.sunWarmLimit : Self.nightWarmLimit
             let shaded = temps.filter { $0 <= current.temperature + limit }
-            if let mid = Self.median(Array(shaded.prefix(3))) {
-                o.temperature = (mid * 10).rounded() / 10
-            } else {
+            if shaded.isEmpty {
                 o.temperature = .infinity   // every station sun-heated: fall back to the forecast below
+            } else if shaded.count < temps.count, let mid = Self.median(Array(shaded.prefix(3))) {
+                o.temperature = (mid * 10).rounded() / 10
             }
         }
         let pwsLimit = (o.stationTemperatures?.count ?? 0) >= 2 ? 5.0 : 2.5

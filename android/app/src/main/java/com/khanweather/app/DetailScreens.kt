@@ -90,7 +90,7 @@ fun HourScreen(hour: HourlyForecast, zone: String) {
 @Composable
 fun DayScreen(day: DailyForecast, forecast: Forecast, normals: ClimateNormals?, nav: (Screen) -> Unit) {
     val zone = forecast.timeZoneIdentifier
-    val hours = forecast.hoursOn(day)
+    val hours = forecast.displayHours(day)
     val normal = normals?.takeIf { it.covers(forecast.location) }?.normal(day.date, zone)
     Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
         val feels = if (day.feelsLikeHigh != null && day.feelsLikeLow != null)

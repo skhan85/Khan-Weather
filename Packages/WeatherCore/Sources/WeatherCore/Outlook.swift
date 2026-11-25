@@ -41,7 +41,7 @@ public enum Outlook {
     public static func text(_ forecast: Forecast, at date: Date = Date(),
                             hourText: (Date) -> String) -> String? {
         if let nowcast = forecast.nowcast(at: date) { return nowcast.text }
-        let later = Array(forecast.hoursStartingNow(from: date, count: trendHours + 1).dropFirst())
+        let later = Array(forecast.hoursStartingNow(from: date, count: max(trendHours + 1, 24)).dropFirst())
         let near = Array(later.prefix(nearHours))
         guard near.count >= 3, let last = near.last else { return nil }
         let now = forecast.current
@@ -94,13 +94,17 @@ public enum Outlook {
         let hour = calendar.component(.hour, from: date)
         guard hour >= eveningStartHour || hour < nightEndHour,
               forecast.tonightLow(from: date) != nil,
-              let low = forecast.displayDay(at: date)?.low, shown(low) < nowShown else { return nil }
+              let low = forecast.displayDay(at: date)?.low else { return nil }
         let end = tonightEnd(date, calendar)
         let tonight = forecast.hoursStartingNow(from: date, count: 24).filter { $0.time > date && $0.time <= end }
         // The first hour that reaches the coldest number the curve shows: "by" that hour.
+        // Always quote the curve's own temperature at that hour (and only label it "a low of "
+        // when it matches the Now card's low chip), so the sentence never disagrees with the strip.
         guard let coldestShown = tonight.map({ shown($0.temperature) }).min(),
+              coldestShown < nowShown,
               let coldest = tonight.first(where: { shown($0.temperature) == coldestShown }) else { return nil }
-        return "Cooling to a low of \(WeatherFormat.temperature(low)) by \(hourText(coldest.time))."
+        let label = shown(low) == coldestShown ? "a low of " : ""
+        return "Cooling to \(label)\(WeatherFormat.temperature(coldest.temperature)) by \(hourText(coldest.time))."
     }
 
     /// 9 am tomorrow (or today, before 6 am): the end of "tonight", matching `tonightLow`.

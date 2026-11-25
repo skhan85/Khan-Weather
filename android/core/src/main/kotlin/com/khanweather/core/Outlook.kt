@@ -48,7 +48,7 @@ object Outlook {
 
     fun text(forecast: Forecast, date: Epoch = nowEpoch(), hourText: (Epoch) -> String): String? {
         forecast.nowcast(date)?.let { return it.text }
-        val later = forecast.hoursStartingNow(date, trendHours + 1).drop(1)
+        val later = forecast.hoursStartingNow(date, maxOf(trendHours + 1, 24)).drop(1)
         val near = later.take(nearHours)
         if (near.size < 3) return null
         val last = near.last()
@@ -97,13 +97,16 @@ object Outlook {
         if (hour < eveningStartHour && hour >= nightEndHour) return null
         if (forecast.tonightLow(date) == null) return null
         val low = forecast.displayDay(date)?.low ?: return null
-        if (shown(low) >= nowShown) return null
         val end = tonightEnd(date, calendar)
         val tonight = forecast.hoursStartingNow(date, 24).filter { it.time > date && it.time <= end }
         // The first hour that reaches the coldest number the curve shows: "by" that hour.
+        // Quote the curve's own temperature at that hour (and only label it "a low of " when
+        // it matches the Now card's low chip), so the sentence never disagrees with the strip.
         val coldestShown = tonight.minOfOrNull { shown(it.temperature) } ?: return null
+        if (coldestShown >= nowShown) return null
         val coldest = tonight.first { shown(it.temperature) == coldestShown }
-        return "Cooling to a low of ${WeatherFormat.temperature(low)} by ${hourText(coldest.time)}."
+        val label = if (shown(low) == coldestShown) "a low of " else ""
+        return "Cooling to $label${WeatherFormat.temperature(coldest.temperature)} by ${hourText(coldest.time)}."
     }
 
     private fun tonightEnd(date: Epoch, calendar: Cal): Epoch {

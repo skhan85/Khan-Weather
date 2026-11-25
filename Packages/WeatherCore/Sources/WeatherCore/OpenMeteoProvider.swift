@@ -161,10 +161,20 @@ public struct OpenMeteoProvider: ForecastProvider {
         let dews = Dictionary(uniqueKeysWithValues: region.models.map { ($0, series("dew_point_2m", $0)) })
 
         let nowEpoch = now.timeIntervalSince1970
-        let observedTemperature = anchor?.temperature
         // Each model's temperature at the minute of the reading, read between the hours around it.
-        let currentModelTemps: [WeatherModel: Double]? = anchor.map { a in
+        var currentModelTemps: [WeatherModel: Double]? = anchor.map { a in
             Self.valuesAt(a.time.timeIntervalSince1970, times: times.map(\.doubleValue), series: temps)
+        }
+        var observedTemperature = anchor?.temperature
+        // Drop a sun-heated or faulty home-station anchor before it pulls model weights toward an outlier.
+        if let anchor, anchor.isHomeStation, let obs = observedTemperature,
+           let mTemps = currentModelTemps, !mTemps.isEmpty {
+            let sorted = mTemps.values.sorted()
+            let mid = sorted.count % 2 == 1 ? sorted[sorted.count / 2] : (sorted[sorted.count / 2 - 1] + sorted[sorted.count / 2]) / 2
+            if abs(obs - mid) > 5.0 {
+                observedTemperature = nil
+                currentModelTemps = nil
+            }
         }
 
         var out = ModelTemperatures()

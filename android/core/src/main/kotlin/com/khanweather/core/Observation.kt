@@ -46,7 +46,7 @@ data class Observation(
 
     /** The temperature that may re-weight the first hours of the model blend. */
     val blendAnchor: ModelBlend.Anchor?
-        get() = if (!isLocal || !temperature.isFinite()) null else ModelBlend.Anchor(temperature, observedAt)
+        get() = if (!isLocal || !temperature.isFinite()) null else ModelBlend.Anchor(temperature, observedAt, dataProvider == "NETATMO")
 
     /**
      * Home stations wobble by a few tenths; averages this reading with the previous one for the
@@ -117,8 +117,12 @@ fun Forecast.applying(observation: Observation?): Forecast {
     if (o.dataProvider == "NETATMO" && temps != null && temps.isNotEmpty()) {
         val limit = if (current.isDay) sunWarmLimit else nightWarmLimit
         val shaded = temps.filter { it <= current.temperature + limit }
-        val mid = median(shaded.take(3))
-        o.temperature = if (mid != null) (mid * 10).rnd() / 10 else Double.POSITIVE_INFINITY
+        if (shaded.isEmpty()) {
+            o.temperature = Double.POSITIVE_INFINITY
+        } else if (shaded.size < temps.size) {
+            val mid = median(shaded.take(3))
+            if (mid != null) o.temperature = (mid * 10).rnd() / 10
+        }
     }
     val pwsLimit = if ((o.stationTemperatures?.size ?: 0) >= 2) 5.0 else 2.5
     val implausible = o.dataProvider == "NETATMO" && !(abs(o.temperature - current.temperature) <= pwsLimit)

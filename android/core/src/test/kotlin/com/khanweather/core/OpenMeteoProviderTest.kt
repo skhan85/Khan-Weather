@@ -276,6 +276,22 @@ class OpenMeteoProviderTest {
         assertFalse(f.daily[0].isMixedPrecipitation)
     }
 
+    @Test fun implausibleHomeStationAnchorDoesNotSkewBlend() {
+        val t0 = 1762952400
+        val blend = """
+        {
+          "hourly": { "time": [$t0, ${t0 + 3600}],
+                      "temperature_2m_gem_hrdps_continental": [2.0, 2.0],
+                      "temperature_2m_icon_seamless": [10.0, 10.0],
+                      "temperature_2m_ecmwf_aifs025_single": [2.0, 2.0] }
+        }
+        """.toByteArray()
+        val badAnchor = ModelBlend.Anchor(14.0, t0.toDouble(), isHomeStation = true)
+        val noAnchor = OpenMeteoProvider.parseBlend(blend, BlendRegion.home, null, t0.toDouble())
+        val withBad = OpenMeteoProvider.parseBlend(blend, BlendRegion.home, badAnchor, t0.toDouble())
+        close(noAnchor.hourly[t0.toLong()]!!.temperature, withBad.hourly[t0.toLong()]!!.temperature, 0.001)
+    }
+
     private val testRegion get() = Regions.testRegion
 
     object Regions {

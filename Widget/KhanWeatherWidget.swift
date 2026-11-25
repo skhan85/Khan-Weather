@@ -140,17 +140,18 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
                 e.unit = unit
                 return [e]
             }
+            let shown = fresh ? forecast : forecast.rolledForward(to: start)
             return stride(from: 0, through: WidgetRefresh.entrySpan, by: WidgetRefresh.entryStep).map { offset in
                 let date = start.addingTimeInterval(offset)
-                let today = forecast.displayDay(at: date)
-                var e = WeatherEntry(date: date, current: forecast.current, high: today?.high, low: today?.low,
-                                     placeName: placeName, error: nil, nowcast: forecast.nowcast(at: date)?.shortText,
+                let today = shown.displayDay(at: date)
+                var e = WeatherEntry(date: date, current: shown.current, high: today?.high, low: today?.low,
+                                     placeName: placeName, error: nil, nowcast: shown.nowcast(at: date)?.shortText,
                                      alert: alert,
-                                     hours: forecast.hoursStartingNow(from: date, count: 6),
-                                     days: Array(forecast.displayDaily(at: date).prefix(5)),
-                                     timeZone: forecast.timeZone)
+                                     hours: shown.hoursStartingNow(from: date, count: 6),
+                                     days: Array(shown.displayDaily(at: date).prefix(5)),
+                                     timeZone: shown.timeZone)
                 e.unit = unit
-                e.updatedAt = forecast.fetchedAt
+                e.updatedAt = shown.fetchedAt
                 return e
             }
         }
@@ -169,10 +170,14 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
         let observations = ObservationSource.provider(hyperlocal: hyperlocal)
         let alerts = self.alerts
         let previous = WidgetObservationMemory.last(near: coordinate)
+        let likelyCold = previous.map { $0.temperature <= 4 } ?? (abs(coordinate.latitude) >= 25)
         async let observed = Deadline.run(8) { try? await observations.observation(near: coordinate) }?
             .smoothed(after: previous)
         async let active = Deadline.run(8) { try? await alerts.alerts(near: coordinate) }
         async let radarNow = Deadline.run(6) { try? await ECCCRadarProvider().now(at: coordinate) }
+        async let radarNowcast = RelayExtrasProvider().nowcast(near: coordinate, cold: likelyCold)
+        let weightsTask = Task { await Deadline.run(3) { await RelayExtrasProvider().regionalWeights(near: coordinate) } }
+        async let googleHourly = Deadline.run(3) { await RelayExtrasProvider().googleHourly(near: coordinate) }
         // Only for a real location: the Toronto fallback isn't where the person is.
         if known != nil, let found = await active {
             await WidgetAlertNotifier.notify(found, placeName: await place, setting: notify)
@@ -182,9 +187,17 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
             let obs = await observed
             if let obs { WidgetObservationMemory.remember(obs, near: coordinate) }
             // Same order as the app: the station reading re-weights the blend only when it's local.
-            let forecast = try await provider.forecast(for: coordinate, anchor: obs?.blendAnchor)
+            let base = try await provider.forecast(
+                for: coordinate,
+                anchor: { obs?.blendAnchor },
+                regionalWeights: { await weightsTask.value }
+            )
+            let forecast = base
+                .applyingGoogleHourly(await googleHourly)
                 .applying(obs)
                 .applyingRadar(await radarNow)
+                .applyingRadarNowcast(await radarNowcast)
+                .calibratingEnsemblePop()
             WidgetForecastMemory.remember(forecast)
             return Loaded(forecast: forecast, fresh: true, placeName: await place, alert: alertTitle)
         } catch {

@@ -222,11 +222,33 @@ object WeatherLoader {
                 low = hrs.minOf { it.temperature } - loAllow,
             )
         }
-        val first = copy.hourly.firstOrNull()
-        if (first != null && kotlin.math.abs(first.time - current.time) < 1800.0) {
-            copy.current.temperature = first.temperature
+        if (current.time <= cutoff) {
+            interpolatedGoogle(gh.hours, current.time)?.let { (gTemp, gWind) ->
+                copy.current.temperature = 0.65 * copy.current.temperature + 0.35 * gTemp
+                val w = copy.current.windSpeed
+                if (w != null && gWind != null) {
+                    copy.current.windSpeed = maxOf(0.0, 0.65 * w + 0.35 * gWind)
+                }
+            }
         }
         return copy.withStandardFeelsLike()
+    }
+
+    private fun interpolatedGoogle(hours: List<RelayGoogleHour>, time: Epoch): Pair<kotlin.Double, kotlin.Double?>? {
+        val sorted = hours.sortedBy { it.epoch }
+        val first = sorted.firstOrNull() ?: return null
+        val last = sorted.last()
+        if (time < first.epoch - 1800.0 || time > last.epoch + 1800.0) return null
+        if (time <= first.epoch) return first.temp to first.wind_kmh
+        if (time >= last.epoch) return last.temp to last.wind_kmh
+        val afterIdx = sorted.indexOfFirst { it.epoch >= time }
+        if (afterIdx <= 0) return first.temp to first.wind_kmh
+        val a = sorted[afterIdx - 1]; val b = sorted[afterIdx]
+        val span = b.epoch - a.epoch
+        val f = if (span > 0) (time - a.epoch) / span else 0.0
+        val t = a.temp + (b.temp - a.temp) * f
+        val w = if (a.wind_kmh != null && b.wind_kmh != null) a.wind_kmh + (b.wind_kmh - a.wind_kmh) * f else a.wind_kmh ?: b.wind_kmh
+        return t to w
     }
 
     suspend fun regionalWeights(target: Coordinate): Map<String, kotlin.Double>? = deadline(3.0) {

@@ -104,4 +104,22 @@ final class DisplayConsistencyTests: XCTestCase {
         XCTAssertEqual(AccuracyLog.day("2026-11-01", offsetBy: -1), "2026-10-31")
         XCTAssertNil(AccuracyLog.day("not a day", offsetBy: 1))
     }
+
+    func testHoursStartingNowIsConsistentAcrossSliceLengthsAndDisplayHours() {
+        // Blip at hour 19 (index 19 from midnight) sits right on the 19-hour Outlook boundary.
+        let f = forecast { h in (18...22).contains(h) ? (h == 19 ? 6.5 : 6.4) : Double(h % 12) }
+        let atMidnight = midnight.addingTimeInterval(300)
+        var f2 = f
+        f2.current.time = atMidnight
+        f2.current.temperature = 0.0
+        let h19 = f2.hoursStartingNow(from: atMidnight, count: 19)
+        let h24 = f2.hoursStartingNow(from: atMidnight, count: 24)
+        let h48 = f2.hoursStartingNow(from: atMidnight, count: 48)
+        XCTAssertEqual(h19.map(\.temperature), Array(h24.prefix(19)).map(\.temperature))
+        XCTAssertEqual(h24.map(\.temperature), Array(h48.prefix(24)).map(\.temperature))
+        let dayHours = f2.displayHours(on: f2.daily[0], at: atMidnight)
+        XCTAssertEqual(dayHours.count, 24)
+        XCTAssertEqual(dayHours[0].temperature, 0.0)
+        XCTAssertEqual(dayHours[19].temperature, 6.4, accuracy: 0.001)
+    }
 }

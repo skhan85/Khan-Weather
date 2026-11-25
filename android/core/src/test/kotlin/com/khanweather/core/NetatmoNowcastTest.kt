@@ -130,6 +130,19 @@ class NetatmoRelayTest {
         assertEquals(WeatherCondition.overcast, dry.current.condition)
         assertNull(dry.observation?.conditionText)
     }
+
+    @Test fun smoothingPreservedWhenNoSunOutlierRemoved() {
+        val prev = Observation("2 Netatmo stations", now - 600, 2.0, distanceKm = 1.0).apply { dataProvider = "NETATMO" }
+        val cur = Observation("2 Netatmo stations", now, 3.0, distanceKm = 1.0).apply {
+            dataProvider = "NETATMO"
+            stationTemperatures = listOf(2.8, 3.2)
+        }.smoothed(prev, now)
+        assertEquals(2.5, cur.temperature)
+        val f = Forecast(milton, "America/Toronto",
+            CurrentConditions(now, 2.5, 2.5, FeelsLikeKind.apparent, condition = WeatherCondition.overcast, isDay = false),
+            emptyList(), emptyList(), "test", now)
+        assertEquals(2.5, f.applying(cur).current.temperature)
+    }
 }
 
 class NowcastTest {

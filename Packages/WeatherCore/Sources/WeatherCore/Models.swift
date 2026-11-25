@@ -271,8 +271,10 @@ public struct Forecast: Equatable, Codable, Sendable {
 
     /// The next hours, with the first one showing current conditions (the same numbers as the
     /// "now" card, which may come from a nearby station) instead of the forecast for that hour.
+    /// Smoothing runs over at least 48 hours before trimming so every caller (19, 24, 30, 48h)
+    /// sees identical numbers for overlapping hours.
     public func hoursStartingNow(from date: Date = Date(), count: Int = 24) -> [HourlyForecast] {
-        var hours = upcomingHours(from: date, count: count)
+        var hours = upcomingHours(from: date, count: max(count, 48))
         guard !hours.isEmpty else { return hours }
         let c = current
         hours[0].temperature = c.temperature
@@ -283,7 +285,27 @@ public struct Forecast: Equatable, Codable, Sendable {
         hours[0].windSpeed = c.windSpeed ?? hours[0].windSpeed
         hours[0].windDirection = c.windDirection ?? hours[0].windDirection
         hours[0].windGusts = c.windGusts ?? hours[0].windGusts
-        return Self.withoutRoundingBlips(hours, keep: dayExtremeTimes(at: date))
+        return Array(Self.withoutRoundingBlips(hours, keep: dayExtremeTimes(at: date)).prefix(count))
+    }
+
+    /// The hours of `day` as displayed on the Day detail screen: blip-smoothed with the same
+    /// extreme protections as the main strip, and for Today, the active current hour matching "Now".
+    public func displayHours(on day: DailyForecast, at date: Date = Date()) -> [HourlyForecast] {
+        var hrs = hours(on: day)
+        guard !hrs.isEmpty else { return hrs }
+        if abs(current.time.timeIntervalSince(date)) < 3600,
+           let idx = hrs.firstIndex(where: { $0.time <= date && $0.time.addingTimeInterval(3600) > date }) {
+            let c = current
+            hrs[idx].temperature = c.temperature
+            hrs[idx].feelsLike = c.feelsLike
+            hrs[idx].condition = c.condition
+            hrs[idx].isDay = c.isDay
+            hrs[idx].humidity = c.humidity ?? hrs[idx].humidity
+            hrs[idx].windSpeed = c.windSpeed ?? hrs[idx].windSpeed
+            hrs[idx].windDirection = c.windDirection ?? hrs[idx].windDirection
+            hrs[idx].windGusts = c.windGusts ?? hrs[idx].windGusts
+        }
+        return Self.withoutRoundingBlips(hrs, keep: dayExtremeTimes(at: date))
     }
 
     /// The hour of each day's highest and lowest temperature, and of tonight's low. The hourly
@@ -297,8 +319,8 @@ public struct Forecast: Equatable, Codable, Sendable {
             if let hi = hours.max(by: { $0.temperature < $1.temperature }) { out.insert(hi.time) }
             if let lo = hours.min(by: { $0.temperature < $1.temperature }) { out.insert(lo.time) }
         }
-        if let tonight = tonightLow(from: date), let hour = hourly.first(where: { $0.temperature == tonight && $0.time > date.addingTimeInterval(-3600) }) {
-            out.insert(hour.time)
+        if let coldestTonight = tonightHours(from: date).min(by: { $0.temperature < $1.temperature }) {
+            out.insert(coldestTonight.time)
         }
         return out
     }
@@ -338,29 +360,38 @@ public struct Forecast: Equatable, Codable, Sendable {
         return daily.first { calendar.isDate($0.date, inSameDayAs: date) } ?? daily.first
     }
 
-    /// Lowest forecast temperature tonight: from 6 PM (or `date`, if later) through 9 AM tomorrow.
+    /// Forecast hours that make up tonight: from 6 PM (or `date`, if later) through 9 AM tomorrow.
     /// Before 6 AM "tonight" is the night we're in, so the window is `date` through 9 AM today.
-    public func tonightLow(from date: Date = Date()) -> Double? {
+    /// When `current` covers the active hour (`abs(current.time - date) < 3600`), prefers future
+    /// hours (`> date`) so an already-started hour replaced by "Now" doesn't skew tonight's min.
+    private func tonightHours(from date: Date) -> [HourlyForecast] {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
         let startOfToday = calendar.startOfDay(for: date)
         let start: Date, end: Date
         if calendar.component(.hour, from: date) < 6 {
-            guard let nineAM = calendar.date(byAdding: .hour, value: 9, to: startOfToday) else { return nil }
+            guard let nineAM = calendar.date(byAdding: .hour, value: 9, to: startOfToday) else { return [] }
             start = date
             end = nineAM
         } else {
             guard let sixPM = calendar.date(byAdding: .hour, value: 18, to: startOfToday),
-                  let nineAMTomorrow = calendar.date(byAdding: .hour, value: 33, to: startOfToday) else { return nil }
+                  let nineAMTomorrow = calendar.date(byAdding: .hour, value: 33, to: startOfToday) else { return [] }
             start = max(date, sixPM)
             end = nineAMTomorrow
         }
-        // From the hour that contains `start`, so 7:40 PM still counts the 7 PM hour.
+        // From the hour that contains `start`, so 7:40 PM still counts the 7 PM hour when current is stale.
         let from = start.addingTimeInterval(-3599)
-        return hourly
-            .filter { $0.time >= from && $0.time <= end }
-            .map(\.temperature)
-            .min()
+        if abs(current.time.timeIntervalSince(date)) < 3600 {
+            let future = hourly.filter { $0.time > max(date, start.addingTimeInterval(-3599)) && $0.time <= end }
+            if !future.isEmpty { return future }
+        }
+        return hourly.filter { $0.time >= from && $0.time <= end }
+    }
+
+    /// Lowest forecast temperature tonight: from 6 PM (or `date`, if later) through 9 AM tomorrow.
+    /// Before 6 AM "tonight" is the night we're in, so the window is `date` through 9 AM today.
+    public func tonightLow(from date: Date = Date()) -> Double? {
+        tonightHours(from: date).map(\.temperature).min()
     }
 
     /// A saved forecast shown later (the network failed): "now" moves to the forecast hour for
@@ -395,7 +426,7 @@ public struct Forecast: Equatable, Codable, Sendable {
             var calendar = Calendar(identifier: .gregorian)
             calendar.timeZone = timeZone
             let endOfToday = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: date)) ?? date
-            let from = date.addingTimeInterval(-3599)
+            let from = abs(current.time.timeIntervalSince(date)) < 3600 ? date.addingTimeInterval(1) : date.addingTimeInterval(-3599)
             if let remMin = hourly.filter({ $0.time >= from && $0.time <= endOfToday }).map(\.temperature).min() {
                 low = min(low, remMin - allowance)
             }

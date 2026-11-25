@@ -202,7 +202,7 @@ data class Forecast(
      */
     fun hoursStartingNow(date: Epoch = nowEpoch(), count: Int = 24,
                          unit: TemperatureUnit = UnitSettings.current.temperature): List<HourlyForecast> {
-        val hours = upcomingHours(date, count).map { it.copy() }
+        val hours = upcomingHours(date, maxOf(count, 48)).map { it.copy() }
         if (hours.isEmpty()) return hours
         val c = current
         val h0 = hours[0]
@@ -214,7 +214,29 @@ data class Forecast(
         h0.windSpeed = c.windSpeed ?: h0.windSpeed
         h0.windDirection = c.windDirection ?: h0.windDirection
         h0.windGusts = c.windGusts ?: h0.windGusts
-        return withoutRoundingBlips(hours, unit, dayExtremeTimes(date))
+        return withoutRoundingBlips(hours, unit, dayExtremeTimes(date)).take(count)
+    }
+
+    /** The hours of `day` as displayed on the Day screen, smoothed with the same extreme protections. */
+    fun displayHours(day: DailyForecast, date: Epoch = nowEpoch(),
+                     unit: TemperatureUnit = UnitSettings.current.temperature): List<HourlyForecast> {
+        val hrs = hoursOn(day).map { it.copy() }
+        if (hrs.isEmpty()) return hrs
+        if (abs(current.time - date) < 3600) {
+            val h0 = hrs.firstOrNull { it.time <= date && it.time + 3600 > date }
+            if (h0 != null) {
+                val c = current
+                h0.temperature = c.temperature
+                h0.feelsLike = c.feelsLike
+                h0.condition = c.condition
+                h0.isDay = c.isDay
+                h0.humidity = c.humidity ?: h0.humidity
+                h0.windSpeed = c.windSpeed ?: h0.windSpeed
+                h0.windDirection = c.windDirection ?: h0.windDirection
+                h0.windGusts = c.windGusts ?: h0.windGusts
+            }
+        }
+        return withoutRoundingBlips(hrs, unit, dayExtremeTimes(date))
     }
 
     /** The hour of each day's highest and lowest temperature, and of tonight's low. */
@@ -226,10 +248,7 @@ data class Forecast(
             hours.maxByOrNull { it.temperature }?.let { out.add(it.time) }
             hours.minByOrNull { it.temperature }?.let { out.add(it.time) }
         }
-        val tonight = tonightLow(date)
-        if (tonight != null) {
-            hourly.firstOrNull { it.temperature == tonight && it.time > date - 3600 }?.let { out.add(it.time) }
-        }
+        tonightHours(date).minByOrNull { it.temperature }?.let { out.add(it.time) }
         return out
     }
 
@@ -242,11 +261,7 @@ data class Forecast(
         return daily.firstOrNull { calendar.isSameDay(it.date, date) } ?: daily.firstOrNull()
     }
 
-    /**
-     * Lowest forecast temperature tonight: from 6 PM (or `date`, if later) through 9 AM tomorrow.
-     * Before 6 AM "tonight" is the night we're in, so the window is `date` through 9 AM today.
-     */
-    fun tonightLow(date: Epoch = nowEpoch()): Double? {
+    private fun tonightHours(date: Epoch): List<HourlyForecast> {
         val calendar = cal
         val startOfToday = calendar.startOfDay(date)
         val start: Epoch
@@ -259,8 +274,19 @@ data class Forecast(
             end = startOfToday + 33 * 3600
         }
         val from = start - 3599
-        return hourly.filter { it.time >= from && it.time <= end }.map { it.temperature }.minOrNull()
+        if (abs(current.time - date) < 3600) {
+            val future = hourly.filter { it.time > max(date, from) && it.time <= end }
+            if (future.isNotEmpty()) return future
+        }
+        return hourly.filter { it.time >= from && it.time <= end }
     }
+
+    /**
+     * Lowest forecast temperature tonight: from 6 PM (or `date`, if later) through 9 AM tomorrow.
+     * Before 6 AM "tonight" is the night we're in, so the window is `date` through 9 AM today.
+     */
+    fun tonightLow(date: Epoch = nowEpoch()): Double? =
+        tonightHours(date).map { it.temperature }.minOrNull()
 
     /**
      * A saved forecast shown later: "now" moves to the forecast hour for `date`, since the old
@@ -293,7 +319,7 @@ data class Forecast(
                 low = min(low, current.temperature)
             }
             val endOfToday = cal.addingDays(cal.startOfDay(date), 1)
-            val from = date - 3599
+            val from = if (abs(current.time - date) < 3600) date + 1.0 else date - 3599
             val remMin = hourly.filter { it.time >= from && it.time <= endOfToday }.map { it.temperature }.minOrNull()
             if (remMin != null) {
                 low = min(low, remMin - allowance)

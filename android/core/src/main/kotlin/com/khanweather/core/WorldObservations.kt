@@ -72,7 +72,7 @@ class NetatmoRelayProvider(
                 windSpeed = wind?.wind, windDirection = wind?.angle, windGusts = wind?.gust,
                 distanceKm = first.second,
                 dataProvider = "NETATMO",
-                stationTemperatures = fresh.take(5).mapNotNull { it.first.temperature },
+                stationTemperatures = agreeing.take(5).mapNotNull { it.first.temperature },
                 rainGauges = if (gauges.isEmpty()) null else gauges.size,
                 rainLastHourMm = gauges.maxOrNull(),
             )

@@ -21,9 +21,11 @@ public enum ModelBlend {
     public struct Anchor: Equatable, Sendable {
         public var temperature: Double
         public var time: Date
-        public init(temperature: Double, time: Date) {
+        public var isHomeStation: Bool
+        public init(temperature: Double, time: Date, isHomeStation: Bool = false) {
             self.temperature = temperature
             self.time = time
+            self.isHomeStation = isHomeStation
         }
     }
 

@@ -304,5 +304,34 @@ final class OpenMeteoProviderTests: XCTestCase {
         let blended = f.applyingGoogleHourly(gh)
         // Sample hour[0] is -2.0°C; 0.65 * (-2.0) + 0.35 * 2.0 = -0.6°C
         XCTAssertEqual(blended.hourly[0].temperature, -0.6, accuracy: 0.001)
+
+        // When Google covers current.time (between two hours), current.temperature is blended too.
+        let t1 = t0 + 3600
+        var fMid = f
+        fMid.current.time = Date(timeIntervalSince1970: t0 + 1800) // halfway between t0 and t1
+        fMid.current.temperature = 0.0
+        let gh2 = RelayGoogleHourly(generated: t0, provider: "Google Weather",
+                                    hours: [
+                                        RelayGoogleHourly.Hour(epoch: t0, temp: 2.0, feels_like: nil, dew_point: nil, wind_kmh: nil, gust_kmh: nil, pop: nil, precip_mm: nil, snow_mm: nil),
+                                        RelayGoogleHourly.Hour(epoch: t1, temp: 6.0, feels_like: nil, dew_point: nil, wind_kmh: nil, gust_kmh: nil, pop: nil, precip_mm: nil, snow_mm: nil),
+                                    ])
+        // Interpolated Google at midpoint is 4.0°C -> 0.65 * 0.0 + 0.35 * 4.0 = 1.4°C
+        XCTAssertEqual(fMid.applyingGoogleHourly(gh2).current.temperature, 1.4, accuracy: 0.001)
+    }
+
+    func testImplausibleHomeStationAnchorDoesNotSkewBlend() throws {
+        let t0 = 1762952400
+        let blend = """
+        {
+          "hourly": { "time": [\(t0), \(t0 + 3600)],
+                      "temperature_2m_gem_hrdps_continental": [2.0, 2.0],
+                      "temperature_2m_icon_seamless": [10.0, 10.0],
+                      "temperature_2m_ecmwf_aifs025_single": [2.0, 2.0] }
+        }
+        """.data(using: .utf8)!
+        let sunBakedAnchor = ModelBlend.Anchor(temperature: 14.0, time: Date(timeIntervalSince1970: TimeInterval(t0)), isHomeStation: true)
+        let noAnchor = try OpenMeteoProvider.parseBlend(blend, region: .home, anchor: nil, now: Date(timeIntervalSince1970: TimeInterval(t0)))
+        let withBadAnchor = try OpenMeteoProvider.parseBlend(blend, region: .home, anchor: sunBakedAnchor, now: Date(timeIntervalSince1970: TimeInterval(t0)))
+        XCTAssertEqual(withBadAnchor.hourly[t0]!.temperature, noAnchor.hourly[t0]!.temperature, accuracy: 0.001)
     }
 }

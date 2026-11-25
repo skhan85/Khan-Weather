@@ -50,7 +50,7 @@ object ModelBlend {
     const val errorSoftening = 2.0
 
     /** A local station reading that re-weights the first hours of the blend. */
-    data class Anchor(val temperature: Double, val time: Epoch)
+    data class Anchor(val temperature: Double, val time: Epoch, val isHomeStation: Boolean = false)
 
     /** The weight of `model` at `leadHours` from now, in `region`. */
     @Volatile private var regional: Map<String, Map<WeatherModel, Double>> = emptyMap()

@@ -189,12 +189,23 @@ enum AlertNotifier {
     /// since the app shows that line on screen.
     static func checkForecast(provider: OpenMeteoProvider = OpenMeteoProvider(), foreground: Bool = false) async {
         let center = UNUserNotificationCenter.current()
-        guard rainEnabled || frostEnabled, let here = lastLocation,
-              let forecast = try? await provider.forecast(for: here) else {
+        guard rainEnabled || frostEnabled, let here = lastLocation else {
             if !rainEnabled { center.removePendingNotificationRequests(withIdentifiers: [rainAheadID]) }
             if !frostEnabled { center.removePendingNotificationRequests(withIdentifiers: [frostAheadID]) }
             return
         }
+        let weightsTask = Task { await Deadline.run(3) { await RelayExtrasProvider().regionalWeights(near: here) } }
+        async let googleHourly = Deadline.run(3) { await RelayExtrasProvider().googleHourly(near: here) }
+        guard let base = try? await provider.forecast(
+            for: here,
+            anchor: { nil },
+            regionalWeights: { await weightsTask.value }
+        ) else {
+            if !rainEnabled { center.removePendingNotificationRequests(withIdentifiers: [rainAheadID]) }
+            if !frostEnabled { center.removePendingNotificationRequests(withIdentifiers: [frostAheadID]) }
+            return
+        }
+        let forecast = base.applyingGoogleHourly(await googleHourly).calibratingEnsemblePop()
         settleScheduled()
         if rainEnabled { await checkRain(forecast, foreground: foreground) }
         else { center.removePendingNotificationRequests(withIdentifiers: [rainAheadID]) }

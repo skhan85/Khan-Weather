@@ -153,10 +153,32 @@ public extension Forecast {
             d.low = hrs.map(\.temperature).min()! - loAllow
             return d
         }
-        if let first = copy.hourly.first, abs(first.time.timeIntervalSince(current.time)) < 1800 {
-            copy.current.temperature = first.temperature
+        if current.time <= cutoff,
+           let gNow = Self.interpolatedGoogle(gh.hours, at: current.time) {
+            copy.current.temperature = 0.65 * copy.current.temperature + 0.35 * gNow.temperature
+            if let w = copy.current.windSpeed, let gw = gNow.wind {
+                copy.current.windSpeed = max(0, 0.65 * w + 0.35 * gw)
+            }
         }
         return copy.withStandardFeelsLike()
+    }
+
+    private static func interpolatedGoogle(_ hours: [RelayGoogleHourly.Hour], at time: Date) -> (temperature: Double, wind: Double?)? {
+        let sorted = hours.sorted { $0.epoch < $1.epoch }
+        guard let first = sorted.first, let last = sorted.last else { return nil }
+        let target = time.timeIntervalSince1970
+        guard target >= first.epoch - 1800, target <= last.epoch + 1800 else { return nil }
+        if target <= first.epoch { return (first.temp, first.wind_kmh) }
+        if target >= last.epoch { return (last.temp, last.wind_kmh) }
+        guard let afterIdx = sorted.firstIndex(where: { $0.epoch >= target }), afterIdx > 0 else {
+            return (first.temp, first.wind_kmh)
+        }
+        let a = sorted[afterIdx - 1], b = sorted[afterIdx]
+        let span = b.epoch - a.epoch
+        let f = span > 0 ? (target - a.epoch) / span : 0
+        let t = a.temp + (b.temp - a.temp) * f
+        let w = a.wind_kmh.flatMap { wa in b.wind_kmh.map { wb in wa + (wb - wa) * f } } ?? a.wind_kmh ?? b.wind_kmh
+        return (t, w)
     }
 
     /// Merges 6-minute radar extrapolation from the relay into 15-minute `minutely` slots.
