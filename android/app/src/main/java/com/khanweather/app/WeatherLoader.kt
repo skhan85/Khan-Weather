@@ -83,7 +83,12 @@ object WeatherLoader {
     private val relayJson = Json { ignoreUnknownKeys = true }
 
     @Serializable
-    data class RelayNowcastSlot(val epoch: kotlin.Double, val rain_mmh: kotlin.Double = 0.0, val snow_cmh: kotlin.Double = 0.0)
+    data class RelayNowcastSlot(
+        val epoch: kotlin.Double,
+        val precip_mmh: kotlin.Double = 0.0,
+        val rain_mmh: kotlin.Double = 0.0,
+        val snow_cmh: kotlin.Double = 0.0,
+    )
 
     @Serializable
     data class RelayNowcast(val slots: List<RelayNowcastSlot> = emptyList())
@@ -115,7 +120,7 @@ object WeatherLoader {
         val rh = current.humidity ?: 100.0
         val startEpoch = minutely[0].time
         val nearRadarClean = nc.slots.filter { it.epoch >= startEpoch - 360.0 && it.epoch < startEpoch + 2700.0 }
-            .all { it.precip_mmh <= 0.0 }
+            .all { it.precip_mmh <= 0.0 && it.rain_mmh <= 0.0 && it.snow_cmh <= 0.0 }
         val dryVeto = (observation?.gaugesSayDry == true) && temp > 1.0 && nearRadarClean
         val merged = minutely.map { slot ->
             if (dryVeto && slot.time < startEpoch + 2700.0 && slot.snowfall == 0.0 && slot.precipitation < 0.5) {
