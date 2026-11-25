@@ -146,7 +146,7 @@ final class WeatherViewModel: ObservableObject {
         }
         let radarTask = Task { try? await ECCCRadarProvider().now(at: target) }
         let nowcastTask = Task { await RelayExtrasProvider().nowcast(near: target, cold: likelyCold) }
-        let weightsTask = Task { await Deadline.run(3) { await RelayExtrasProvider().regionalWeights(near: target) } ?? nil }
+        let weightsTask = Task { await Deadline.run(3) { await RelayExtrasProvider().regionalWeights(near: target) } }
         let alertsTask = Task { try? await alertProvider.alerts(near: target) }
         let airTask = Task { try? await AirQualityProvider().airQuality(at: target) }
         let normalsTask = Task { try? await ClimateNormalsProvider().normals(at: target) }
@@ -228,7 +228,7 @@ final class WeatherViewModel: ObservableObject {
             async let observed = Deadline.run(8) { try? await observations.observation(near: target) }
             async let radar = try? ECCCRadarProvider().now(at: target)
             async let nowcast = RelayExtrasProvider().nowcast(near: target, cold: likelyCold)
-            async let weights = Deadline.run(3) { await RelayExtrasProvider().regionalWeights(near: target) }
+            let weightsTask = Task { await Deadline.run(3) { await RelayExtrasProvider().regionalWeights(near: target) } }
             async let fetchedAlerts = try? alertProvider.alerts(near: target)
             async let air = try? AirQualityProvider().airQuality(at: target)
             let obs = await observed
@@ -237,7 +237,7 @@ final class WeatherViewModel: ObservableObject {
                 base = try? await om.forecast(
                     for: target,
                     anchor: { obs?.blendAnchor },
-                    regionalWeights: { (await weights) ?? nil }
+                    regionalWeights: { await weightsTask.value }
                 )
             } else {
                 base = try? await provider.forecast(for: target)

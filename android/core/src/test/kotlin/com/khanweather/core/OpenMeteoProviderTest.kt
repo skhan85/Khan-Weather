@@ -234,7 +234,7 @@ class OpenMeteoProviderTest {
                       "snowfall_gfs_seamless": [0.0], "snowfall_ecmwf_ifs025": [0.0],
                       "snowfall_icon_seamless": [0.0], "snowfall_ukmo_seamless": [0.0] }
         }
-        """.toByteArray()
+        """
         val p = OpenMeteoProvider(loader = loader { url -> 200 to (if (url.contains("models=")) blend else sample) })
         val f = sync { p.forecast(Coordinate.fallback) }
         close(0.4, f.hourly[0].precipitation, 0.001)
