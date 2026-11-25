@@ -44,6 +44,15 @@ class DisplayConsistencyTest {
         assertEquals(10.0, forecast { 14.0 }.displayDay(midnight + 12 * 3600)?.low)
     }
 
+    @Test fun coldMorningLowIncludesCurrentTemperature() {
+        val f = forecast { h -> if (h <= 9) -3.0 else if (h == 14) 3.0 else 1.0 }
+        val nineAM = midnight + 9 * 3600
+        f.current.time = nineAM
+        f.current.temperature = -3.0
+        assertEquals(1.0, f.tonightLow(nineAM))
+        assertEquals(-3.0, f.displayDay(nineAM)?.low)
+    }
+
     @Test fun blendAnchorOnlyForLocalStations() {
         val near = Observation(stationName = "Campbellville", observedAt = midnight, temperature = 4.0, distanceKm = 6.0)
         val far = Observation(stationName = "Toronto Pearson", observedAt = midnight, temperature = 7.0, distanceKm = 28.0)

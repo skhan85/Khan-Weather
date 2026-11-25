@@ -288,7 +288,17 @@ data class Forecast(
         val tonight = tonightLow(date)
         if (tonight != null) {
             val allowance = if (extremesIncludePeak == true) ModelBlend.lowAllowance else 0.0
-            rows[todayIndex].low = min(tonight - allowance, rows[todayIndex].high)
+            var low = tonight - allowance
+            if (abs(current.time - date) < 7200) {
+                low = min(low, current.temperature)
+            }
+            val endOfToday = cal.addingDays(cal.startOfDay(date), 1)
+            val from = date - 3599
+            val remMin = hourly.filter { it.time >= from && it.time <= endOfToday }.map { it.temperature }.minOrNull()
+            if (remMin != null) {
+                low = min(low, remMin - allowance)
+            }
+            rows[todayIndex].low = min(low, rows[todayIndex].high)
         }
         return rows
     }

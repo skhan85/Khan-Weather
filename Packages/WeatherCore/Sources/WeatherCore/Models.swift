@@ -387,7 +387,19 @@ public struct Forecast: Equatable, Codable, Sendable {
         var rows = daily
         if let tonight = tonightLow(from: date) {
             let allowance = extremesIncludePeak == true ? ModelBlend.lowAllowance : 0
-            rows[todayIndex].low = min(tonight - allowance, rows[todayIndex].high)
+            var low = tonight - allowance
+            // Never show a daily low warmer than right now or today's remaining hours.
+            if abs(current.time.timeIntervalSince(date)) < 7200 {
+                low = min(low, current.temperature)
+            }
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = timeZone
+            let endOfToday = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: date)) ?? date
+            let from = date.addingTimeInterval(-3599)
+            if let remMin = hourly.filter({ $0.time >= from && $0.time <= endOfToday }).map(\.temperature).min() {
+                low = min(low, remMin - allowance)
+            }
+            rows[todayIndex].low = min(low, rows[todayIndex].high)
         }
         return rows
     }

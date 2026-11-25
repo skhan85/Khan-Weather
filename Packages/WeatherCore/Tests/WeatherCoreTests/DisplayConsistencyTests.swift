@@ -68,6 +68,15 @@ final class DisplayConsistencyTests: XCTestCase {
         XCTAssertEqual(f.displayDay(at: noon)?.low, 10)
     }
 
+    func testColdMorningLowIncludesCurrentTemperature() {
+        var f = forecast { h in h <= 9 ? -3 : (h == 14 ? 3 : 1) }
+        let nineAM = midnight.addingTimeInterval(9 * 3600)
+        f.current.time = nineAM
+        f.current.temperature = -3
+        XCTAssertEqual(f.tonightLow(from: nineAM), 1)
+        XCTAssertEqual(f.displayDay(at: nineAM)?.low, -3)
+    }
+
     func testBlendAnchorOnlyForLocalStations() {
         let near = Observation(stationName: "Campbellville", observedAt: midnight, temperature: 4, distanceKm: 6)
         let far = Observation(stationName: "Toronto Pearson", observedAt: midnight, temperature: 7, distanceKm: 28)
