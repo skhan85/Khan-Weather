@@ -14,6 +14,7 @@ object Region {
 
     fun inGermany(c: Coordinate): Boolean = c.latitude in 47.2..55.1 && c.longitude in 5.8..15.1
     fun inCanada(c: Coordinate): Boolean = c.latitude in 41.6..84.0 && c.longitude in -141.0..-52.0
+    fun inEuropeNational(c: Coordinate): Boolean = c.latitude in 45.7..70.1 && c.longitude in 5.9..31.6 && !inGermany(c)
 }
 
 /** Netatmo personal weather stations, served by the family relay (it holds the Netatmo key). */
@@ -222,19 +223,64 @@ class METARProvider(private val loader: HttpLoader = defaultLoader) : Observatio
     }
 }
 
+/** European national weather services served by the relay (MeteoSwiss, GeoSphere, SMHI, FMI, IMGW). */
+class RelayOfficialProvider(
+    private val baseURL: String = "https://weather-relay.khanofmilton.ca/v1/obs",
+    private val loader: HttpLoader = defaultLoader,
+) : ObservationProvider {
+    override suspend fun observation(near: Coordinate): Observation? {
+        if (!Region.inEuropeNational(near)) return null
+        val url = buildUrl(baseURL, "lat" to fmt("%.3f", near.latitude), "lon" to fmt("%.3f", near.longitude))
+        return parse(loader.fetch(url, timeoutSeconds = 4))
+    }
+
+    companion object {
+        fun parse(data: ByteArray): Observation? {
+            val s = parseJson(data)["station"].obj ?: return null
+            val name = s["name"].str ?: return null
+            val obs = s["observed"].numOnly ?: return null
+            val temp = s["temperature"].numOnly ?: return null
+            return Observation(
+                stationName = name,
+                observedAt = obs,
+                temperature = temp,
+                humidity = s["humidity"].numOnly,
+                windSpeed = s["wind_kmh"].numOnly,
+                windDirection = s["wind_dir"].numOnly,
+                windGusts = s["gust_kmh"].numOnly,
+                distanceKm = s["distance_km"].numOnly,
+                dataProvider = s["provider"].str ?: "Europe",
+            )
+        }
+    }
+}
+
 /** Picks the right national services for the spot, falling back to the nearest airport anywhere. */
 class WorldObservationProvider(
     private val canada: ObservationProvider = CanadaObservationProvider(),
     private val us: ObservationProvider = NWSObservationProvider(),
     private val germany: ObservationProvider = BrightSkyProvider(),
+    private val europeNational: ObservationProvider = RelayOfficialProvider(),
     private val airports: ObservationProvider = METARProvider(),
 ) : ObservationProvider {
     override suspend fun observation(near: Coordinate): Observation? = coroutineScope {
         if (Region.inCanada(near)) safely { canada.observation(near) }?.let { return@coroutineScope it }
         val a = async { safely { us.observation(near) } }
         val b = async { safely { germany.observation(near) } }
-        val c = async { safely { airports.observation(near) } }
-        listOfNotNull(a.await(), b.await(), c.await()).minByOrNull { it.distanceKm ?: Double.POSITIVE_INFINITY }
+        val c = async { safely { europeNational.observation(near) } }
+        val d = async { safely { airports.observation(near) } }
+        val sky = d.await()
+        val best = listOfNotNull(a.await(), b.await(), c.await(), sky).minByOrNull { it.distanceKm ?: Double.POSITIVE_INFINITY }
+            ?: return@coroutineScope null
+        if (best.condition == null && sky?.condition != null) {
+            best.copy(
+                condition = sky.condition,
+                conditionText = sky.conditionText,
+                skyStationName = sky.stationName,
+                skyDataProvider = sky.dataProvider,
+                skyDistanceKm = sky.distanceKm,
+            )
+        } else best
     }
 }
 

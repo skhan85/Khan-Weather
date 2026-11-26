@@ -221,6 +221,9 @@ public enum ModelBlend {
     /// Weight and horizon for blending Google Weather hourly temperatures over the regional NWP blend.
     public static let googleWeight: Double = 0.15
     public static let googleHorizonHours: Double = 48
+    /// Distance-tapered weight and horizon for DWD MOSMIX calibrated WMO station forecasts (< 25 km).
+    public static let mosmixWeight: Double = 0.12
+    public static let mosmixHorizonHours: Double = 72
 
     // MARK: Rain or snow
 

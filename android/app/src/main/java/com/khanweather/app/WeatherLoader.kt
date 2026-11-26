@@ -176,6 +176,29 @@ object WeatherLoader {
     @Serializable
     data class RelayGoogleHourly(val hours: List<RelayGoogleHour> = emptyList())
 
+    @Serializable
+    data class RelayMosmixHour(
+        val epoch: kotlin.Double,
+        val temp: kotlin.Double,
+        val dew_point: kotlin.Double? = null,
+        val wind_kmh: kotlin.Double? = null,
+        val gust_kmh: kotlin.Double? = null,
+        val precip_mm: kotlin.Double? = null,
+    )
+
+    @Serializable
+    data class RelayMosmixHourly(
+        val distance_km: kotlin.Double? = null,
+        val hours: List<RelayMosmixHour> = emptyList(),
+    )
+
+    private class SupplementHour(
+        val epoch: kotlin.Double,
+        val temp: kotlin.Double,
+        val dewPoint: kotlin.Double?,
+        val windKmh: kotlin.Double?,
+    )
+
     suspend fun googleHourly(target: Coordinate): RelayGoogleHourly? = deadline(3.0) {
         withContext(Dispatchers.IO) {
             runCatching {
@@ -197,12 +220,51 @@ object WeatherLoader {
         }
     }
 
+    suspend fun mosmixHourly(target: Coordinate): RelayMosmixHourly? = deadline(2.5) {
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val u = String.format(
+                    Locale.US,
+                    "https://weather-relay.khanofmilton.ca/v1/mosmix?lat=%.4f&lon=%.4f",
+                    target.latitude, target.longitude,
+                )
+                val conn = (URL(u).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 4000; readTimeout = 4000
+                }
+                try {
+                    if (conn.responseCode != 200) return@runCatching null
+                    relayJson.decodeFromString(RelayMosmixHourly.serializer(), conn.inputStream.bufferedReader().readText())
+                } finally {
+                    conn.disconnect()
+                }
+            }.getOrNull()
+        }
+    }
+
+    fun Forecast.applyingMosmixHourly(mx: RelayMosmixHourly?): Forecast {
+        if (mx == null || mx.hours.isEmpty()) return this
+        val dist = mx.distance_km ?: 0.0
+        val weight = ModelBlend.mosmixWeight * maxOf(0.0, 1.0 - dist / 25.0)
+        if (weight <= 0.005) return this
+        val items = mx.hours.map { SupplementHour(it.epoch, it.temp, it.dew_point, it.wind_kmh) }
+        return applyingHourlySupplement(items, weight, ModelBlend.mosmixHorizonHours)
+    }
+
     fun Forecast.applyingGoogleHourly(gh: RelayGoogleHourly?): Forecast {
-        if (gh == null || gh.hours.isEmpty() || hourly.isEmpty()) return this
-        val byHour = gh.hours.associateBy { kotlin.math.round(it.epoch / 3600.0).toLong() * 3600L }
-        val gwWeight = ModelBlend.googleWeight
-        val omBaseWeight = 1.0 - gwWeight
-        val cutoff = current.time + ModelBlend.googleHorizonHours * 3600.0
+        if (gh == null || gh.hours.isEmpty()) return this
+        val items = gh.hours.map { SupplementHour(it.epoch, it.temp, it.dew_point, it.wind_kmh) }
+        return applyingHourlySupplement(items, ModelBlend.googleWeight, ModelBlend.googleHorizonHours)
+    }
+
+    private fun Forecast.applyingHourlySupplement(
+        items: List<SupplementHour>,
+        weight: kotlin.Double,
+        horizonHours: kotlin.Double,
+    ): Forecast {
+        if (items.isEmpty() || hourly.isEmpty() || weight <= 0.0) return this
+        val byHour = items.associateBy { kotlin.math.round(it.epoch / 3600.0).toLong() * 3600L }
+        val baseWeight = 1.0 - weight
+        val cutoff = current.time + horizonHours * 3600.0
         var changed = false
         val touchedHours = mutableSetOf<Long>()
         val copy = deepCopy()
@@ -210,11 +272,11 @@ object WeatherLoader {
             if (hour.time > cutoff) return@map hour
             val g = byHour[kotlin.math.round(hour.time / 3600.0).toLong() * 3600L] ?: return@map hour
             val h = hour.copy()
-            h.temperature = omBaseWeight * h.temperature + gwWeight * g.temp
-            val dp = h.dewPoint; val gdp = g.dew_point
-            if (dp != null && gdp != null) h.dewPoint = minOf(h.temperature, omBaseWeight * dp + gwWeight * gdp)
-            val w = h.windSpeed; val gw = g.wind_kmh
-            if (w != null && gw != null) h.windSpeed = maxOf(0.0, omBaseWeight * w + gwWeight * gw)
+            h.temperature = baseWeight * h.temperature + weight * g.temp
+            val dp = h.dewPoint; val gdp = g.dewPoint
+            if (dp != null && gdp != null) h.dewPoint = minOf(h.temperature, baseWeight * dp + weight * gdp)
+            val w = h.windSpeed; val gw = g.windKmh
+            if (w != null && gw != null) h.windSpeed = maxOf(0.0, baseWeight * w + weight * gw)
             touchedHours.add(hour.time.toLong())
             changed = true
             h
@@ -227,7 +289,7 @@ object WeatherLoader {
             if (hrs.size < 18) return@map day
             val touched = hrs.count { touchedHours.contains(it.time.toLong()) }
             if (touched == 0) return@map day
-            val omShare = 1.0 - gwWeight * (touched.toDouble() / hrs.size)
+            val omShare = 1.0 - weight * (touched.toDouble() / hrs.size)
             val lift = day.phaseHighLift?.let { it * omShare }
             val drop = day.phaseLowDrop?.let { it * omShare }
             day.copy(
@@ -238,31 +300,31 @@ object WeatherLoader {
             )
         }
         if (current.time <= cutoff) {
-            interpolatedGoogle(gh.hours, current.time)?.let { (gTemp, gWind) ->
-                copy.current.temperature = omBaseWeight * copy.current.temperature + gwWeight * gTemp
+            interpolatedSupplement(items, current.time)?.let { (gTemp, gWind) ->
+                copy.current.temperature = baseWeight * copy.current.temperature + weight * gTemp
                 val w = copy.current.windSpeed
                 if (w != null && gWind != null) {
-                    copy.current.windSpeed = maxOf(0.0, omBaseWeight * w + gwWeight * gWind)
+                    copy.current.windSpeed = maxOf(0.0, baseWeight * w + weight * gWind)
                 }
             }
         }
         return copy.withStandardFeelsLike()
     }
 
-    private fun interpolatedGoogle(hours: List<RelayGoogleHour>, time: Epoch): Pair<kotlin.Double, kotlin.Double?>? {
+    private fun interpolatedSupplement(hours: List<SupplementHour>, time: Epoch): Pair<kotlin.Double, kotlin.Double?>? {
         val sorted = hours.sortedBy { it.epoch }
         val first = sorted.firstOrNull() ?: return null
         val last = sorted.last()
         if (time < first.epoch - 1800.0 || time > last.epoch + 1800.0) return null
-        if (time <= first.epoch) return first.temp to first.wind_kmh
-        if (time >= last.epoch) return last.temp to last.wind_kmh
+        if (time <= first.epoch) return first.temp to first.windKmh
+        if (time >= last.epoch) return last.temp to last.windKmh
         val afterIdx = sorted.indexOfFirst { it.epoch >= time }
-        if (afterIdx <= 0) return first.temp to first.wind_kmh
+        if (afterIdx <= 0) return first.temp to first.windKmh
         val a = sorted[afterIdx - 1]; val b = sorted[afterIdx]
         val span = b.epoch - a.epoch
         val f = if (span > 0) (time - a.epoch) / span else 0.0
         val t = a.temp + (b.temp - a.temp) * f
-        val w = if (a.wind_kmh != null && b.wind_kmh != null) a.wind_kmh + (b.wind_kmh - a.wind_kmh) * f else a.wind_kmh ?: b.wind_kmh
+        val w = if (a.windKmh != null && b.windKmh != null) a.windKmh + (b.windKmh - a.windKmh) * f else a.windKmh ?: b.windKmh
         return t to w
     }
 

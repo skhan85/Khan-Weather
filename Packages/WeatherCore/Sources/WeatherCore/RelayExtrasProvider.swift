@@ -114,20 +114,59 @@ public struct RelayGoogleHourly: Codable, Equatable, Sendable {
     public let hours: [Hour]
 }
 
+public struct RelayMosmixHourly: Codable, Equatable, Sendable {
+    public struct Hour: Codable, Equatable, Sendable {
+        public let epoch: Double
+        public let temp: Double
+        public let dew_point: Double?
+        public let wind_kmh: Double?
+        public let gust_kmh: Double?
+        public let precip_mm: Double?
+    }
+    public let station_id: String?
+    public let station_name: String?
+    public let distance_km: Double?
+    public let generated: Double?
+    public let hours: [Hour]
+}
+
 public extension Forecast {
+    private struct SupplementHour {
+        let epoch: Double
+        let temp: Double
+        let dewPoint: Double?
+        let windKmh: Double?
+    }
+
+    /// Blends DWD MOSMIX calibrated station hourly temperatures (up to `ModelBlend.mosmixWeight`,
+    /// tapering linearly to zero at 25 km) into `hourly`.
+    func applyingMosmixHourly(_ mx: RelayMosmixHourly?) -> Forecast {
+        guard let mx, !mx.hours.isEmpty else { return self }
+        let dist = mx.distance_km ?? 0
+        let weight = ModelBlend.mosmixWeight * max(0, 1 - dist / 25.0)
+        guard weight > 0.005 else { return self }
+        let items = mx.hours.map { SupplementHour(epoch: $0.epoch, temp: $0.temp, dewPoint: $0.dew_point, windKmh: $0.wind_kmh) }
+        return applyingHourlySupplement(items, weight: weight, horizonHours: ModelBlend.mosmixHorizonHours)
+    }
+
     /// Blends Google Weather's hourly forecast (`ModelBlend.googleWeight` over `ModelBlend.googleHorizonHours`)
     /// into `hourly` and updates daily high/low and feels-like consistently.
     func applyingGoogleHourly(_ gh: RelayGoogleHourly?) -> Forecast {
-        guard let gh, !gh.hours.isEmpty, !hourly.isEmpty else { return self }
-        var byHour: [Int: RelayGoogleHourly.Hour] = [:]
-        for g in gh.hours {
+        guard let gh, !gh.hours.isEmpty else { return self }
+        let items = gh.hours.map { SupplementHour(epoch: $0.epoch, temp: $0.temp, dewPoint: $0.dew_point, windKmh: $0.wind_kmh) }
+        return applyingHourlySupplement(items, weight: ModelBlend.googleWeight, horizonHours: ModelBlend.googleHorizonHours)
+    }
+
+    private func applyingHourlySupplement(_ items: [SupplementHour], weight: Double, horizonHours: Double) -> Forecast {
+        guard !items.isEmpty, !hourly.isEmpty, weight > 0 else { return self }
+        var byHour: [Int: SupplementHour] = [:]
+        for g in items {
             let k = Int((g.epoch / 3600).rounded()) * 3600
             byHour[k] = g
         }
         var copy = self
-        let gwWeight = ModelBlend.googleWeight
-        let omBaseWeight = 1 - gwWeight
-        let cutoff = current.time.addingTimeInterval(ModelBlend.googleHorizonHours * 3600)
+        let baseWeight = 1 - weight
+        let cutoff = current.time.addingTimeInterval(horizonHours * 3600)
         var changed = false
         var touchedHours = Set<Int>()
         copy.hourly = hourly.map { hour in
@@ -135,12 +174,12 @@ public extension Forecast {
             let k = Int((hour.time.timeIntervalSince1970 / 3600).rounded()) * 3600
             guard let g = byHour[k] else { return hour }
             var h = hour
-            h.temperature = omBaseWeight * h.temperature + gwWeight * g.temp
-            if let dp = h.dewPoint, let gdp = g.dew_point {
-                h.dewPoint = min(h.temperature, omBaseWeight * dp + gwWeight * gdp)
+            h.temperature = baseWeight * h.temperature + weight * g.temp
+            if let dp = h.dewPoint, let gdp = g.dewPoint {
+                h.dewPoint = min(h.temperature, baseWeight * dp + weight * gdp)
             }
-            if let w = h.windSpeed, let gw = g.wind_kmh {
-                h.windSpeed = max(0, omBaseWeight * w + gwWeight * gw)
+            if let w = h.windSpeed, let gw = g.windKmh {
+                h.windSpeed = max(0, baseWeight * w + weight * gw)
             }
             touchedHours.insert(Int(hour.time.timeIntervalSince1970))
             changed = true
@@ -154,7 +193,7 @@ public extension Forecast {
             guard hrs.count >= 18 else { return day }
             let touched = hrs.filter { touchedHours.contains(Int($0.time.timeIntervalSince1970)) }.count
             guard touched > 0 else { return day }
-            let omShare = 1 - gwWeight * (Double(touched) / Double(hrs.count))
+            let omShare = 1 - weight * (Double(touched) / Double(hrs.count))
             var d = day
             d.phaseHighLift = day.phaseHighLift.map { $0 * omShare }
             d.phaseLowDrop = day.phaseLowDrop.map { $0 * omShare }
@@ -163,30 +202,30 @@ public extension Forecast {
             return d
         }
         if current.time <= cutoff,
-           let gNow = Self.interpolatedGoogle(gh.hours, at: current.time) {
-            copy.current.temperature = omBaseWeight * copy.current.temperature + gwWeight * gNow.temperature
+           let gNow = Self.interpolatedSupplement(items, at: current.time) {
+            copy.current.temperature = baseWeight * copy.current.temperature + weight * gNow.temperature
             if let w = copy.current.windSpeed, let gw = gNow.wind {
-                copy.current.windSpeed = max(0, omBaseWeight * w + gwWeight * gw)
+                copy.current.windSpeed = max(0, baseWeight * w + weight * gw)
             }
         }
         return copy.withStandardFeelsLike()
     }
 
-    private static func interpolatedGoogle(_ hours: [RelayGoogleHourly.Hour], at time: Date) -> (temperature: Double, wind: Double?)? {
+    private static func interpolatedSupplement(_ hours: [SupplementHour], at time: Date) -> (temperature: Double, wind: Double?)? {
         let sorted = hours.sorted { $0.epoch < $1.epoch }
         guard let first = sorted.first, let last = sorted.last else { return nil }
         let target = time.timeIntervalSince1970
         guard target >= first.epoch - 1800, target <= last.epoch + 1800 else { return nil }
-        if target <= first.epoch { return (first.temp, first.wind_kmh) }
-        if target >= last.epoch { return (last.temp, last.wind_kmh) }
+        if target <= first.epoch { return (first.temp, first.windKmh) }
+        if target >= last.epoch { return (last.temp, last.windKmh) }
         guard let afterIdx = sorted.firstIndex(where: { $0.epoch >= target }), afterIdx > 0 else {
-            return (first.temp, first.wind_kmh)
+            return (first.temp, first.windKmh)
         }
         let a = sorted[afterIdx - 1], b = sorted[afterIdx]
         let span = b.epoch - a.epoch
         let f = span > 0 ? (target - a.epoch) / span : 0
         let t = a.temp + (b.temp - a.temp) * f
-        let w = a.wind_kmh.flatMap { wa in b.wind_kmh.map { wb in wa + (wb - wa) * f } } ?? a.wind_kmh ?? b.wind_kmh
+        let w = a.windKmh.flatMap { wa in b.windKmh.map { wb in wa + (wb - wa) * f } } ?? a.windKmh ?? b.windKmh
         return (t, w)
     }
 
@@ -357,5 +396,15 @@ public struct RelayExtrasProvider: Sendable {
         guard let url = parts.url, let (data, resp) = try? await URLSession.shared.data(for: URLRequest(url: url, timeoutInterval: 6)),
               (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
         return try? JSONDecoder().decode(RelayGoogleHourly.self, from: data)
+    }
+    public func mosmixHourly(near c: Coordinate) async -> RelayMosmixHourly? {
+        var parts = URLComponents(url: host.appendingPathComponent("v1/mosmix"), resolvingAgainstBaseURL: false)!
+        parts.queryItems = [
+            URLQueryItem(name: "lat", value: String(format: "%.4f", c.latitude)),
+            URLQueryItem(name: "lon", value: String(format: "%.4f", c.longitude)),
+        ]
+        guard let url = parts.url, let (data, resp) = try? await URLSession.shared.data(for: URLRequest(url: url, timeoutInterval: 5)),
+              (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        return try? JSONDecoder().decode(RelayMosmixHourly.self, from: data)
     }
 }

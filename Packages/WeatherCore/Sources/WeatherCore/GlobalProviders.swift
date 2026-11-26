@@ -37,6 +37,9 @@ enum Region {
     static func inCanada(_ c: Coordinate) -> Bool {
         (41.6...84).contains(c.latitude) && (-141 ... -52).contains(c.longitude)
     }
+    static func inEuropeNational(_ c: Coordinate) -> Bool {
+        (45.7...70.1).contains(c.latitude) && (5.9...31.6).contains(c.longitude) && !inGermany(c)
+    }
 }
 
 extension WeatherCondition {
@@ -397,6 +400,61 @@ public struct METARProvider: ObservationProvider {
     }
 }
 
+/// Official European national weather services served by the relay (MeteoSwiss, GeoSphere, SMHI, FMI, IMGW).
+public struct RelayOfficialProvider: ObservationProvider {
+    public let attribution = "Observations: European national weather services"
+    private let baseURL: URL
+    private let loader: HTTPLoader
+
+    public init(baseURL: URL = URL(string: "https://weather-relay.khanofmilton.ca/v1/obs")!,
+                loader: @escaping HTTPLoader = defaultLoader) {
+        self.baseURL = baseURL
+        self.loader = loader
+    }
+
+    public func observation(near coordinate: Coordinate) async throws -> Observation? {
+        guard Region.inEuropeNational(coordinate) else { return nil }
+        var parts = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)!
+        parts.queryItems = [
+            URLQueryItem(name: "lat", value: String(format: "%.3f", coordinate.latitude)),
+            URLQueryItem(name: "lon", value: String(format: "%.3f", coordinate.longitude)),
+        ]
+        var req = URLRequest(url: parts.url!, timeoutInterval: 4)
+        req.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        let (data, resp) = try await loader(req)
+        guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        return try Self.parse(data)
+    }
+
+    static func parse(_ data: Data) throws -> Observation? {
+        struct S: Decodable {
+            let name: String
+            let observed: Double
+            let temperature: Double
+            let humidity: Double?
+            let wind_kmh: Double?
+            let gust_kmh: Double?
+            let wind_dir: Double?
+            let distance_km: Double?
+            let provider: String?
+        }
+        struct R: Decodable { let station: S? }
+        guard let s = try JSONDecoder().decode(R.self, from: data).station else { return nil }
+        var o = Observation(
+            stationName: s.name,
+            observedAt: Date(timeIntervalSince1970: s.observed),
+            temperature: s.temperature,
+            humidity: s.humidity,
+            windSpeed: s.wind_kmh,
+            windDirection: s.wind_dir,
+            windGusts: s.gust_kmh,
+            distanceKm: s.distance_km
+        )
+        o.dataProvider = s.provider ?? "Europe"
+        return o
+    }
+}
+
 // MARK: - Routing
 
 /// Picks the right national services for the spot, falling back to the nearest airport anywhere.
@@ -405,15 +463,18 @@ public struct WorldObservationProvider: ObservationProvider {
     private let canada: ObservationProvider
     private let us: ObservationProvider
     private let germany: ObservationProvider
+    private let europeNational: ObservationProvider
     private let airports: ObservationProvider
 
     public init(canada: ObservationProvider = CanadaObservationProvider(),
                 us: ObservationProvider = NWSObservationProvider(),
                 germany: ObservationProvider = BrightSkyProvider(),
+                europeNational: ObservationProvider = RelayOfficialProvider(),
                 airports: ObservationProvider = METARProvider()) {
         self.canada = canada
         self.us = us
         self.germany = germany
+        self.europeNational = europeNational
         self.airports = airports
     }
 
@@ -423,9 +484,19 @@ public struct WorldObservationProvider: ObservationProvider {
         }
         async let a = try? us.observation(near: coordinate)
         async let b = try? germany.observation(near: coordinate)
-        async let c = try? airports.observation(near: coordinate)
-        let found = [await a ?? nil, await b ?? nil, await c ?? nil].compactMap { $0 }
-        return found.min { ($0.distanceKm ?? .infinity) < ($1.distanceKm ?? .infinity) }
+        async let c = try? europeNational.observation(near: coordinate)
+        async let d = try? airports.observation(near: coordinate)
+        let sky = await d ?? nil
+        let found = [await a ?? nil, await b ?? nil, await c ?? nil, sky].compactMap { $0 }
+        guard var best = found.min(by: { ($0.distanceKm ?? .infinity) < ($1.distanceKm ?? .infinity) }) else { return nil }
+        if best.condition == nil, let sky, sky.condition != nil {
+            best.condition = sky.condition
+            best.conditionText = sky.conditionText
+            best.skyStationName = sky.stationName
+            best.skyDataProvider = sky.dataProvider
+            best.skyDistanceKm = sky.distanceKm
+        }
+        return best
     }
 }
 

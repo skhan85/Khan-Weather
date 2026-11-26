@@ -169,6 +169,7 @@ final class WeatherViewModel: ObservableObject {
         let nowcastTask = Task { await RelayExtrasProvider().nowcast(near: target, cold: likelyCold) }
         let weightsTask = Task { await Deadline.run(3) { await RelayExtrasProvider().regionalWeights(near: target) } }
         let googleTask = Task { await Deadline.run(3) { await RelayExtrasProvider().googleHourly(near: target) } }
+        let mosmixTask = Task { await Deadline.run(2.5) { await RelayExtrasProvider().mosmixHourly(near: target) } }
         let alertsTask = Task { try? await alertProvider.alerts(near: target) }
         let airTask = Task { try? await AirQualityProvider().airQuality(at: target) }
         let normalsTask = Task { try? await ClimateNormalsProvider().normals(at: target) }
@@ -229,14 +230,15 @@ final class WeatherViewModel: ObservableObject {
                     self.state = .loaded(base.applying(observed).calibratingEnsemblePop())
                 }
                 let googleHourly = await googleTask.value
+                let mosmixHourly = await mosmixTask.value
                 guard gen == self.generation else { return }
-                if googleHourly != nil {
-                    self.state = .loaded(base.applyingGoogleHourly(googleHourly).applying(observed).calibratingEnsemblePop())
+                if googleHourly != nil || mosmixHourly != nil {
+                    self.state = .loaded(base.applyingMosmixHourly(mosmixHourly).applyingGoogleHourly(googleHourly).applying(observed).calibratingEnsemblePop())
                 }
                 let radar = await radarTask.value ?? nil
                 let radarNowcast = await nowcastTask.value
                 guard gen == self.generation else { return }
-                self.state = .loaded(base.applyingGoogleHourly(googleHourly).applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast).calibratingEnsemblePop())
+                self.state = .loaded(base.applyingMosmixHourly(mosmixHourly).applyingGoogleHourly(googleHourly).applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast).calibratingEnsemblePop())
             }
         }
         guard gen == generation, case .loaded(let shown) = state else { return }

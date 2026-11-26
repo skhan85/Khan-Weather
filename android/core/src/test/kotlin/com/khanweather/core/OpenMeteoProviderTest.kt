@@ -384,6 +384,16 @@ class OpenMeteoProviderTest {
         assertEquals(WeatherCondition.overcast, dryCloud.condition)
     }
 
+    @Test fun relayOfficialProviderParsesNationalEuropeanStation() {
+        val json = """
+        {"station": {"name": "Wien-Innere Stadt", "observed": 1762952400, "temperature": 0.3, "humidity": 89.0, "wind_kmh": 10.8, "gust_kmh": 22.0, "wind_dir": 75.0, "distance_km": 1.32, "provider": "GeoSphere"}}
+        """.toByteArray()
+        val obs = RelayOfficialProvider.parse(json)!!
+        assertEquals("Wien-Innere Stadt", obs.stationName)
+        assertEquals("GeoSphere", obs.dataProvider)
+        close(0.3, obs.temperature, 0.001)
+    }
+
     private val testRegion get() = Regions.testRegion
 
     object Regions {

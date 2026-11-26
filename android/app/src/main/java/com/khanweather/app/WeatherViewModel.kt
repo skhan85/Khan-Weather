@@ -110,6 +110,7 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
         val nowcastTask = async { WeatherLoader.radarNowcast(target, cold = likelyCold) }
         val weightsTask = async { WeatherLoader.regionalWeights(target) }
         val googleTask = async { WeatherLoader.googleHourly(target) }
+        val mosmixTask = async { WeatherLoader.mosmixHourly(target) }
         val alertsTask = async { WeatherLoader.alerts(target) }
         val normalsTask = async { WeatherLoader.normals(context, target) }
 
@@ -150,17 +151,18 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
             state = LoadState.Loaded(with(WeatherLoader) { base.applying(observed).calibratingEnsemblePop() })
         }
         val googleHourly = googleTask.await()
+        val mosmixHourly = mosmixTask.await()
         if (gen != generation) return@coroutineScope
-        if (googleHourly != null) {
+        if (googleHourly != null || mosmixHourly != null) {
             state = LoadState.Loaded(with(WeatherLoader) {
-                base.applyingGoogleHourly(googleHourly).applying(observed).calibratingEnsemblePop()
+                base.applyingMosmixHourly(mosmixHourly).applyingGoogleHourly(googleHourly).applying(observed).calibratingEnsemblePop()
             })
         }
         val radar = radarTask.await()
         val radarNowcast = nowcastTask.await()
         if (gen != generation) return@coroutineScope
         val loaded = with(WeatherLoader) {
-            base.applyingGoogleHourly(googleHourly).applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast).calibratingEnsemblePop()
+            base.applyingMosmixHourly(mosmixHourly).applyingGoogleHourly(googleHourly).applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast).calibratingEnsemblePop()
         }
         state = LoadState.Loaded(loaded)
         // Keep score of the models for where the user actually is, not saved places.

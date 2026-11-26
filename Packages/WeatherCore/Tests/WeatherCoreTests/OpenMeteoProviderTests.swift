@@ -456,4 +456,34 @@ final class OpenMeteoProviderTests: XCTestCase {
         lowPopCloud.promoteLikelyPrecipitation()
         XCTAssertEqual(lowPopCloud.condition, .overcast)
     }
+
+    func testRelayOfficialProviderAndMosmixHourlyBlend() throws {
+        let json = """
+        {"station": {"name": "Zürich / Fluntern", "observed": 1762952400, "temperature": 2.4, "humidity": 88.0, "wind_kmh": 9.4, "gust_kmh": 17.3, "wind_dir": 35.0, "distance_km": 2.4, "provider": "MeteoSwiss"}}
+        """.data(using: .utf8)!
+        let obs = try XCTUnwrap(RelayOfficialProvider.parse(json))
+        XCTAssertEqual(obs.stationName, "Zürich / Fluntern")
+        XCTAssertEqual(obs.dataProvider, "MeteoSwiss")
+        XCTAssertEqual(obs.temperature, 2.4, accuracy: 0.01)
+
+        let now = Date(timeIntervalSince1970: 1762952400)
+        let f = Forecast(
+            location: Coordinate(latitude: 47.37, longitude: 8.54),
+            timeZoneIdentifier: "Europe/Zurich",
+            current: CurrentConditions(time: now, temperature: 0.0, feelsLike: 0.0, feelsLikeKind: .apparent, condition: .overcast, isDay: true),
+            hourly: [HourlyForecast(time: now, temperature: 0.0, condition: .overcast)],
+            daily: [],
+            source: "test",
+            fetchedAt: now
+        )
+        let mx = RelayMosmixHourly(
+            station_id: "06660", station_name: "ZUERICH", distance_km: 0.0, generated: nil,
+            hours: [RelayMosmixHourly.Hour(epoch: 1762952400, temp: 10.0, dew_point: nil, wind_kmh: nil, gust_kmh: nil, precip_mm: nil)]
+        )
+        // At 0 km: 12% MOSMIX of 10.0° = 1.2°
+        XCTAssertEqual(f.applyingMosmixHourly(mx).current.temperature, 1.2, accuracy: 0.001)
+        // Beyond 25 km: tapered to 0 (ignored)
+        let farMx = RelayMosmixHourly(station_id: "06660", station_name: "ZUERICH", distance_km: 30.0, generated: nil, hours: mx.hours)
+        XCTAssertEqual(f.applyingMosmixHourly(farMx).current.temperature, 0.0, accuracy: 0.001)
+    }
 }

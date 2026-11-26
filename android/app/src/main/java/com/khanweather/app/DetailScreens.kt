@@ -178,6 +178,11 @@ object Credits {
     private fun observation(provider: String?): Pair<String, Pair<String, String>> = when (provider) {
         "NWS" -> "US National Weather Service" to ("Observations: US National Weather Service" to "https://www.weather.gov/")
         "DWD" -> "Deutscher Wetterdienst" to ("Observations: Deutscher Wetterdienst via Bright Sky" to "https://brightsky.dev/")
+        "MeteoSwiss" -> "MeteoSwiss" to ("Observations: MeteoSwiss" to "https://www.meteoswiss.admin.ch/")
+        "GeoSphere" -> "GeoSphere Austria" to ("Observations: GeoSphere Austria" to "https://www.geosphere.at/")
+        "SMHI" -> "SMHI" to ("Observations: Swedish Meteorological and Hydrological Institute" to "https://www.smhi.se/")
+        "FMI" -> "FMI" to ("Observations: Finnish Meteorological Institute" to "https://en.ilmatieteenlaitos.fi/")
+        "IMGW" -> "IMGW-PIB" to ("Observations: IMGW-PIB Poland" to "https://www.imgw.pl/")
         "NETATMO" -> "Netatmo" to ("Temperature: nearby Netatmo personal weather stations" to "https://weathermap.netatmo.com/")
         "METAR" -> "NOAA Aviation Weather" to ("Airport observations: NOAA Aviation Weather Center" to "https://aviationweather.gov/")
         else -> "Environment Canada" to ("Observations: Environment and Climate Change Canada" to "https://weather.gc.ca/")

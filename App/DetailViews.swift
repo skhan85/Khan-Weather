@@ -315,6 +315,16 @@ enum Credits {
                             Credit(text: "Observations: US National Weather Service", url: URL(string: "https://www.weather.gov/")!))
         case "DWD": return ("Deutscher Wetterdienst",
                             Credit(text: "Observations: Deutscher Wetterdienst via Bright Sky", url: URL(string: "https://brightsky.dev/")!))
+        case "MeteoSwiss": return ("MeteoSwiss",
+                                   Credit(text: "Observations: MeteoSwiss", url: URL(string: "https://www.meteoswiss.admin.ch/")!))
+        case "GeoSphere": return ("GeoSphere Austria",
+                                  Credit(text: "Observations: GeoSphere Austria", url: URL(string: "https://www.geosphere.at/")!))
+        case "SMHI": return ("SMHI",
+                             Credit(text: "Observations: Swedish Meteorological and Hydrological Institute", url: URL(string: "https://www.smhi.se/")!))
+        case "FMI": return ("FMI",
+                            Credit(text: "Observations: Finnish Meteorological Institute", url: URL(string: "https://en.ilmatieteenlaitos.fi/")!))
+        case "IMGW": return ("IMGW-PIB",
+                             Credit(text: "Observations: IMGW-PIB Poland", url: URL(string: "https://www.imgw.pl/")!))
         case "NETATMO": return ("Netatmo",
                                 Credit(text: "Temperature: nearby Netatmo personal weather stations", url: URL(string: "https://weathermap.netatmo.com/")!))
         case "METAR": return ("NOAA Aviation Weather",

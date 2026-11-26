@@ -213,6 +213,8 @@ object ModelBlend {
     const val lowAllowance = 0.5
     const val googleWeight = 0.15
     const val googleHorizonHours = 48.0
+    const val mosmixWeight = 0.12
+    const val mosmixHorizonHours = 72.0
 
     /** A model hour counts as wet for its rain-or-snow call from this much (mm). */
     const val typeWetMm = 0.05
