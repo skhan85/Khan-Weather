@@ -81,9 +81,17 @@ struct HourlyCurve: View {
                 )
                 HStack(spacing: 0) {
                     ForEach(hours) { hour in
-                        PrecipChance(probability: hour.precipitationProbability, kind: hour.precipitationKind,
-                                     font: .caption.weight(.semibold))
+                        Color.clear
+
                             .frame(width: columnWidth, height: 16)
+
+                            .overlay {
+
+                                PrecipChance(probability: hour.precipitationProbability, kind: hour.precipitationKind,
+
+                                             font: .caption.weight(.semibold))
+
+                            }
                     }
                 }
             }
