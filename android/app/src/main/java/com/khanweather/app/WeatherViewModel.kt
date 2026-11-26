@@ -59,20 +59,18 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun refresh(place: SavedPlace?, allowLocationFollowUp: Boolean = true) = coroutineScope {
+    private suspend fun refresh(place: SavedPlace?, allowLocationFollowUp: Boolean = true): Unit = coroutineScope {
         generation += 1
         val gen = generation
         val key = place?.id
         if (lastPlaceKey != key) {
             lastPlaceKey = key
-            val snap = cache[key] ?: SnapshotStore.load(context, key, maxAge = 2 * 3600.0)?.let { disk ->
-                if (nowEpoch() - disk.forecast.fetchedAt < cacheAge) disk
-                else disk.copy(forecast = disk.forecast.rolledForward())
-            }
-            if (snap != null && nowEpoch() - snap.savedAt < cacheAge) {
-                state = LoadState.Loaded(snap.forecast)
-                placeName = snap.placeName; alerts = snap.alerts; airQuality = snap.airQuality
-            } else if (snap != null) {
+            val snap = cache[key]?.takeIf { nowEpoch() - it.savedAt < cacheAge }
+                ?: SnapshotStore.load(context, key, maxAge = 2 * 3600.0)?.let { disk ->
+                    if (nowEpoch() - disk.forecast.fetchedAt < cacheAge) disk
+                    else disk.copy(forecast = disk.forecast.rolledForward())
+                }
+            if (snap != null) {
                 state = LoadState.Loaded(snap.forecast)
                 placeName = snap.placeName; alerts = snap.alerts; airQuality = snap.airQuality
             } else {
