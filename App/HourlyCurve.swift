@@ -45,7 +45,7 @@ struct HourlyCurve: View {
                         } label: {
                             VStack(spacing: 8) {
                                 timeLabel(index: index, hour: hour)
-                                IconBadge(condition: hour.condition, isDay: hour.isDay, size: 38, mixed: hour.isMixedPrecipitation)
+                                IconBadge(condition: Self.displayCondition(for: hour), isDay: hour.isDay, size: 38, mixed: hour.isMixedPrecipitation)
                             }
                             .frame(width: columnWidth)
                             .contentShape(Rectangle())
@@ -283,5 +283,11 @@ struct HourlyCurve: View {
         .chartYAxis(.hidden)
         .chartLegend(.hidden)
         .accessibilityHidden(true)
+    }
+
+    private static func displayCondition(for hour: HourlyForecast) -> WeatherCondition {
+        var h = hour
+        h.promoteLikelyPrecipitation()
+        return h.condition
     }
 }

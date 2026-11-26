@@ -190,7 +190,7 @@ final class WeatherViewModel: ObservableObject {
             // Keep showing the last good forecast if we have one.
             if case .loaded = state { return }
             if let cached = Self.loadDiskCache(for: key) {
-                state = .loaded(cached.rolledForward())
+                state = .loaded(cached.rolledForward().calibratingEnsemblePop())
                 return
             }
             state = .failed(error.localizedDescription)
