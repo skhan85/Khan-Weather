@@ -99,7 +99,13 @@ class HyperlocalObservationProvider(
 
         fun merge(base: Observation?, netatmo: Observation): Observation {
             val local = netatmo.copy()
-            val limit = if (base?.dataProvider == "ON-MTO") 3.0 else officialLimit
+            val temps = (local.stationTemperatures ?: emptyList()).sorted()
+            val tightCluster = temps.size >= 3 &&
+                (temps.last() - temps.first()) <= 2.5 &&
+                (0..temps.size - 3).any { temps[it + 2] - temps[it] <= 1.0 }
+            val limit = if (base?.dataProvider == "ON-MTO") {
+                if (tightCluster && (base.distanceKm ?: 0.0) > 5.0) 4.5 else 3.0
+            } else officialLimit
             if (base != null && (base.distanceKm ?: 0.0) <= 10.0 && abs(base.temperature - local.temperature) > limit &&
                 base.observedAt - local.observedAt > -3600) {
                 val agreeing = (local.stationTemperatures ?: emptyList()).filter { abs(it - base.temperature) <= limit }

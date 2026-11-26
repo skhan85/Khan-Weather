@@ -130,7 +130,13 @@ public struct HyperlocalObservationProvider: ObservationProvider {
 
     static func merge(official base: Observation?, netatmo local: Observation) -> Observation {
         var local = local
-        let limit = base?.dataProvider == "ON-MTO" ? 3.0 : officialLimit
+        let temps = (local.stationTemperatures ?? []).sorted()
+        let tightCluster = temps.count >= 3
+            && (temps.last! - temps.first!) <= 2.5
+            && (0...(temps.count - 3)).contains { temps[$0 + 2] - temps[$0] <= 1.0 }
+        let limit: Double = base?.dataProvider == "ON-MTO"
+            ? ((tightCluster && (base?.distanceKm ?? 0) > 5) ? 4.5 : 3.0)
+            : officialLimit
         if let base, (base.distanceKm ?? 0) <= 10, abs(base.temperature - local.temperature) > limit,
            base.observedAt.timeIntervalSince(local.observedAt) > -3600 {
             // Usually one or two of the nearest stations are in the sun (15 Nov, 4 pm: 7.1, 9.4,
