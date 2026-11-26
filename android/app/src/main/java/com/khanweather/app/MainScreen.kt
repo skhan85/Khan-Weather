@@ -293,12 +293,19 @@ fun NextTwoHours(nowcast: Nowcast, slots: List<PrecipitationSlot>) {
                 Box(Modifier.weight(1f).height(h.dp).clip(RoundedCornerShape(50)).background(colour))
             }
         }
+        val midEpoch = if (slots.size > 4) slots[slots.size / 2].time else nowEpoch() + 3600L
+        val endEpoch = (slots.lastOrNull()?.time?.plus(900L)) ?: (nowEpoch() + 7200L)
+        fun tickLabel(epoch: Long): String {
+            val zdt = java.time.Instant.ofEpochSecond(epoch).atZone(java.time.ZoneId.of(java.util.TimeZone.getDefault().id))
+            val fmt = if (zdt.minute == 0) "h a" else "h:mm a"
+            return java.time.format.DateTimeFormatter.ofPattern(fmt, java.util.Locale.US).format(zdt).lowercase()
+        }
         Row {
             Text("Now", style = style(11.sp, FontWeight.SemiBold, White82)); Spacer(Modifier.weight(1f))
-            Text("1 hr", style = style(11.sp, FontWeight.SemiBold, White82)); Spacer(Modifier.weight(1f))
-            Text("2 hr", style = style(11.sp, FontWeight.SemiBold, White82))
+            Text(tickLabel(midEpoch), style = style(11.sp, FontWeight.SemiBold, White82)); Spacer(Modifier.weight(1f))
+            Text(tickLabel(endEpoch), style = style(11.sp, FontWeight.SemiBold, White82))
         }
-        Text("Light to heavy, in 15-minute steps.", style = style(11.sp, color = Color.White.copy(alpha = 0.7f)))
+        Text("Light · Moderate · Heavy", style = style(11.sp, color = Color.White.copy(alpha = 0.7f)))
     }
 }
 

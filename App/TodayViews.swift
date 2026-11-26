@@ -182,16 +182,27 @@ struct NextTwoHoursView: View {
                 }
             }
             .frame(height: 62, alignment: .bottom)
+            let midTime = slots.count > 4 ? slots[slots.count / 2].time : Date().addingTimeInterval(3600)
+            let endTime = slots.last?.time.addingTimeInterval(900) ?? Date().addingTimeInterval(7200)
+            let tickLabel: (Date) -> String = { d in
+                let f = DateFormatter()
+                f.timeZone = TimeZone.current
+                f.locale = Locale(identifier: "en_US_POSIX")
+                var cal = Calendar(identifier: .gregorian)
+                cal.timeZone = TimeZone.current
+                f.dateFormat = cal.component(.minute, from: d) == 0 ? "h a" : "h:mm a"
+                return f.string(from: d).lowercased()
+            }
             HStack {
                 Text("Now")
                 Spacer()
-                Text("1 hr")
+                Text(tickLabel(midTime))
                 Spacer()
-                Text("2 hr")
+                Text(tickLabel(endTime))
             }
             .font(.caption2.weight(.semibold))
             .foregroundStyle(.white.opacity(0.82))
-            Text("Light to heavy, in 15-minute steps.")
+            Text("Light · Moderate · Heavy")
                 .font(.caption2)
                 .foregroundStyle(.white.opacity(0.7))
         }

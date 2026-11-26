@@ -122,10 +122,14 @@ class HyperlocalObservationProvider(
                 condition = base?.condition, conditionText = base?.conditionText,
                 skyStationName = base?.stationName, skyDataProvider = base?.dataProvider, skyDistanceKm = base?.distanceKm,
             )
-            if (merged.windSpeed == null && base != null && base.isLocal) {
+            if (base != null && base.isLocal && base.windSpeed != null) {
+
                 merged.windSpeed = base.windSpeed
-                merged.windDirection = base.windDirection
-                merged.windGusts = merged.windGusts ?: base.windGusts
+
+                merged.windDirection = base.windDirection ?: merged.windDirection
+
+                merged.windGusts = base.windGusts ?: merged.windGusts
+
             }
             return merged
         }
