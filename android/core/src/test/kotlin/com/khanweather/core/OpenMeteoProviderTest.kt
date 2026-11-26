@@ -368,6 +368,11 @@ class OpenMeteoProviderTest {
         rainHour.promoteLikelyPrecipitation()
         assertEquals(WeatherCondition.rain, rainHour.condition)
 
+        val rain50 = HourlyForecast(time = t0, temperature = 4.0, precipitationProbability = 51.0,
+            precipitation = 0.0, condition = WeatherCondition.overcast)
+        rain50.promoteLikelyPrecipitation()
+        assertEquals(WeatherCondition.rain, rain50.condition)
+
         val snowHour = HourlyForecast(time = t0, temperature = -2.0, precipitationProbability = 70.0,
             precipitation = 0.0, condition = WeatherCondition.overcast)
         snowHour.promoteLikelyPrecipitation()

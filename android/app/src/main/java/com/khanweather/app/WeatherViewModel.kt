@@ -63,13 +63,15 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
         generation += 1
         val gen = generation
         val key = place?.id
+        var showingStaleDiskCache = false
         if (lastPlaceKey != key) {
             lastPlaceKey = key
-            val snap = cache[key]?.takeIf { nowEpoch() - it.savedAt < cacheAge }
-                ?: SnapshotStore.load(context, key, maxAge = 2 * 3600.0)?.let { disk ->
-                    if (nowEpoch() - disk.forecast.fetchedAt < cacheAge) disk
-                    else disk.copy(forecast = disk.forecast.rolledForward())
-                }
+            val memSnap = cache[key]?.takeIf { nowEpoch() - it.savedAt < cacheAge }
+            val snap = memSnap ?: SnapshotStore.load(context, key, maxAge = 2 * 3600.0)?.let { disk ->
+                showingStaleDiskCache = true
+                val f = if (nowEpoch() - disk.forecast.fetchedAt < cacheAge) disk.forecast else disk.forecast.rolledForward()
+                disk.copy(forecast = with(WeatherLoader) { f.calibratingEnsemblePop() })
+            }
             if (snap != null) {
                 state = LoadState.Loaded(snap.forecast)
                 placeName = snap.placeName; alerts = snap.alerts; airQuality = snap.airQuality
@@ -129,7 +131,7 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
             return@coroutineScope
         }
         if (gen != generation) return@coroutineScope
-        if (state !is LoadState.Loaded) {
+        if (state !is LoadState.Loaded || showingStaleDiskCache) {
             state = LoadState.Loaded(with(WeatherLoader) { base.calibratingEnsemblePop() })
         }
         val airTask = async { WeatherLoader.airQuality(target, base.timeZoneIdentifier) }

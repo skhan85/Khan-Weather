@@ -128,16 +128,18 @@ public struct HourlyForecast: Equatable, Codable, Sendable, Identifiable {
     }
 
     /// Upgrades dry sky conditions (e.g. Open-Meteo `overcast`) when ensemble precipitation is likely,
-    /// so an hour with a 70% waterdrop/snowflake doesn't display a plain cloud icon.
+    /// so an hour with a 50%+ waterdrop/snowflake doesn't display a plain cloud icon.
     mutating func promoteLikelyPrecipitation(snowShare: Double? = nil) {
         guard !condition.isWetOrStorm else { return }
         let pop = precipitationProbability ?? 0
         let precip = max(precipitation ?? 0, (rain ?? 0) + (snowfall ?? 0) * 0.7)
-        guard pop >= 60 || (precip >= 0.2 && pop >= 35) else { return }
+        guard pop >= 50 || (precip >= 0.2 && pop >= 35) else { return }
         switch precipitationKind {
         case .snow: condition = .snow
         case .rain: condition = .rain
-        case .mixed: condition = (snowShare ?? 0.5) >= 0.5 ? .snow : .rain
+        case .mixed:
+            let share = snowShare ?? (temperature <= 1.5 ? 0.5 : 0.0)
+            condition = share >= 0.5 ? .snow : .rain
         }
     }
 

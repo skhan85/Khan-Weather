@@ -441,6 +441,11 @@ final class OpenMeteoProviderTests: XCTestCase {
         overcastHighPop.promoteLikelyPrecipitation()
         XCTAssertEqual(overcastHighPop.condition, .rain)
 
+        var overcast50 = HourlyForecast(time: t0, temperature: 4.0, precipitationProbability: 51,
+                                      precipitation: 0.0, condition: .overcast)
+        overcast50.promoteLikelyPrecipitation()
+        XCTAssertEqual(overcast50.condition, .rain)
+
         var coldHighPop = HourlyForecast(time: t0, temperature: -2.0, precipitationProbability: 70,
                                          precipitation: 0.0, condition: .overcast)
         coldHighPop.promoteLikelyPrecipitation()

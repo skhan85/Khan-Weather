@@ -97,16 +97,19 @@ data class HourlyForecast(
         }
     }
 
-    /** Upgrades dry sky conditions when ensemble precipitation is likely (avoids cloud + 70% drop). */
+    /** Upgrades dry sky conditions when ensemble precipitation is likely (avoids cloud + high PoP). */
     fun promoteLikelyPrecipitation(snowShare: Double? = null) {
         if (condition.isWetOrStorm) return
         val pop = precipitationProbability ?: 0.0
         val precip = max(precipitation ?: 0.0, (rain ?: 0.0) + (snowfall ?: 0.0) * 0.7)
-        if (pop < 60.0 && !(precip >= 0.2 && pop >= 35.0)) return
+        if (pop < 50.0 && !(precip >= 0.2 && pop >= 35.0)) return
         condition = when (precipitationKind) {
             PrecipitationKind.snow -> WeatherCondition.snow
             PrecipitationKind.rain -> WeatherCondition.rain
-            PrecipitationKind.mixed -> if ((snowShare ?: 0.5) >= 0.5) WeatherCondition.snow else WeatherCondition.rain
+            PrecipitationKind.mixed -> {
+                val share = snowShare ?: if (temperature <= 1.5) 0.5 else 0.0
+                if (share >= 0.5) WeatherCondition.snow else WeatherCondition.rain
+            }
         }
     }
 }

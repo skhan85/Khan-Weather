@@ -108,15 +108,18 @@ final class WeatherViewModel: ObservableObject {
         let gen = generation
         let key = place?.id
         // Switching places or cold-launching: show what we had for this place, or a spinner.
+        var showingStaleDiskCache = false
         if lastPlaceID != .some(key) {
             lastPlaceID = .some(key)
             if let snap = cache[key], Date().timeIntervalSince(snap.at) < cacheAge {
-                state = .loaded(snap.forecast)
+                state = .loaded(snap.forecast.calibratingEnsemblePop())
                 placeName = snap.name
                 alerts = snap.alerts
                 airQuality = snap.airQuality
             } else if let cached = Self.loadDiskCache(for: key, maxAge: 2 * 3600) {
-                state = .loaded(Date().timeIntervalSince(cached.fetchedAt) < cacheAge ? cached : cached.rolledForward())
+                let shown = (Date().timeIntervalSince(cached.fetchedAt) < cacheAge ? cached : cached.rolledForward()).calibratingEnsemblePop()
+                state = .loaded(shown)
+                showingStaleDiskCache = true
                 placeName = place?.name
                 alerts = []
                 airQuality = nil
@@ -193,8 +196,10 @@ final class WeatherViewModel: ObservableObject {
             return
         }
         guard gen == generation else { return }
-        // First paint: show model forecast immediately (with anchor observation if already back).
-        if case .loaded = state {} else { state = .loaded(base.calibratingEnsemblePop()) }
+        // First paint: show model forecast immediately (always replacing stale cold disk cache).
+        if case .loaded = state, !showingStaleDiskCache {} else {
+            state = .loaded(base.calibratingEnsemblePop())
+        }
 
         // Apply station reading as soon as it arrives—without waiting on radar, nowcast, or Google.
         await withTaskGroup(of: Void.self) { group in
