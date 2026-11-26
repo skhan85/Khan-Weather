@@ -78,7 +78,7 @@ fun HourlyCurve(hours: List<HourlyForecast>, zone: String, firstIsNow: Boolean, 
                                 if (i == 0 && firstIsNow) GoldPill("Now", 13.sp)
                                 else Text(TimeText.hour(h.time, zone), style = style(13.sp, FontWeight.SemiBold, Color.White.copy(alpha = 0.88f)),
                                     maxLines = 1, modifier = Modifier.padding(vertical = 2.dp))
-                                IconBadge(h.promoteLikelyPrecipitation().condition, h.isDay, 38.dp, mixed = h.isMixedPrecipitation)
+                                IconBadge(h.copy().apply { promoteLikelyPrecipitation() }.condition, h.isDay, 38.dp, mixed = h.isMixedPrecipitation)
                             }
                         }
                     }
