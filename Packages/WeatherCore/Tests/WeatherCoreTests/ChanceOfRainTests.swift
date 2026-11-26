@@ -24,9 +24,9 @@ final class ChanceOfRainTests: XCTestCase {
         {
           "hourly": { "time": [1762952400],
                       "temperature_2m_gfs_hrrr": [-2.0], "temperature_2m_gfs_seamless": [-2.0],
-                      "temperature_2m_icon_seamless": [-2.0], "temperature_2m_ukmo_seamless": [-2.0],
+                      "temperature_2m_icon_seamless": [-2.0], "temperature_2m_gem_seamless": [-2.0],
                       "precipitation_gfs_hrrr": [0.5], "precipitation_gfs_seamless": [0.3],
-                      "precipitation_icon_seamless": [0.2], "precipitation_ukmo_seamless": [0.0] }
+                      "precipitation_icon_seamless": [0.2], "precipitation_gem_seamless": [0.0] }
         }
         """.data(using: .utf8)!
         let provider = OpenMeteoProvider(loader: { request in

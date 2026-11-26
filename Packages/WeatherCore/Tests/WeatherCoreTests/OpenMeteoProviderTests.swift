@@ -260,11 +260,11 @@ final class OpenMeteoProviderTests: XCTestCase {
         {
           "hourly": { "time": [1762952400],
                       "temperature_2m_gfs_seamless": [6.0], "temperature_2m_ecmwf_ifs025": [6.0],
-                      "temperature_2m_icon_seamless": [6.0], "temperature_2m_ukmo_seamless": [6.0],
+                      "temperature_2m_icon_seamless": [6.0], "temperature_2m_gem_seamless": [6.0],
                       "precipitation_gfs_seamless": [0.4], "precipitation_ecmwf_ifs025": [0.4],
-                      "precipitation_icon_seamless": [0.4], "precipitation_ukmo_seamless": [0.4],
+                      "precipitation_icon_seamless": [0.4], "precipitation_gem_seamless": [0.4],
                       "snowfall_gfs_seamless": [0.0], "snowfall_ecmwf_ifs025": [0.0],
-                      "snowfall_icon_seamless": [0.0], "snowfall_ukmo_seamless": [0.0] }
+                      "snowfall_icon_seamless": [0.0], "snowfall_gem_seamless": [0.0] }
         }
         """.data(using: .utf8)!
         let provider = OpenMeteoProvider(loader: { request in
