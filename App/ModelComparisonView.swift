@@ -6,7 +6,7 @@ struct ModelComparisonView: View {
     let day: DailyForecast
     let location: Coordinate
     let timeZone: TimeZone
-    /// The app's displayed days, so the Khan Weather row matches the rest of the app.
+    /// The app's calendar-day rows (`Forecast.daily`), so Today compares midnight-to-midnight alongside the other models.
     var appDays: [DailyForecast] = []
 
     @State private var rows: [ModelDay] = []
@@ -139,7 +139,7 @@ struct ModelComparisonView: View {
         let source = usedModel == .blend
             ? BlendRegion.summary(at: location)
             : "Khan Weather's temperatures here come from \(usedModel.name)."
-        return source + " The highlighted row's high and low are the ones the app shows, taken from its hourly forecast (today's low is tonight's low); the other rows are each model's midnight-to-midnight high and low." + " High-res models only reach a day or two ahead. Models via Open-Meteo.com (CC BY 4.0)."
+        return source + " The highlighted row's high and low come from the app's midnight-to-midnight hourly forecast, on the same 24-hour window as the other models." + " High-res models only reach a day or two ahead. Models via Open-Meteo.com (CC BY 4.0)."
     }
 
     /// "Models agree within 2°" or "Models disagree: highs from 3° to 9°".
@@ -162,7 +162,7 @@ struct ModelComparisonView: View {
                 .filter { calendar.isDate($0.date, inSameDayAs: day.date) }
             let used = usedModel
             let ordered = sameDay.filter { $0.model == used } + sameDay.filter { $0.model != used }
-            rows = ModelComparisonProvider.showingApp(ordered, appDays: [day] + appDays, used: used, timeZone: timeZone)
+            rows = ModelComparisonProvider.showingApp(ordered, appDays: appDays.isEmpty ? [day] : appDays, used: used, timeZone: timeZone)
             externalSources = await extTask?.sources ?? []
             failed = rows.isEmpty
         } catch {

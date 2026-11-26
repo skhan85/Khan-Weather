@@ -6,7 +6,7 @@ import WeatherCore
 struct ModelGridView: View {
     let location: Coordinate
     let timeZone: TimeZone
-    /// The app's displayed days, so the Khan Weather row matches the rest of the app.
+    /// The app's calendar-day rows (`Forecast.daily`), so Today compares midnight-to-midnight alongside the other models.
     var appDays: [DailyForecast] = []
 
     @State private var days: [ModelDay] = []

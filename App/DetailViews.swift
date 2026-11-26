@@ -176,7 +176,7 @@ struct DayDetailView: View {
     let hours: [HourlyForecast]
     let timeZone: TimeZone
     var location: Coordinate?
-    /// All the app's displayed days, passed on to the model comparison.
+    /// All the app's calendar-day rows (`Forecast.daily`), passed on to the model comparison.
     var appDays: [DailyForecast] = []
     /// 1991–2020 normal high and low for the date, when known.
     var normal: (high: Double, low: Double)? = nil

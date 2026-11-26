@@ -342,7 +342,7 @@ private struct ForecastList: View {
                 ForEach(Array(days.enumerated()), id: \.element.id) { index, day in
                     NavigationLink {
                         DayDetailView(day: day, hours: forecast.displayHours(on: day), timeZone: forecast.timeZone,
-                                      location: forecast.location, appDays: days,
+                                      location: forecast.location, appDays: forecast.daily,
                                       normal: localNormals?.normal(for: day.date, timeZone: forecast.timeZone))
                     } label: {
                         DailyRow(day: day, isToday: index == 0, timeZone: forecast.timeZone,
@@ -352,7 +352,7 @@ private struct ForecastList: View {
                     }
                 }
                 NavigationLink {
-                    ModelGridView(location: forecast.location, timeZone: forecast.timeZone, appDays: days)
+                    ModelGridView(location: forecast.location, timeZone: forecast.timeZone, appDays: forecast.daily)
                 } label: {
                     Label {
                         Text("Compare all models").font(.subheadline.weight(.semibold))

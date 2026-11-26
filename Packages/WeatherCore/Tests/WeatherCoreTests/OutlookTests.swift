@@ -155,6 +155,31 @@ final class CompareRowMatchesAppTests: XCTestCase {
         XCTAssertEqual(out[2].low, 3.4)
         XCTAssertEqual(out[3].high, 9, "a day the app doesn't have keeps the blend")
     }
+
+    func testCompareUsesCalendarDayLowInsteadOfTonightLow() {
+        let tz = TimeZone(identifier: "America/Toronto")!
+        let today = Date(timeIntervalSince1970: 1_795_150_800)   // 2026-11-20 00:00 Toronto
+        let tomorrow = today.addingTimeInterval(86_400)
+        // Morning was -5°, tonight is 0°. Calendar daily[0] keeps -5°; displayDaily()[0] uses 0°.
+        let hours = (0..<36).map { h in
+            HourlyForecast(time: today.addingTimeInterval(Double(h) * 3600),
+                           temperature: h == 6 ? -5.0 : (h >= 24 ? 0.0 : 4.0),
+                           condition: .clear)
+        }
+        let forecast = Forecast(
+            location: .fallback, timeZoneIdentifier: "America/Toronto",
+            current: CurrentConditions(time: today.addingTimeInterval(19 * 3600), temperature: 2.0,
+                                       feelsLike: 2.0, feelsLikeKind: .apparent, condition: .clear, isDay: false),
+            hourly: hours,
+            daily: [DailyForecast(date: today, high: 4.0, low: -5.0, condition: .clear),
+                    DailyForecast(date: tomorrow, high: 5.0, low: 0.0, condition: .clear)],
+            source: "test", fetchedAt: today
+        )
+        let rows = [ModelDay(model: .blend, date: today, high: 4.0, low: -4.0, condition: .clear)]
+        let compared = ModelComparisonProvider.showingApp(rows, appDays: forecast.daily, used: .blend, timeZone: tz)
+        XCTAssertEqual(compared[0].low, -5.0)
+        XCTAssertEqual(forecast.displayDaily(at: today.addingTimeInterval(19 * 3600))[0].low, 0.0)
+    }
 }
 
 final class TodaysHighOnTheCurveTests: XCTestCase {

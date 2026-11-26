@@ -132,11 +132,8 @@ public struct ModelComparisonProvider: Sendable {
     }
 
     /// The row for the model Khan Weather uses shows the app's own high and low for the day
-    /// (the 10-day list, the Now card and the widget), not a blend of each model's daily max/min.
-    /// Models peak at different hours, so averaging their highs runs warmer than the high of the
-    /// averaged hourly curve the app shows (16° against 15°), and today's low is tonight's low.
-    /// `appDays` are the app's displayed rows (`Forecast.displayDaily`); days it doesn't have keep
-    /// the computed blend.
+    /// rather than a blend of each model's daily max/min. Pass `Forecast.daily` so Today compares
+    /// midnight-to-midnight alongside the other models; days it doesn't have keep the computed blend.
     public static func showingApp(_ rows: [ModelDay], appDays: [DailyForecast], used: WeatherModel,
                                   timeZone: TimeZone) -> [ModelDay] {
         var calendar = Calendar(identifier: .gregorian)

@@ -65,7 +65,7 @@ fun ModelComparisonScreen(day: DailyForecast, forecast: Forecast, nav: (Screen) 
             if (all != null) {
                 val same = all.filter { forecast.cal.isSameDay(it.date, day.date) }
                 val ordered = same.filter { it.model == used } + same.filter { it.model != used }
-                rows = ModelComparisonProvider.showingApp(ordered, listOf(day) + forecast.displayDaily(), used, zone)
+                rows = ModelComparisonProvider.showingApp(ordered, forecast.daily, used, zone)
             }
             extSources = extTask.await()?.sources.orEmpty()
         }
@@ -124,7 +124,7 @@ fun ModelComparisonScreen(day: DailyForecast, forecast: Forecast, nav: (Screen) 
             }
             val source = if (used == WeatherModel.blend) BlendRegion.summary(location)
             else "Khan Weather's temperatures here come from ${used.displayName}."
-            Text(source + " The highlighted row's high and low are the ones the app shows, taken from its hourly forecast (today's low is tonight's low); the other rows are each model's midnight-to-midnight high and low. High-res models only reach a day or two ahead. Models via Open-Meteo.com (CC BY 4.0).",
+            Text(source + " The highlighted row's high and low come from the app's midnight-to-midnight hourly forecast, on the same 24-hour window as the other models. High-res models only reach a day or two ahead. Models via Open-Meteo.com (CC BY 4.0).",
                 style = style(12.sp, color = Color.White.copy(alpha = 0.8f)), modifier = Modifier.padding(horizontal = 32.dp).padding(bottom = 14.dp))
         }
         Section(null, null, PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
@@ -152,7 +152,7 @@ fun ModelGridScreen(forecast: Forecast) {
     var loading by remember { mutableStateOf(true) }
     LaunchedEffect(location) {
         val all = loadModels(location)
-        days = all?.let { ModelComparisonProvider.showingApp(it, forecast.displayDaily(), WeatherModel.usedForTemperatures(location), zone) }
+        days = all?.let { ModelComparisonProvider.showingApp(it, forecast.daily, WeatherModel.usedForTemperatures(location), zone) }
         loading = false
     }
     val d = days

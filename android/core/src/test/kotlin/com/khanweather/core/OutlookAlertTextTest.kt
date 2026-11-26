@@ -132,6 +132,29 @@ class OutlookTest {
         assertEquals(9.0, out[3].high)
     }
 
+    @Test fun compareUsesCalendarDayLowInsteadOfTonightLow() {
+        val today = MIDNIGHT
+        val tomorrow = today + 86_400
+        val hours = (0 until 36).map { h ->
+            HourlyForecast(time = today + h * 3600.0,
+                temperature = if (h == 6) -5.0 else if (h >= 24) 0.0 else 4.0,
+                condition = WeatherCondition.clear)
+        }
+        val evening = today + 19 * 3600.0
+        val f = Forecast(
+            Coordinate.fallback, "America/Toronto",
+            CurrentConditions(evening, 2.0, 2.0, FeelsLikeKind.apparent, condition = WeatherCondition.clear, isDay = false),
+            hours,
+            listOf(DailyForecast(today, 4.0, -5.0, condition = WeatherCondition.clear),
+                DailyForecast(tomorrow, 5.0, 0.0, condition = WeatherCondition.clear)),
+            "test", today,
+        )
+        val rows = listOf(ModelDay(WeatherModel.blend, today, 4.0, -4.0, WeatherCondition.clear, null, null))
+        val compared = ModelComparisonProvider.showingApp(rows, f.daily, WeatherModel.blend, "America/Toronto")
+        assertEquals(-5.0, compared[0].low)
+        assertEquals(0.0, f.displayDaily(evening)[0].low)
+    }
+
     private fun peakForecast(): Pair<Forecast, Epoch> {
         val temps = listOf(7.5, 7.3, 7.1, 7.0, 7.2, 7.6, 7.9, 8.0, 8.1, 9.0, 11.0, 13.0, 15.4, 15.6, 15.4, 14.6,
             13.0, 11.5, 10.0, 8.5, 7.0, 5.5, 4.5, 3.8, 3.6, 3.4, 3.6, 4.0)
