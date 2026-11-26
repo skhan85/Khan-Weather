@@ -73,9 +73,11 @@ public enum ModelBlend {
         // Regional relay weights are scored across synoptic models; mix 50/50 with the regional
         // prior across all lead times while scaling non-synoptic models by 0.5 so total weight stays balanced.
         if let regMap {
-            let regTotal = regMap.values.reduce(0, +)
+            let regTotal = regMap.reduce(0.0) { acc, kv in
+                acc + (synopticModels.contains(kv.key) && region.models.contains(kv.key) ? kv.value : 0)
+            }
             if regTotal > 0 {
-                if let reg = regMap[model], synopticModels.contains(model) {
+                if let reg = regMap[model], synopticModels.contains(model), region.models.contains(model) {
                     return 0.5 * prior + 0.5 * (reg / regTotal)
                 }
                 return 0.5 * prior
@@ -143,8 +145,8 @@ public enum ModelBlend {
         switch model {
         case .canadaHighRes, .usBlend, .europeHighRes: return 0.18
         case .usHighRes: return 0.16
-        case .europe: return 0.14
-        case .germany, .france, .netherlands, .denmark: return 0.12
+        case .europe, .japan: return 0.14
+        case .germany, .france, .netherlands, .denmark, .norway: return 0.12
         case .canada: return 0.10
         case .us, .uk, .bestMatch: return 0.08
         case .europeAI: return 0.04
@@ -181,6 +183,9 @@ public enum ModelBlend {
     /// Taken off the coldest blended hour for the low: the coldest hourly reading was 0.37-0.66°
     /// above the recorded low at the same stations.
     public static let lowAllowance: Double = 0.5
+    /// Weight and horizon for blending Google Weather hourly temperatures over the regional NWP blend.
+    public static let googleWeight: Double = 0.15
+    public static let googleHorizonHours: Double = 48
 
     // MARK: Rain or snow
 

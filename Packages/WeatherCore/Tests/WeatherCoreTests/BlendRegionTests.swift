@@ -48,6 +48,11 @@ final class BlendRegionTests: XCTestCase {
         XCTAssertEqual(BlendRegion.at(Coordinate(latitude: -33.87, longitude: 151.2)).id, "oceania")   // Sydney
         XCTAssertEqual(BlendRegion.at(Coordinate(latitude: -23.55, longitude: -46.63)).id, "global")   // São Paulo
         XCTAssertEqual(BlendRegion.home.id, "na_east")
+        XCTAssertFalse(BlendRegion.at(Coordinate(latitude: 43.52, longitude: -79.88)).models.contains(.uk))
+        let europe = BlendRegion.at(Coordinate(latitude: 51.5, longitude: -0.12))
+        XCTAssertFalse(europe.models.contains(.us))
+        XCTAssertTrue(europe.models.contains(.norway))
+        XCTAssertTrue(BlendRegion.at(Coordinate(latitude: 35.68, longitude: 139.7)).models.contains(.japan))
     }
 
     func testBlendUsesTheSpotsWeights() {

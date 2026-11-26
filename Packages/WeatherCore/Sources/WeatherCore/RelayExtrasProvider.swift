@@ -115,8 +115,8 @@ public struct RelayGoogleHourly: Codable, Equatable, Sendable {
 }
 
 public extension Forecast {
-    /// Blends Google Weather's hourly forecast (0.35 weight over the full 120h window) into `hourly`
-    /// and updates daily high/low and feels-like consistently.
+    /// Blends Google Weather's hourly forecast (`ModelBlend.googleWeight` over `ModelBlend.googleHorizonHours`)
+    /// into `hourly` and updates daily high/low and feels-like consistently.
     func applyingGoogleHourly(_ gh: RelayGoogleHourly?) -> Forecast {
         guard let gh, !gh.hours.isEmpty, !hourly.isEmpty else { return self }
         var byHour: [Int: RelayGoogleHourly.Hour] = [:]
@@ -125,7 +125,9 @@ public extension Forecast {
             byHour[k] = g
         }
         var copy = self
-        let cutoff = current.time.addingTimeInterval(120 * 3600)
+        let gwWeight = ModelBlend.googleWeight
+        let omBaseWeight = 1 - gwWeight
+        let cutoff = current.time.addingTimeInterval(ModelBlend.googleHorizonHours * 3600)
         var changed = false
         var touchedHours = Set<Int>()
         copy.hourly = hourly.map { hour in
@@ -133,12 +135,12 @@ public extension Forecast {
             let k = Int((hour.time.timeIntervalSince1970 / 3600).rounded()) * 3600
             guard let g = byHour[k] else { return hour }
             var h = hour
-            h.temperature = 0.65 * h.temperature + 0.35 * g.temp
+            h.temperature = omBaseWeight * h.temperature + gwWeight * g.temp
             if let dp = h.dewPoint, let gdp = g.dew_point {
-                h.dewPoint = min(h.temperature, 0.65 * dp + 0.35 * gdp)
+                h.dewPoint = min(h.temperature, omBaseWeight * dp + gwWeight * gdp)
             }
             if let w = h.windSpeed, let gw = g.wind_kmh {
-                h.windSpeed = max(0, 0.65 * w + 0.35 * gw)
+                h.windSpeed = max(0, omBaseWeight * w + gwWeight * gw)
             }
             touchedHours.insert(Int(hour.time.timeIntervalSince1970))
             changed = true
@@ -152,7 +154,7 @@ public extension Forecast {
             guard hrs.count >= 18 else { return day }
             let touched = hrs.filter { touchedHours.contains(Int($0.time.timeIntervalSince1970)) }.count
             guard touched > 0 else { return day }
-            let omShare = 1 - 0.35 * (Double(touched) / Double(hrs.count))
+            let omShare = 1 - gwWeight * (Double(touched) / Double(hrs.count))
             var d = day
             d.phaseHighLift = day.phaseHighLift.map { $0 * omShare }
             d.phaseLowDrop = day.phaseLowDrop.map { $0 * omShare }
@@ -162,9 +164,9 @@ public extension Forecast {
         }
         if current.time <= cutoff,
            let gNow = Self.interpolatedGoogle(gh.hours, at: current.time) {
-            copy.current.temperature = 0.65 * copy.current.temperature + 0.35 * gNow.temperature
+            copy.current.temperature = omBaseWeight * copy.current.temperature + gwWeight * gNow.temperature
             if let w = copy.current.windSpeed, let gw = gNow.wind {
-                copy.current.windSpeed = max(0, 0.65 * w + 0.35 * gw)
+                copy.current.windSpeed = max(0, omBaseWeight * w + gwWeight * gw)
             }
         }
         return copy.withStandardFeelsLike()

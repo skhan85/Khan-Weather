@@ -23,7 +23,9 @@ enum class WeatherModel(val raw: String, val displayName: String) {
     europeHighRes("ecmwf_ifs", "European 9 km (ECMWF IFS)"),
     france("meteofrance_seamless", "Météo-France (ARPEGE/AROME)"),
     netherlands("knmi_seamless", "Dutch KNMI (HARMONIE)"),
-    denmark("dmi_seamless", "Danish DMI (HARMONIE)");
+    denmark("dmi_seamless", "Danish DMI (HARMONIE)"),
+    norway("metno_seamless", "MET Norway"),
+    japan("jma_seamless", "JMA (Japan)");
 
     companion object {
         fun usedForTemperatures(c: Coordinate): WeatherModel =
@@ -93,10 +95,10 @@ object ModelBlend {
         val prior = interpolatedPrior(model, leadHours, byDay)
         val regMap = coordinate?.let { regional[gridKey(it)] } ?: regional["default"]
         if (regMap != null) {
-            val regTotal = regMap.values.sum()
+            val regTotal = regMap.entries.sumOf { (k, v) -> if (k in synopticModels && k in region.models) v else 0.0 }
             if (regTotal > 0.0) {
                 val reg = regMap[model]
-                if (reg != null && model in synopticModels) {
+                if (reg != null && model in synopticModels && model in region.models) {
                     return 0.5 * prior + 0.5 * (reg / regTotal)
                 }
                 return 0.5 * prior
@@ -153,8 +155,8 @@ object ModelBlend {
     fun precipitationWeight(model: WeatherModel): Double = when (model) {
         WeatherModel.canadaHighRes, WeatherModel.usBlend, WeatherModel.europeHighRes -> 0.18
         WeatherModel.usHighRes -> 0.16
-        WeatherModel.europe -> 0.14
-        WeatherModel.germany, WeatherModel.france, WeatherModel.netherlands, WeatherModel.denmark -> 0.12
+        WeatherModel.europe, WeatherModel.japan -> 0.14
+        WeatherModel.germany, WeatherModel.france, WeatherModel.netherlands, WeatherModel.denmark, WeatherModel.norway -> 0.12
         WeatherModel.canada -> 0.10
         WeatherModel.us, WeatherModel.uk, WeatherModel.bestMatch -> 0.08
         WeatherModel.europeAI -> 0.04
@@ -179,6 +181,8 @@ object ModelBlend {
     // Daily high and low: the real high and low fall between hours.
     const val highAllowance = 0.4
     const val lowAllowance = 0.5
+    const val googleWeight = 0.15
+    const val googleHorizonHours = 48.0
 
     /** A model hour counts as wet for its rain-or-snow call from this much (mm). */
     const val typeWetMm = 0.05

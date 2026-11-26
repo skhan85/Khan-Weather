@@ -11,7 +11,7 @@ import json, os, sys
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Packages", "WeatherCore")
 ORDER = ["germany", "europeAI", "europe", "uk", "canada", "canadaHighRes", "us", "usHighRes", "usBlend",
-         "europeHighRes", "france", "netherlands", "denmark"]
+         "europeHighRes", "france", "netherlands", "denmark", "norway", "japan"]
 
 
 def day(d):
@@ -30,10 +30,11 @@ def region(r, indent):
 
 
 NAMES = {"ncep_nbm_conus": "usBlend", "ecmwf_ifs": "europeHighRes", "meteofrance_seamless": "france",
-         "knmi_seamless": "netherlands", "dmi_seamless": "denmark", "jma_seamless": "japan",
-         "cma_grapes_global": "china", "gem_seamless": "canada", "gem_hrdps_continental": "canadaHighRes",
-         "gfs_seamless": "us", "gfs_hrrr": "usHighRes", "ecmwf_ifs025": "europe",
-         "ecmwf_aifs025_single": "europeAI", "icon_seamless": "germany", "ukmo_seamless": "uk"}
+         "knmi_seamless": "netherlands", "dmi_seamless": "denmark", "metno_seamless": "norway",
+         "jma_seamless": "japan", "cma_grapes_global": "china", "gem_seamless": "canada",
+         "gem_hrdps_continental": "canadaHighRes", "gfs_seamless": "us", "gfs_hrrr": "usHighRes",
+         "ecmwf_ifs025": "europe", "ecmwf_aifs025_single": "europeAI", "icon_seamless": "germany",
+         "ukmo_seamless": "uk"}
 CORE = ["canada", "us", "europe", "europeAI", "germany", "uk"]
 
 

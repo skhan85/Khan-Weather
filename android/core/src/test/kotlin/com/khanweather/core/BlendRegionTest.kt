@@ -25,6 +25,10 @@ class BlendRegionTest {
         assertEquals("oceania", BlendRegion.at(Coordinate(-33.87, 151.2)).id)     // Sydney
         assertEquals("global", BlendRegion.at(Coordinate(-23.55, -46.63)).id)     // São Paulo
         assertEquals("na_east", BlendRegion.home.id)
+        assertTrue(WeatherModel.uk !in BlendRegion.at(Coordinate(43.52, -79.88)).models)
+        val europe = BlendRegion.at(Coordinate(51.5, -0.12))
+        assertTrue(WeatherModel.us !in europe.models && WeatherModel.norway in europe.models)
+        assertTrue(WeatherModel.japan in BlendRegion.at(Coordinate(35.68, 139.7)).models)
     }
 
     @Test fun blendUsesTheSpotsWeights() {

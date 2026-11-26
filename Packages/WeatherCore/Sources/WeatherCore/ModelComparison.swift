@@ -22,6 +22,8 @@ public enum WeatherModel: String, CaseIterable, Sendable {
     case france = "meteofrance_seamless"
     case netherlands = "knmi_seamless"
     case denmark = "dmi_seamless"
+    case norway = "metno_seamless"
+    case japan = "jma_seamless"
 
     public var name: String {
         switch self {
@@ -40,6 +42,8 @@ public enum WeatherModel: String, CaseIterable, Sendable {
         case .france: return "Météo-France (ARPEGE/AROME)"
         case .netherlands: return "Dutch KNMI (HARMONIE)"
         case .denmark: return "Danish DMI (HARMONIE)"
+        case .norway: return "MET Norway"
+        case .japan: return "JMA (Japan)"
         }
     }
 

@@ -302,8 +302,8 @@ final class OpenMeteoProviderTests: XCTestCase {
                                                                   dew_point: nil, wind_kmh: nil, gust_kmh: nil,
                                                                   pop: nil, precip_mm: nil, snow_mm: nil)])
         let blended = f.applyingGoogleHourly(gh)
-        // Sample hour[0] is -2.0°C; 0.65 * (-2.0) + 0.35 * 2.0 = -0.6°C
-        XCTAssertEqual(blended.hourly[0].temperature, -0.6, accuracy: 0.001)
+        // Sample hour[0] is -2.0°C; 0.85 * (-2.0) + 0.15 * 2.0 = -1.4°C
+        XCTAssertEqual(blended.hourly[0].temperature, -1.4, accuracy: 0.001)
 
         // When Google covers current.time (between two hours), current.temperature is blended too.
         let t1 = t0 + 3600
@@ -315,8 +315,8 @@ final class OpenMeteoProviderTests: XCTestCase {
                                         RelayGoogleHourly.Hour(epoch: t0, temp: 2.0, feels_like: nil, dew_point: nil, wind_kmh: nil, gust_kmh: nil, pop: nil, precip_mm: nil, snow_mm: nil),
                                         RelayGoogleHourly.Hour(epoch: t1, temp: 6.0, feels_like: nil, dew_point: nil, wind_kmh: nil, gust_kmh: nil, pop: nil, precip_mm: nil, snow_mm: nil),
                                     ])
-        // Interpolated Google at midpoint is 4.0°C -> 0.65 * 0.0 + 0.35 * 4.0 = 1.4°C
-        XCTAssertEqual(fMid.applyingGoogleHourly(gh2).current.temperature, 1.4, accuracy: 0.001)
+        // Interpolated Google at midpoint is 4.0°C -> 0.85 * 0.0 + 0.15 * 4.0 = 0.6°C
+        XCTAssertEqual(fMid.applyingGoogleHourly(gh2).current.temperature, 0.6, accuracy: 0.001)
     }
 
     func testImplausibleHomeStationAnchorDoesNotSkewBlend() throws {
@@ -388,10 +388,10 @@ final class OpenMeteoProviderTests: XCTestCase {
             }
         )
         let withGoogle = forecast.applyingGoogleHourly(gh)
-        // Day 6 was beyond 120h and untouched by Google -> keeps exact phase-recovered extremes.
+        // Day 6 was beyond 48h and untouched by Google -> keeps exact phase-recovered extremes.
         XCTAssertEqual(withGoogle.daily[1].high, 8.4, accuracy: 0.001)
         XCTAssertEqual(withGoogle.daily[1].low, -1.25, accuracy: 0.001)
-        // Day 0 hourly min after 35% Google @ 3.0° becomes 0.65*0.5 + 0.35*3.0 = 1.375; phaseLowDrop scales by 0.65 (0.8125).
-        XCTAssertEqual(withGoogle.daily[0].low, 1.375 - 0.8125 - 0.5, accuracy: 0.001)
+        // Day 0 hourly min after 15% Google @ 3.0° becomes 0.85*0.5 + 0.15*3.0 = 0.875; phaseLowDrop scales by 0.85 (1.0625).
+        XCTAssertEqual(withGoogle.daily[0].low, 0.875 - 1.0625 - 0.5, accuracy: 0.001)
     }
 }

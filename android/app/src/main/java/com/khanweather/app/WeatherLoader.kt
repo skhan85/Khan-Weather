@@ -197,7 +197,9 @@ object WeatherLoader {
     fun Forecast.applyingGoogleHourly(gh: RelayGoogleHourly?): Forecast {
         if (gh == null || gh.hours.isEmpty() || hourly.isEmpty()) return this
         val byHour = gh.hours.associateBy { kotlin.math.round(it.epoch / 3600.0).toLong() * 3600L }
-        val cutoff = current.time + 120 * 3600.0
+        val gwWeight = ModelBlend.googleWeight
+        val omBaseWeight = 1.0 - gwWeight
+        val cutoff = current.time + ModelBlend.googleHorizonHours * 3600.0
         var changed = false
         val touchedHours = mutableSetOf<Long>()
         val copy = deepCopy()
@@ -205,11 +207,11 @@ object WeatherLoader {
             if (hour.time > cutoff) return@map hour
             val g = byHour[kotlin.math.round(hour.time / 3600.0).toLong() * 3600L] ?: return@map hour
             val h = hour.copy()
-            h.temperature = 0.65 * h.temperature + 0.35 * g.temp
+            h.temperature = omBaseWeight * h.temperature + gwWeight * g.temp
             val dp = h.dewPoint; val gdp = g.dew_point
-            if (dp != null && gdp != null) h.dewPoint = minOf(h.temperature, 0.65 * dp + 0.35 * gdp)
+            if (dp != null && gdp != null) h.dewPoint = minOf(h.temperature, omBaseWeight * dp + gwWeight * gdp)
             val w = h.windSpeed; val gw = g.wind_kmh
-            if (w != null && gw != null) h.windSpeed = maxOf(0.0, 0.65 * w + 0.35 * gw)
+            if (w != null && gw != null) h.windSpeed = maxOf(0.0, omBaseWeight * w + gwWeight * gw)
             touchedHours.add(hour.time.toLong())
             changed = true
             h
@@ -222,7 +224,7 @@ object WeatherLoader {
             if (hrs.size < 18) return@map day
             val touched = hrs.count { touchedHours.contains(it.time.toLong()) }
             if (touched == 0) return@map day
-            val omShare = 1.0 - 0.35 * (touched.toDouble() / hrs.size)
+            val omShare = 1.0 - gwWeight * (touched.toDouble() / hrs.size)
             val lift = day.phaseHighLift?.let { it * omShare }
             val drop = day.phaseLowDrop?.let { it * omShare }
             day.copy(
@@ -234,10 +236,10 @@ object WeatherLoader {
         }
         if (current.time <= cutoff) {
             interpolatedGoogle(gh.hours, current.time)?.let { (gTemp, gWind) ->
-                copy.current.temperature = 0.65 * copy.current.temperature + 0.35 * gTemp
+                copy.current.temperature = omBaseWeight * copy.current.temperature + gwWeight * gTemp
                 val w = copy.current.windSpeed
                 if (w != null && gWind != null) {
-                    copy.current.windSpeed = maxOf(0.0, 0.65 * w + 0.35 * gWind)
+                    copy.current.windSpeed = maxOf(0.0, omBaseWeight * w + gwWeight * gWind)
                 }
             }
         }
