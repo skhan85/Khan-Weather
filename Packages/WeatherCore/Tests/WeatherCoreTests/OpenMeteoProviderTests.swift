@@ -394,4 +394,43 @@ final class OpenMeteoProviderTests: XCTestCase {
         // Day 0 hourly min after 15% Google @ 3.0° becomes 0.85*0.5 + 0.15*3.0 = 0.875; phaseLowDrop scales by 0.85 (1.0625).
         XCTAssertEqual(withGoogle.daily[0].low, 0.875 - 1.0625 - 0.5, accuracy: 0.001)
     }
+
+    func testDiurnalBiasInterpolatesCyclicUTCIsolatesSpotsAndTapersNearAnchor() throws {
+        let spotA = Coordinate(latitude: 12.34, longitude: 45.67)
+        let spotB = Coordinate(latitude: 12.34, longitude: 45.90)
+        ModelBlend.setDiurnalBias([1.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0], for: spotA)
+
+        // Exact UTC midnight: 20000 * 86400 = 1728000000
+        let midnight = 1728000000
+        let h0130 = midnight + 5400
+        let h1330 = midnight + 13 * 3600 + 1800
+
+        // Cyclic wrap at 00:00Z blends bin 7 (0.0) and bin 0 (1.0) -> 0.5; spotB stays 0; day 9 tapers to 0.6x.
+        XCTAssertEqual(ModelBlend.diurnalBias(at: Double(midnight), leadHours: 24, coordinate: spotA), 0.5, accuracy: 0.001)
+        XCTAssertEqual(ModelBlend.diurnalBias(at: Double(h0130), leadHours: 24, coordinate: spotA), 1.0, accuracy: 0.001)
+        XCTAssertEqual(ModelBlend.diurnalBias(at: Double(h1330), leadHours: 24, coordinate: spotA), -1.0, accuracy: 0.001)
+        XCTAssertEqual(ModelBlend.diurnalBias(at: Double(h0130), leadHours: 216, coordinate: spotA), 0.6, accuracy: 0.001)
+        XCTAssertEqual(ModelBlend.diurnalBias(at: Double(h0130), leadHours: 24, coordinate: spotB), 0.0, accuracy: 0.001)
+
+        let blend = """
+        {
+          "hourly": { "time": [\(h0130), \(h1330)],
+                      "temperature_2m_gem_hrdps_continental": [5.0, 5.0],
+                      "temperature_2m_icon_seamless": [5.0, 5.0],
+                      "temperature_2m_ecmwf_aifs025_single": [5.0, 5.0] }
+        }
+        """.data(using: .utf8)!
+        let farLead = try OpenMeteoProvider.parseBlend(blend, region: .home, anchor: nil,
+                                                       now: Date(timeIntervalSince1970: Double(midnight - 86400)),
+                                                       coordinate: spotA)
+        XCTAssertEqual(farLead.hourly[h0130]!.temperature, 4.0, accuracy: 0.001)
+        XCTAssertEqual(farLead.hourly[h1330]!.temperature, 6.0, accuracy: 0.001)
+        XCTAssertEqual(farLead.hourly[h0130]!.modelTemperatures[.canadaHighRes]!, 4.0, accuracy: 0.001)
+
+        let liveAnchor = ModelBlend.Anchor(temperature: 5.0, time: Date(timeIntervalSince1970: Double(h0130)))
+        let anchored = try OpenMeteoProvider.parseBlend(blend, region: .home, anchor: liveAnchor,
+                                                        now: Date(timeIntervalSince1970: Double(h0130)),
+                                                        coordinate: spotA)
+        XCTAssertEqual(anchored.hourly[h0130]!.temperature, 5.0, accuracy: 0.001)
+    }
 }

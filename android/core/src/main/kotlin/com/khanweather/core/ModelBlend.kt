@@ -3,6 +3,7 @@
 package com.khanweather.core
 
 import kotlin.math.abs
+import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 
@@ -56,6 +57,7 @@ object ModelBlend {
 
     /** The weight of `model` at `leadHours` from now, in `region`. */
     @Volatile private var regional: Map<String, Map<WeatherModel, Double>> = emptyMap()
+    @Volatile private var diurnalBiasMap: Map<String, List<Double>> = emptyMap()
 
     private val synopticModels = setOf(
         WeatherModel.europeAI, WeatherModel.europe, WeatherModel.germany,
@@ -63,6 +65,8 @@ object ModelBlend {
     )
 
     fun gridKey(c: Coordinate): String = "${(c.latitude * 2).rndInt()},${(c.longitude * 2).rndInt()}"
+
+    fun spotKey(c: Coordinate): String = "${(c.latitude * 10).rndInt()},${(c.longitude * 10).rndInt()}"
 
     fun setRegionalWeights(raw: Map<String, Double>, coordinate: Coordinate? = null) {
         val map = mapOf(
@@ -78,6 +82,35 @@ object ModelBlend {
             val key = coordinate?.let(::gridKey) ?: "default"
             regional = regional + (key to parsed)
         }
+    }
+
+    /** Registers a 3-hour UTC diurnal bias curve (8 bins covering 00..21Z; positive = models run warm). */
+    fun setDiurnalBias(bias3h: List<Double>, coordinate: Coordinate? = null) {
+        if (bias3h.size != 8 || !bias3h.all { it.isFinite() }) return
+        val key = coordinate?.let(::spotKey) ?: "default"
+        diurnalBiasMap = diurnalBiasMap + (key to bias3h.toList())
+    }
+
+    fun liveShare(leadHours: Double, observedTemperature: Double?, currentModelTemps: Map<WeatherModel, Double>?): Double {
+        if (observedTemperature == null || currentModelTemps.isNullOrEmpty() ||
+            leadHours < -1 || leadHours > liveWeightHours) return 0.0
+        return max(0.0, min(1.0, 1 - max(leadHours, 0.0) / liveWeightHours))
+    }
+
+    /** Smoothly interpolated local diurnal bias (°C to subtract from model temperatures) at `epoch`. */
+    fun diurnalBias(epoch: Double, leadHours: Double, coordinate: Coordinate? = null): Double {
+        val map = diurnalBiasMap
+        val bins = coordinate?.let { map[spotKey(it)] } ?: map["default"] ?: return 0.0
+        if (bins.size != 8) return 0.0
+        val secOfDay = ((epoch % 86400.0) + 86400.0) % 86400.0
+        val pos = (secOfDay / 3600.0 - 1.5) / 3.0
+        val lo = floor(pos).toInt()
+        val frac = pos - lo
+        val i0 = ((lo % 8) + 8) % 8
+        val i1 = (i0 + 1) % 8
+        val raw = bins[i0] * (1 - frac) + bins[i1] * frac
+        val leadScale = if (leadHours <= 120) 1.0 else max(0.6, 1.0 - 0.4 * (leadHours - 120) / 96.0)
+        return raw * leadScale
     }
 
     private fun interpolatedPrior(model: WeatherModel, leadHours: Double, byDay: List<Map<WeatherModel, Double>>): Double {
@@ -120,10 +153,7 @@ object ModelBlend {
         val present = values.filterKeys { it in region.models }
         if (present.isEmpty()) return null
 
-        val liveShare = if (observedTemperature != null && currentModelTemps != null && currentModelTemps.isNotEmpty() &&
-            leadHours >= -1 && leadHours <= liveWeightHours) {
-            max(0.0, min(1.0, 1 - max(leadHours, 0.0) / liveWeightHours))
-        } else 0.0
+        val liveShare = liveShare(leadHours, observedTemperature, currentModelTemps)
 
         val errorWeights = mutableMapOf<WeatherModel, Double>()
         if (liveShare > 0 && observedTemperature != null && currentModelTemps != null) {

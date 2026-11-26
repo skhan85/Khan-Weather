@@ -334,10 +334,16 @@ public struct RelayExtrasProvider: Sendable {
             URLQueryItem(name: "lat", value: String(format: "%.2f", c.latitude)),
             URLQueryItem(name: "lon", value: String(format: "%.2f", c.longitude)),
         ]
-        struct R: Decodable { let weights: [String: Double]? }
+        struct R: Decodable {
+            let weights: [String: Double]?
+            let diurnal_bias_3h: [Double]?
+        }
         guard let url = parts.url, let (data, resp) = try? await URLSession.shared.data(for: URLRequest(url: url, timeoutInterval: 8)),
               (resp as? HTTPURLResponse)?.statusCode == 200,
               let decoded = try? JSONDecoder().decode(R.self, from: data) else { return nil }
+        if let bias = decoded.diurnal_bias_3h, bias.count == 8 {
+            ModelBlend.setDiurnalBias(bias, for: c)
+        }
         return decoded.weights
     }
     public func googleHourly(near c: Coordinate) async -> RelayGoogleHourly? {

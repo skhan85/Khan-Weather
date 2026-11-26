@@ -197,10 +197,13 @@ class OpenMeteoProvider(
                     return m
                 }
                 val hourTemps = at(temps)
-                val temp = ModelBlend.blend(hourTemps, lead, region, observedTemperature, currentModelTemps, coordinate) ?: continue
-                val values = hourTemps.values.toList()
-                val hourPrecip = at(precip).filterKeys { hourTemps.containsKey(it) }
-                val hourSnow = at(snow).filterKeys { hourTemps.containsKey(it) }
+                val liveShare = ModelBlend.liveShare(lead, observedTemperature, currentModelTemps)
+                val mos = ModelBlend.diurnalBias(t, lead, coordinate) * (1 - liveShare)
+                val correctedTemps = if (mos == 0.0) hourTemps else hourTemps.mapValues { it.value - mos }
+                val temp = ModelBlend.blend(correctedTemps, lead, region, observedTemperature, currentModelTemps, coordinate) ?: continue
+                val values = correctedTemps.values.toList()
+                val hourPrecip = at(precip).filterKeys { correctedTemps.containsKey(it) }
+                val hourSnow = at(snow).filterKeys { correctedTemps.containsKey(it) }
                 val wet = hourPrecip.count { it.value >= ModelBlend.wetHourMm }
                 val snowShare = ModelBlend.precipitationSnowShare(temp, hourPrecip, hourSnow)
                 out.hourly[t.toLong()] = ModelTemperatures.Hour(
@@ -216,7 +219,7 @@ class OpenMeteoProvider(
                     windSpeed = ModelBlend.blend(at(winds), lead, region, coordinate = coordinate),
                     windGusts = ModelBlend.blend(at(gusts), lead, region, coordinate = coordinate),
                     dewPoint = ModelBlend.blend(at(dews), lead, region, coordinate = coordinate),
-                    modelTemperatures = hourTemps,
+                    modelTemperatures = correctedTemps,
                 )
             }
             return out

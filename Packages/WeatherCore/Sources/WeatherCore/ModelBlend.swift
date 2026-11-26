@@ -32,6 +32,7 @@ public enum ModelBlend {
     /// The weight of `model` at `leadHours` from now, in `region`.
     private static let lock = NSLock()
     nonisolated(unsafe) private static var _regional: [String: [WeatherModel: Double]] = [:]
+    nonisolated(unsafe) private static var _diurnalBias: [String: [Double]] = [:]
 
     private static let synopticModels: Set<WeatherModel> = [
         .europeAI, .europe, .germany, .canada, .us, .uk,
@@ -40,6 +41,12 @@ public enum ModelBlend {
     static func gridKey(_ coordinate: Coordinate) -> String {
         let lat = Int((coordinate.latitude * 2).rounded())
         let lon = Int((coordinate.longitude * 2).rounded())
+        return "\(lat),\(lon)"
+    }
+
+    static func spotKey(_ coordinate: Coordinate) -> String {
+        let lat = Int((coordinate.latitude * 10).rounded())
+        let lon = Int((coordinate.longitude * 10).rounded())
         return "\(lat),\(lon)"
     }
 
@@ -54,6 +61,38 @@ public enum ModelBlend {
         guard !parsed.isEmpty else { return }
         let key = coordinate.map(gridKey) ?? "default"
         lock.lock(); _regional[key] = parsed; lock.unlock()
+    }
+
+    /// Registers a 3-hour UTC diurnal bias curve (8 bins covering 00..21Z; positive = models run warm).
+    public static func setDiurnalBias(_ bias3h: [Double], for coordinate: Coordinate? = nil) {
+        guard bias3h.count == 8, bias3h.allSatisfy(\.isFinite) else { return }
+        let key = coordinate.map(spotKey) ?? "default"
+        lock.lock(); _diurnalBias[key] = bias3h; lock.unlock()
+    }
+
+    static func liveShare(leadHours: Double,
+                          observedTemperature: Double?,
+                          currentModelTemps: [WeatherModel: Double]?) -> Double {
+        guard observedTemperature != nil, let currentModelTemps, !currentModelTemps.isEmpty,
+              leadHours >= -1, leadHours <= liveWeightHours else { return 0 }
+        return max(0, min(1, 1 - max(leadHours, 0) / liveWeightHours))
+    }
+
+    /// Smoothly interpolated local diurnal bias (°C to subtract from model temperatures) at `epoch`.
+    static func diurnalBias(at epoch: Double, leadHours: Double, coordinate: Coordinate? = nil) -> Double {
+        lock.lock()
+        let bins = coordinate.flatMap { _diurnalBias[spotKey($0)] } ?? _diurnalBias["default"]
+        lock.unlock()
+        guard let bins, bins.count == 8 else { return 0 }
+        let secOfDay = ((epoch.truncatingRemainder(dividingBy: 86400)) + 86400).truncatingRemainder(dividingBy: 86400)
+        let pos = (secOfDay / 3600.0 - 1.5) / 3.0
+        let lo = Int(floor(pos))
+        let frac = pos - Double(lo)
+        let i0 = ((lo % 8) + 8) % 8
+        let i1 = (i0 + 1) % 8
+        let raw = bins[i0] * (1 - frac) + bins[i1] * frac
+        let leadScale = leadHours <= 120 ? 1.0 : max(0.6, 1.0 - 0.4 * (leadHours - 120) / 96)
+        return raw * leadScale
     }
 
     private static func interpolatedPrior(_ model: WeatherModel, leadHours: Double, byDay: [[WeatherModel: Double]]) -> Double {
@@ -99,13 +138,9 @@ public enum ModelBlend {
         let present = values.filter { region.models.contains($0.key) }
         guard !present.isEmpty else { return nil }
 
-        let liveShare: Double
-        if observedTemperature != nil, let currentModelTemps, !currentModelTemps.isEmpty,
-           leadHours >= -1, leadHours <= liveWeightHours {
-            liveShare = max(0, min(1, 1 - max(leadHours, 0) / liveWeightHours))
-        } else {
-            liveShare = 0
-        }
+        let liveShare = liveShare(leadHours: leadHours,
+                                  observedTemperature: observedTemperature,
+                                  currentModelTemps: currentModelTemps)
 
         var errorWeights: [WeatherModel: Double] = [:]
         if liveShare > 0, let obs = observedTemperature, let currentModelTemps {

@@ -327,6 +327,40 @@ class OpenMeteoProviderTest {
         close(-1.25, forecast.daily[0].low, 0.001)
     }
 
+    @Test fun diurnalBiasInterpolatesCyclicUTCIsolatesSpotsAndTapersNearAnchor() {
+        val spotA = Coordinate(12.34, 45.67)
+        val spotB = Coordinate(12.34, 45.90)
+        ModelBlend.setDiurnalBias(listOf(1.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0), spotA)
+
+        // Exact UTC midnight: 20000 * 86400 = 1728000000
+        val midnight = 1728000000L
+        val h0130 = midnight + 5400
+        val h1330 = midnight + 13 * 3600 + 1800
+
+        close(0.5, ModelBlend.diurnalBias(midnight.toDouble(), 24.0, spotA), 0.001)
+        close(1.0, ModelBlend.diurnalBias(h0130.toDouble(), 24.0, spotA), 0.001)
+        close(-1.0, ModelBlend.diurnalBias(h1330.toDouble(), 24.0, spotA), 0.001)
+        close(0.6, ModelBlend.diurnalBias(h0130.toDouble(), 216.0, spotA), 0.001)
+        close(0.0, ModelBlend.diurnalBias(h0130.toDouble(), 24.0, spotB), 0.001)
+
+        val blend = """
+        {
+          "hourly": { "time": [$h0130, $h1330],
+                      "temperature_2m_gem_hrdps_continental": [5.0, 5.0],
+                      "temperature_2m_icon_seamless": [5.0, 5.0],
+                      "temperature_2m_ecmwf_aifs025_single": [5.0, 5.0] }
+        }
+        """.toByteArray()
+        val farLead = OpenMeteoProvider.parseBlend(blend, BlendRegion.home, null, (midnight - 86400).toDouble(), spotA)
+        close(4.0, farLead.hourly[h0130]!!.temperature, 0.001)
+        close(6.0, farLead.hourly[h1330]!!.temperature, 0.001)
+        close(4.0, farLead.hourly[h0130]!!.modelTemperatures[WeatherModel.canadaHighRes]!!, 0.001)
+
+        val liveAnchor = ModelBlend.Anchor(5.0, h0130.toDouble())
+        val anchored = OpenMeteoProvider.parseBlend(blend, BlendRegion.home, liveAnchor, h0130.toDouble(), spotA)
+        close(5.0, anchored.hourly[h0130]!!.temperature, 0.001)
+    }
+
     private val testRegion get() = Regions.testRegion
 
     object Regions {

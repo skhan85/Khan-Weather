@@ -155,7 +155,10 @@ object WeatherLoader {
 
 
     @Serializable
-    data class RelayWeights(val weights: Map<String, kotlin.Double> = emptyMap())
+    data class RelayWeights(
+        val weights: Map<String, kotlin.Double> = emptyMap(),
+        val diurnal_bias_3h: List<kotlin.Double>? = null,
+    )
 
     @Serializable
     data class RelayGoogleHour(
@@ -276,7 +279,9 @@ object WeatherLoader {
                 }
                 try {
                     if (conn.responseCode != 200) return@runCatching null
-                    val w = relayJson.decodeFromString(RelayWeights.serializer(), conn.inputStream.bufferedReader().readText()).weights
+                    val decoded = relayJson.decodeFromString(RelayWeights.serializer(), conn.inputStream.bufferedReader().readText())
+                    decoded.diurnal_bias_3h?.takeIf { it.size == 8 }?.let { ModelBlend.setDiurnalBias(it, target) }
+                    val w = decoded.weights
                     if (w.isNotEmpty()) w.also { ModelBlend.setRegionalWeights(it, target) } else null
                 } finally {
                     conn.disconnect()

@@ -191,15 +191,20 @@ public struct OpenMeteoProvider: ForecastProvider {
                 s.compactMapValues { i < $0.count ? $0[i] : nil }
             }
             let hourTemps = at(temps)
-            guard let temp = ModelBlend.blend(hourTemps,
+            let liveShare = ModelBlend.liveShare(leadHours: lead,
+                                                 observedTemperature: observedTemperature,
+                                                 currentModelTemps: currentModelTemps)
+            let mos = ModelBlend.diurnalBias(at: t.doubleValue, leadHours: lead, coordinate: coordinate) * (1 - liveShare)
+            let correctedTemps = mos == 0 ? hourTemps : hourTemps.mapValues { $0 - mos }
+            guard let temp = ModelBlend.blend(correctedTemps,
                                               leadHours: lead,
                                               region: region,
                                               observedTemperature: observedTemperature,
                                               currentModelTemps: currentModelTemps,
                                               coordinate: coordinate) else { continue }
-            let values = Array(hourTemps.values)
-            let hourPrecip = at(precip).filter { hourTemps[$0.key] != nil }
-            let hourSnow = at(snow).filter { hourTemps[$0.key] != nil }
+            let values = Array(correctedTemps.values)
+            let hourPrecip = at(precip).filter { correctedTemps[$0.key] != nil }
+            let hourSnow = at(snow).filter { correctedTemps[$0.key] != nil }
             let wet = hourPrecip.filter { $0.value >= ModelBlend.wetHourMm }.count
             let snowShare = ModelBlend.precipitationSnowShare(temperature: temp, precipitation: hourPrecip, snowfall: hourSnow)
             out.hourly[t.intValue] = .init(temperature: temp,
@@ -221,7 +226,7 @@ public struct OpenMeteoProvider: ForecastProvider {
                                            windSpeed: ModelBlend.blend(at(winds), leadHours: lead, region: region, coordinate: coordinate),
                                            windGusts: ModelBlend.blend(at(gusts), leadHours: lead, region: region, coordinate: coordinate),
                                            dewPoint: ModelBlend.blend(at(dews), leadHours: lead, region: region, coordinate: coordinate),
-                                           modelTemperatures: hourTemps)
+                                           modelTemperatures: correctedTemps)
         }
         return out
     }
