@@ -120,12 +120,7 @@ fun ForecastList(
                     DailyRow(day, i == 0, zone, weekLow, weekHigh, if (i == 0) forecast.current.temperature else null,
                         normalHigh(day)?.let { NormalComparison.trend(day.high, it) })
                 }
-                RowDivider()
-            }
-            LinkRow({ nav(Screen.ModelGrid) }) {
-                Icon(Icons.Filled.GridView, null, tint = Gold, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(12.dp))
-                Text("Compare all models", style = style(15.sp, FontWeight.SemiBold))
+                if (i < days.lastIndex) RowDivider()
             }
         }
 

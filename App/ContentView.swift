@@ -351,15 +351,6 @@ private struct ForecastList: View {
                                  normalTrend: normalHigh(day).map { NormalComparison.trend(high: day.high, normalHigh: $0) })
                     }
                 }
-                NavigationLink {
-                    ModelGridView(location: forecast.location, timeZone: forecast.timeZone, appDays: forecast.daily)
-                } label: {
-                    Label {
-                        Text("Compare all models").font(.subheadline.weight(.semibold))
-                    } icon: {
-                        Image(systemName: "square.grid.3x3").foregroundStyle(Brand.gold)
-                    }
-                }
             } header: {
                 SkySectionHeader(title: "\(forecast.daily.count)-day forecast", systemImage: "calendar")
             }
