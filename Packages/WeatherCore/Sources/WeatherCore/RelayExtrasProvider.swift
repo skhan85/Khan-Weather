@@ -127,6 +127,7 @@ public extension Forecast {
         var copy = self
         let cutoff = current.time.addingTimeInterval(120 * 3600)
         var changed = false
+        var touchedHours = Set<Int>()
         copy.hourly = hourly.map { hour in
             guard hour.time <= cutoff else { return hour }
             let k = Int((hour.time.timeIntervalSince1970 / 3600).rounded()) * 3600
@@ -139,6 +140,7 @@ public extension Forecast {
             if let w = h.windSpeed, let gw = g.wind_kmh {
                 h.windSpeed = max(0, 0.65 * w + 0.35 * gw)
             }
+            touchedHours.insert(Int(hour.time.timeIntervalSince1970))
             changed = true
             return h
         }
@@ -148,9 +150,14 @@ public extension Forecast {
         copy.daily = copy.daily.map { day in
             let hrs = copy.hours(on: day)
             guard hrs.count >= 18 else { return day }
+            let touched = hrs.filter { touchedHours.contains(Int($0.time.timeIntervalSince1970)) }.count
+            guard touched > 0 else { return day }
+            let omShare = 1 - 0.35 * (Double(touched) / Double(hrs.count))
             var d = day
-            d.high = hrs.map(\.temperature).max()! + hiAllow
-            d.low = hrs.map(\.temperature).min()! - loAllow
+            d.phaseHighLift = day.phaseHighLift.map { $0 * omShare }
+            d.phaseLowDrop = day.phaseLowDrop.map { $0 * omShare }
+            d.high = hrs.map(\.temperature).max()! + (d.phaseHighLift ?? 0) + hiAllow
+            d.low = hrs.map(\.temperature).min()! - (d.phaseLowDrop ?? 0) - loAllow
             return d
         }
         if current.time <= cutoff,

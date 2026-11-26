@@ -119,8 +119,12 @@ public struct OpenMeteoProvider: ForecastProvider {
             var windSpeed: Double? = nil
             var windGusts: Double? = nil
             var dewPoint: Double? = nil
+            var modelTemperatures: [WeatherModel: Double] = [:]
         }
         var hourly: [Int: Hour] = [:]
+        var region: BlendRegion? = nil
+        var coordinate: Coordinate? = nil
+        var now: Date? = nil
     }
 
     /// Each series' value at `epoch`, interpolated between the two hours around it (or the nearest
@@ -178,6 +182,9 @@ public struct OpenMeteoProvider: ForecastProvider {
         }
 
         var out = ModelTemperatures()
+        out.region = region
+        out.coordinate = coordinate
+        out.now = now
         for (i, t) in times.enumerated() {
             let lead = (t.doubleValue - nowEpoch) / 3600
             func at(_ s: [WeatherModel: [Double?]]) -> [WeatherModel: Double] {
@@ -213,7 +220,8 @@ public struct OpenMeteoProvider: ForecastProvider {
                                            snowShare: snowShare,
                                            windSpeed: ModelBlend.blend(at(winds), leadHours: lead, region: region, coordinate: coordinate),
                                            windGusts: ModelBlend.blend(at(gusts), leadHours: lead, region: region, coordinate: coordinate),
-                                           dewPoint: ModelBlend.blend(at(dews), leadHours: lead, region: region, coordinate: coordinate))
+                                           dewPoint: ModelBlend.blend(at(dews), leadHours: lead, region: region, coordinate: coordinate),
+                                           modelTemperatures: hourTemps)
         }
         return out
     }
@@ -569,9 +577,30 @@ extension Forecast {
             let spreads = hours.compactMap { h in h.modelHigh.flatMap { hi in h.modelLow.map { hi - $0 } } }
             if !spreads.isEmpty { d.modelSpread = spreads.reduce(0, +) / Double(spreads.count) }
             guard hours.count >= 18 else { return d }  // ensure blended daily high/low match the 8-model hourly curve
+            // Recover daily extreme attenuation caused when models peak or trough at slightly different hours.
+            let rawHi = hours.map(\.temperature).max()!
+            let rawLo = hours.map(\.temperature).min()!
+            var byModel: [WeatherModel: [Double]] = [:]
+            for h in hours {
+                for (m, temp) in temps.hourly[Int(h.time.timeIntervalSince1970)]?.modelTemperatures ?? [:] {
+                    byModel[m, default: []].append(temp)
+                }
+            }
+            let fullModels = byModel.filter { $0.value.count == hours.count }
+            let coord = temps.coordinate ?? location
+            let region = temps.region ?? BlendRegion.at(coord)
+            let midLead = hours[hours.count / 2].time.timeIntervalSince(temps.now ?? current.time) / 3600
+            let modelMax = ModelBlend.blend(fullModels.compactMapValues { $0.max() },
+                                            leadHours: midLead, region: region, coordinate: coord)
+            let modelMin = ModelBlend.blend(fullModels.compactMapValues { $0.min() },
+                                            leadHours: midLead, region: region, coordinate: coord)
+            let highLift = modelMax.map { max(0, $0 - rawHi) } ?? 0
+            let lowDrop = modelMin.map { 0.5 * max(0, rawLo - $0) } ?? 0
+            d.phaseHighLift = highLift > 0 ? highLift : nil
+            d.phaseLowDrop = lowDrop > 0 ? lowDrop : nil
             // The real high and low fall between hours, beyond the warmest and coldest hour.
-            d.high = hours.map(\.temperature).max()! + ModelBlend.highAllowance
-            d.low = hours.map(\.temperature).min()! - ModelBlend.lowAllowance
+            d.high = rawHi + highLift + ModelBlend.highAllowance
+            d.low = rawLo - lowDrop - ModelBlend.lowAllowance
             let feels = hours.compactMap(\.feelsLike)
             if feels.count == hours.count {
                 d.feelsLikeHigh = feels.max()

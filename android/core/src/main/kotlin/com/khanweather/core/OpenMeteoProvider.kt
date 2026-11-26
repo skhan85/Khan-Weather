@@ -100,9 +100,13 @@ class OpenMeteoProvider(
             val windSpeed: Double? = null,
             val windGusts: Double? = null,
             val dewPoint: Double? = null,
+            val modelTemperatures: Map<WeatherModel, Double> = emptyMap(),
         )
 
         val hourly = mutableMapOf<Long, Hour>()
+        var region: BlendRegion? = null
+        var coordinate: Coordinate? = null
+        var now: Epoch? = null
     }
 
     companion object {
@@ -182,6 +186,9 @@ class OpenMeteoProvider(
             }
 
             val out = ModelTemperatures()
+            out.region = region
+            out.coordinate = coordinate
+            out.now = now
             for ((i, t) in times.withIndex()) {
                 val lead = (t - now) / 3600
                 fun at(s: Map<WeatherModel, List<Double?>>): Map<WeatherModel, Double> {
@@ -209,6 +216,7 @@ class OpenMeteoProvider(
                     windSpeed = ModelBlend.blend(at(winds), lead, region, coordinate = coordinate),
                     windGusts = ModelBlend.blend(at(gusts), lead, region, coordinate = coordinate),
                     dewPoint = ModelBlend.blend(at(dews), lead, region, coordinate = coordinate),
+                    modelTemperatures = hourTemps,
                 )
             }
             return out
@@ -384,8 +392,26 @@ fun Forecast.applying(temps: OpenMeteoProvider.ModelTemperatures): Forecast {
         val spreads = hours.mapNotNull { h -> val hi = h.modelHigh; val lo = h.modelLow; if (hi != null && lo != null) hi - lo else null }
         if (spreads.isNotEmpty()) d.modelSpread = spreads.sum() / spreads.size
         if (hours.size < 18) return@mapIndexed d
-        d.high = hours.maxOf { it.temperature } + ModelBlend.highAllowance
-        d.low = hours.minOf { it.temperature } - ModelBlend.lowAllowance
+        val rawHi = hours.maxOf { it.temperature }
+        val rawLo = hours.minOf { it.temperature }
+        val byModel = mutableMapOf<WeatherModel, MutableList<Double>>()
+        for (h in hours) {
+            for ((m, temp) in temps.hourly[h.time.toLong()]?.modelTemperatures ?: emptyMap()) {
+                byModel.getOrPut(m) { mutableListOf() }.add(temp)
+            }
+        }
+        val fullModels = byModel.filterValues { it.size == hours.size }
+        val coord = temps.coordinate ?: location
+        val region = temps.region ?: BlendRegion.at(coord)
+        val midLead = (hours[hours.size / 2].time - (temps.now ?: current.time)) / 3600.0
+        val modelMax = ModelBlend.blend(fullModels.mapValues { it.value.max() }, midLead, region, coordinate = coord)
+        val modelMin = ModelBlend.blend(fullModels.mapValues { it.value.min() }, midLead, region, coordinate = coord)
+        val highLift = modelMax?.let { max(0.0, it - rawHi) } ?: 0.0
+        val lowDrop = modelMin?.let { 0.5 * max(0.0, rawLo - it) } ?: 0.0
+        d.phaseHighLift = if (highLift > 0.0) highLift else null
+        d.phaseLowDrop = if (lowDrop > 0.0) lowDrop else null
+        d.high = rawHi + highLift + ModelBlend.highAllowance
+        d.low = rawLo - lowDrop - ModelBlend.lowAllowance
         val feels = hours.mapNotNull { it.feelsLike }
         if (feels.size == hours.size) {
             d.feelsLikeHigh = feels.max()

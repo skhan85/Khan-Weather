@@ -292,6 +292,41 @@ class OpenMeteoProviderTest {
         close(noAnchor.hourly[t0.toLong()]!!.temperature, withBad.hourly[t0.toLong()]!!.temperature, 0.001)
     }
 
+    @Test fun dailyExtremesRecoverTimingAttenuationAndSkipPartialDayModels() {
+        val day0 = torontoMidnight(2026, 11, 25)
+        val hours = (0 until 24).map { h ->
+            val gTemp = if (h == 1) -2.0 else if (h == 12) 8.0 else 3.0
+            val eTemp = if (h == 6) -2.0 else if (h == 16) 8.0 else 3.0
+            HourlyForecast(time = day0 + h * 3600.0, temperature = (gTemp + eTemp) / 2.0, condition = WeatherCondition.overcast)
+        }
+        val temps = OpenMeteoProvider.ModelTemperatures().apply {
+            region = testRegion
+            now = day0
+            for (h in 0 until 24) {
+                val epoch = (day0 + h * 3600.0).toLong()
+                val gTemp = if (h == 1) -2.0 else if (h == 12) 8.0 else 3.0
+                val eTemp = if (h == 6) -2.0 else if (h == 16) 8.0 else 3.0
+                val models = mutableMapOf(WeatherModel.germany to gTemp, WeatherModel.europe to eTemp)
+                if (h < 8) models[WeatherModel.uk] = 1.0 // partial-day model must not distort daily extremes
+                hourly[epoch] = OpenMeteoProvider.ModelTemperatures.Hour(
+                    temperature = (gTemp + eTemp) / 2.0, feelsLike = null,
+                    low = minOf(gTemp, eTemp), high = maxOf(gTemp, eTemp),
+                    count = models.size, wet = 0, freezing = 0,
+                    modelTemperatures = models,
+                )
+            }
+        }
+        val forecast = Forecast(
+            Coordinate.fallback, "America/Toronto",
+            CurrentConditions(day0, 3.0, 3.0, FeelsLikeKind.apparent, condition = WeatherCondition.overcast, isDay = false),
+            hours, listOf(DailyForecast(date = day0, high = 5.0, low = 0.0, condition = WeatherCondition.overcast)),
+            "test", day0,
+        ).applying(temps)
+
+        close(8.4, forecast.daily[0].high, 0.001)
+        close(-1.25, forecast.daily[0].low, 0.001)
+    }
+
     private val testRegion get() = Regions.testRegion
 
     object Regions {

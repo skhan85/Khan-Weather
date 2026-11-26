@@ -199,6 +199,7 @@ object WeatherLoader {
         val byHour = gh.hours.associateBy { kotlin.math.round(it.epoch / 3600.0).toLong() * 3600L }
         val cutoff = current.time + 120 * 3600.0
         var changed = false
+        val touchedHours = mutableSetOf<Long>()
         val copy = deepCopy()
         copy.hourly = hourly.map { hour ->
             if (hour.time > cutoff) return@map hour
@@ -209,6 +210,7 @@ object WeatherLoader {
             if (dp != null && gdp != null) h.dewPoint = minOf(h.temperature, 0.65 * dp + 0.35 * gdp)
             val w = h.windSpeed; val gw = g.wind_kmh
             if (w != null && gw != null) h.windSpeed = maxOf(0.0, 0.65 * w + 0.35 * gw)
+            touchedHours.add(hour.time.toLong())
             changed = true
             h
         }
@@ -217,9 +219,17 @@ object WeatherLoader {
         val loAllow = if (extremesIncludePeak == true) ModelBlend.lowAllowance else 0.0
         copy.daily = copy.daily.map { day ->
             val hrs = copy.hoursOn(day)
-            if (hrs.size < 18) day else day.copy(
-                high = hrs.maxOf { it.temperature } + hiAllow,
-                low = hrs.minOf { it.temperature } - loAllow,
+            if (hrs.size < 18) return@map day
+            val touched = hrs.count { touchedHours.contains(it.time.toLong()) }
+            if (touched == 0) return@map day
+            val omShare = 1.0 - 0.35 * (touched.toDouble() / hrs.size)
+            val lift = day.phaseHighLift?.let { it * omShare }
+            val drop = day.phaseLowDrop?.let { it * omShare }
+            day.copy(
+                phaseHighLift = lift,
+                phaseLowDrop = drop,
+                high = hrs.maxOf { it.temperature } + (lift ?: 0.0) + hiAllow,
+                low = hrs.minOf { it.temperature } - (drop ?: 0.0) - loAllow,
             )
         }
         if (current.time <= cutoff) {

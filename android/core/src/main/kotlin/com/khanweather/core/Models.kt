@@ -122,6 +122,8 @@ data class DailyForecast(
     var precipitationHours: Double? = null,
     /** How far apart the blended models are over the day, on average, °C. */
     var modelSpread: Double? = null,
+    var phaseHighLift: Double? = null,
+    var phaseLowDrop: Double? = null,
 ) {
     /** Sure when the models are within about 2°, unsure past about 4°. */
     val confidence: ForecastConfidence?

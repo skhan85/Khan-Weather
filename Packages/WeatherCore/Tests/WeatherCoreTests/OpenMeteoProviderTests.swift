@@ -334,4 +334,64 @@ final class OpenMeteoProviderTests: XCTestCase {
         let withBadAnchor = try OpenMeteoProvider.parseBlend(blend, region: .home, anchor: sunBakedAnchor, now: Date(timeIntervalSince1970: TimeInterval(t0)))
         XCTAssertEqual(withBadAnchor.hourly[t0]!.temperature, noAnchor.hourly[t0]!.temperature, accuracy: 0.001)
     }
+
+    func testDailyExtremesRecoverTimingAttenuationAndGooglePreservesLaterDays() throws {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "America/Toronto")!
+        let day0 = c.date(from: DateComponents(year: 2026, month: 11, day: 25))!
+        let day6 = day0.addingTimeInterval(6 * 86400)
+        var hours: [HourlyForecast] = []
+        var temps = OpenMeteoProvider.ModelTemperatures()
+        temps.region = Self.testRegion
+        temps.now = day0
+        for (dayIdx, baseDay) in [day0, day6].enumerated() {
+            for h in 0..<24 {
+                let t = baseDay.addingTimeInterval(Double(h) * 3600)
+                // Germany bottoms at 01:00 (-2°) & peaks at 12:00 (8°); Europe bottoms at 06:00 (-2°) & peaks at 16:00 (8°); else 3°.
+                let gTemp = h == 1 ? -2.0 : (h == 12 ? 8.0 : 3.0)
+                let eTemp = h == 6 ? -2.0 : (h == 16 ? 8.0 : 3.0)
+                let avg = (gTemp + eTemp) / 2.0
+                hours.append(HourlyForecast(time: t, temperature: avg, condition: .overcast))
+                temps.hourly[Int(t.timeIntervalSince1970)] = .init(
+                    temperature: avg, feelsLike: nil, low: min(gTemp, eTemp), high: max(gTemp, eTemp),
+                    count: 2, wet: 0, freezing: 0,
+                    modelTemperatures: [.germany: gTemp, .europe: eTemp]
+                )
+            }
+            _ = dayIdx
+        }
+        let forecast = Forecast(
+            location: .fallback, timeZoneIdentifier: "America/Toronto",
+            current: CurrentConditions(time: day0, temperature: 3, feelsLike: 3, feelsLikeKind: .apparent, condition: .overcast, isDay: false),
+            hourly: hours,
+            daily: [
+                DailyForecast(date: day0, high: 5, low: 0, condition: .overcast),
+                DailyForecast(date: day6, high: 5, low: 0, condition: .overcast),
+            ],
+            source: "test", fetchedAt: day0
+        ).applying(temps)
+
+        // Offset troughs/peaks give raw blended min=0.5 (-2 and 3 averaged) and max=5.5 (8 and 3 averaged),
+        // while each model reached low=-2.0 and high=8.0. Full high lift -> 8.0 + 0.4 = 8.4; half low drop -> 0.5 - 1.25 - 0.5 = -1.25.
+        XCTAssertEqual(forecast.daily[0].high, 8.4, accuracy: 0.001)
+        XCTAssertEqual(forecast.daily[0].low, -1.25, accuracy: 0.001)
+        XCTAssertEqual(forecast.daily[1].high, 8.4, accuracy: 0.001)
+        XCTAssertEqual(forecast.daily[1].low, -1.25, accuracy: 0.001)
+
+        // Applying Google on day 0 (first 24h) updates day 0 (scaling phase offsets by 0.65) and leaves day 6 untouched.
+        let gh = RelayGoogleHourly(
+            generated: day0.timeIntervalSince1970, provider: "Google Weather",
+            hours: (0..<24).map { h in
+                let epoch = day0.addingTimeInterval(Double(h) * 3600).timeIntervalSince1970
+                return RelayGoogleHourly.Hour(epoch: epoch, temp: 3.0, feels_like: nil, dew_point: nil,
+                                              wind_kmh: nil, gust_kmh: nil, pop: nil, precip_mm: nil, snow_mm: nil)
+            }
+        )
+        let withGoogle = forecast.applyingGoogleHourly(gh)
+        // Day 6 was beyond 120h and untouched by Google -> keeps exact phase-recovered extremes.
+        XCTAssertEqual(withGoogle.daily[1].high, 8.4, accuracy: 0.001)
+        XCTAssertEqual(withGoogle.daily[1].low, -1.25, accuracy: 0.001)
+        // Day 0 hourly min after 35% Google @ 3.0° becomes 0.65*0.5 + 0.35*3.0 = 1.375; phaseLowDrop scales by 0.65 (0.8125).
+        XCTAssertEqual(withGoogle.daily[0].low, 1.375 - 0.8125 - 0.5, accuracy: 0.001)
+    }
 }

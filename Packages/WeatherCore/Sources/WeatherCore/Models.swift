@@ -166,6 +166,9 @@ public struct DailyForecast: Equatable, Codable, Sendable, Identifiable {
     public var precipitationHours: Double?
     /// How far apart the blended models are over the day, on average, °C. nil without a blend.
     public var modelSpread: Double?
+    /// Extra peak lift / half-trough drop carried so Google-blended days can keep multi-model timing spread.
+    public var phaseHighLift: Double? = nil
+    public var phaseLowDrop: Double? = nil
     public var id: Date { date }
 
     /// Sure when the models are within about 2°, unsure past about 4°.
