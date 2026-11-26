@@ -553,6 +553,7 @@ extension Forecast {
                     h.rain = max(0, p - s * 0.7)
                 }
                 if let type = t.type { h.setPrecipitationType(type, snowShare: t.snowShare) }
+                h.promoteLikelyPrecipitation(snowShare: t.snowShare)
             }
             return h
         }

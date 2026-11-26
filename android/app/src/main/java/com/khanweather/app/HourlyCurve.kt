@@ -28,6 +28,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.khanweather.core.HourlyForecast
+import com.khanweather.core.PrecipitationKind
 import com.khanweather.core.PrecipitationUnit
 import com.khanweather.core.UnitSettings
 import com.khanweather.core.WeatherFormat
@@ -54,7 +55,7 @@ fun HourlyCurve(hours: List<HourlyForecast>, zone: String, firstIsNow: Boolean, 
     val colPx = with(LocalDensity.current) { col.toPx() }
     Column {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (m in listOf("Temp", "Rain", "Wind")) {
+            for (m in listOf("Temp", "Rain", "Snow", "Wind")) {
                 val on = mode == m
                 Text(
                     m,
@@ -97,40 +98,37 @@ fun HourlyCurve(hours: List<HourlyForecast>, zone: String, firstIsNow: Boolean, 
                                 onDragCancel = { selectedIndex = null },
                             )
                         }
-                    if (mode == "Rain") {
-                        val maxWater = max(hours.maxOf { maxOf(it.precipitation ?: 0.0, (it.snowfall ?: 0.0) * 0.7) }, 2.0)
+                    if (mode == "Rain" || mode == "Snow") {
+                        val snowMode = mode == "Snow"
+                        val maxVal = max(hours.maxOf { h ->
+                            val s = h.snowfall ?: 0.0
+                            if (snowMode) s else h.rain ?: if (s >= 0.1) maxOf(0.0, (h.precipitation ?: 0.0) - s * 0.7) else (h.precipitation ?: 0.0)
+                        }, 2.0)
                         val inches = UnitSettings.current.precipitation == PrecipitationUnit.inches
                         Row(scrubModifier, verticalAlignment = Alignment.Bottom) {
                             for (h in hours) {
                                 val snow = h.snowfall ?: 0.0
-                                val rain = h.rain ?: 0.0
-                                val mm = h.precipitation ?: 0.0
-                                val water = maxOf(mm, snow * 0.7)
+                                val amount = if (snowMode) snow else h.rain ?: if (snow >= 0.1) maxOf(0.0, (h.precipitation ?: 0.0) - snow * 0.7) else (h.precipitation ?: 0.0)
                                 val pop = h.precipitationProbability ?: 0.0
-                                val isSnowOnly = snow >= 0.1 && rain < 0.1
-                                val isMixed = h.isMixedPrecipitation
-                                val hasAmount = water >= 0.1 || snow >= 0.1
-                                val frac = if (hasAmount) minOf(1.0, water / maxWater) else if (pop >= 20.0) 0.12 else 0.0
+                                val kindMatches = if (snowMode) (h.precipitationKind == PrecipitationKind.snow || h.precipitationKind == PrecipitationKind.mixed || h.temperature <= 1.0)
+                                    else (h.precipitationKind != PrecipitationKind.snow)
+                                val hasAmount = amount >= 0.1
+                                val frac = if (hasAmount) minOf(1.0, amount / maxVal) else if (kindMatches && pop >= 20.0) 0.12 else 0.0
                                 val lbl = when {
-                                    isSnowOnly && inches -> String.format(java.util.Locale.US, "%.1f\"", maxOf(0.1, snow / 2.54))
-                                    isSnowOnly -> String.format(java.util.Locale.US, "%.1f cm", snow)
-                                    hasAmount && inches -> String.format(java.util.Locale.US, "%.1f\"", maxOf(0.1, mm / 25.4))
-                                    hasAmount -> String.format(java.util.Locale.US, "%.1f", mm)
-                                    pop >= 10.0 -> "${pop.toInt()}%"
+                                    hasAmount && snowMode && inches -> String.format(java.util.Locale.US, "%.1f\"", maxOf(0.1, amount / 2.54))
+                                    hasAmount && snowMode -> String.format(java.util.Locale.US, "%.1f cm", amount)
+                                    hasAmount && inches -> String.format(java.util.Locale.US, "%.1f\"", maxOf(0.1, amount / 25.4))
+                                    hasAmount -> String.format(java.util.Locale.US, "%.1f", amount)
+                                    kindMatches && pop >= 10.0 -> "${pop.toInt()}%"
                                     else -> "–"
                                 }
-                                val barColor = when {
-                                    frac <= 0 -> Color.White.copy(alpha = 0.18f)
-                                    isSnowOnly -> Color.White
-                                    isMixed -> Color(0xFFC7B8FF)
+                                val activeColor = when {
+                                    h.isMixedPrecipitation -> Color(0xFFC7B8FF)
+                                    snowMode -> Color.White
                                     else -> Color(0xFF3CE8FF)
                                 }
-                                val textColor = when {
-                                    !(hasAmount || pop >= 20.0) -> Color.White.copy(alpha = 0.55f)
-                                    isSnowOnly -> Color.White
-                                    isMixed -> Color(0xFFC7B8FF)
-                                    else -> Color(0xFF3CE8FF)
-                                }
+                                val barColor = if (frac <= 0) Color.White.copy(alpha = 0.18f) else activeColor
+                                val textColor = if (hasAmount || (kindMatches && pop >= 20.0)) activeColor else Color.White.copy(alpha = 0.55f)
                                 Column(Modifier.width(col).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
                                     Text(lbl, style = style(11.sp, FontWeight.Bold, textColor), maxLines = 1)
                                     Spacer(Modifier.height(4.dp))

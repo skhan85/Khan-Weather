@@ -236,10 +236,12 @@ public extension Forecast {
     func calibratingEnsemblePop() -> Forecast {
         var copy = self
         copy.hourly = hourly.map { h in
-            guard let n = h.modelCount, n == 3, let w = h.modelsWet, let raw = h.precipitationProbability else { return h }
             var out = h
-            let ens = (Double(w) / Double(n)) * 100.0
-            out.precipitationProbability = (0.6 * raw + 0.4 * ens).rounded()
+            if let n = h.modelCount, n == 3, let w = h.modelsWet, let raw = h.precipitationProbability {
+                let ens = (Double(w) / Double(n)) * 100.0
+                out.precipitationProbability = (0.6 * raw + 0.4 * ens).rounded()
+            }
+            out.promoteLikelyPrecipitation()
             return out
         }
         var cal = Calendar(identifier: .gregorian)

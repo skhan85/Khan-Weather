@@ -99,11 +99,15 @@ final class WeatherViewModel: ObservableObject {
     /// The Open-Meteo forecast is shown as soon as it arrives; the station reading, radar, alerts and
     /// air quality are filled in as each one answers, so one slow service doesn't hold up the screen.
     func refresh(place: SavedPlace? = nil) async {
+        await load(place: place, allowLocationFollowUp: true)
+    }
+
+    private func load(place: SavedPlace?, allowLocationFollowUp: Bool) async {
         _ = Self.dropOldDiskCache
         generation += 1
         let gen = generation
         let key = place?.id
-        // Switching places: show what we had for the new place, or a spinner, never the old place.
+        // Switching places or cold-launching: show what we had for this place, or a spinner.
         if lastPlaceID != .some(key) {
             lastPlaceID = .some(key)
             if let snap = cache[key], Date().timeIntervalSince(snap.at) < cacheAge {
@@ -111,6 +115,11 @@ final class WeatherViewModel: ObservableObject {
                 placeName = snap.name
                 alerts = snap.alerts
                 airQuality = snap.airQuality
+            } else if let cached = Self.loadDiskCache(for: key, maxAge: 2 * 3600) {
+                state = .loaded(Date().timeIntervalSince(cached.fetchedAt) < cacheAge ? cached : cached.rolledForward())
+                placeName = place?.name
+                alerts = []
+                airQuality = nil
             } else {
                 state = .loading
                 placeName = place?.name
@@ -119,15 +128,24 @@ final class WeatherViewModel: ObservableObject {
             }
         }
         let target: Coordinate
+        let freshCoordTask: Task<Coordinate?, Never>?
         if let place {
             target = place.coordinate
             usingFallbackLocation = false
+            freshCoordTask = nil
+        } else if let cached = location.cachedCoordinate {
+            target = cached
+            usingFallbackLocation = false
+            onCurrentLocation?(cached)
+            let loc = self.location
+            freshCoordTask = allowLocationFollowUp ? Task { await loc.currentCoordinate() } : nil
         } else {
             let coordinate = await location.currentCoordinate()
             guard gen == generation else { return }
             usingFallbackLocation = coordinate == nil
             if let coordinate { onCurrentLocation?(coordinate) }
             target = coordinate ?? .fallback
+            freshCoordTask = nil
         }
         let fallbackName = usingFallbackLocation ? "Toronto" : nil
         let provider = self.provider, alertProvider = self.alertProvider
@@ -137,11 +155,11 @@ final class WeatherViewModel: ObservableObject {
         let knownTemp = previous?.temperature ?? cache[key]?.forecast.current.temperature
         let likelyCold = knownTemp.map { $0 <= 4 } ?? (abs(target.latitude) >= 25)
 
-        // Everything starts at once. The station reading has a deadline so a slow station can't
-        // hold up the forecast, which waits for it to re-weight the blend (as the widget does).
+        // Everything starts at once. Cap the anchor wait inside OpenMeteoProvider at 1.5s so slow
+        // stations never stall the initial forecast, while `observedTask` finishes up to 5s total.
         let nameTask = Task { await Self.name(for: place, at: target) }
         let observedTask = Task {
-            await Deadline.run(8) { try? await observations.observation(near: target) }?
+            await Deadline.run(5) { try? await observations.observation(near: target) }?
                 .smoothed(after: previous)
         }
         let radarTask = Task { try? await ECCCRadarProvider().now(at: target) }
@@ -157,7 +175,7 @@ final class WeatherViewModel: ObservableObject {
             if let om = provider as? OpenMeteoProvider {
                 base = try await om.forecast(
                     for: target,
-                    anchor: { await observedTask.value?.blendAnchor },
+                    anchor: { await Deadline.run(1.5) { await observedTask.value?.blendAnchor } },
                     regionalWeights: { await weightsTask.value }
                 )
             } else {
@@ -175,10 +193,10 @@ final class WeatherViewModel: ObservableObject {
             return
         }
         guard gen == generation else { return }
-        // First paint: the model forecast with calibrated PoP, unless a fuller one for this place is already on screen.
+        // First paint: show model forecast immediately (with anchor observation if already back).
         if case .loaded = state {} else { state = .loaded(base.calibratingEnsemblePop()) }
 
-        // The rest land in whatever order they answer.
+        // Apply station reading as soon as it arrives—without waiting on radar, nowcast, or Google.
         await withTaskGroup(of: Void.self) { group in
             group.addTask { @MainActor in
                 let name = await nameTask.value ?? fallbackName
@@ -200,11 +218,19 @@ final class WeatherViewModel: ObservableObject {
             }
             group.addTask { @MainActor in
                 let observed = await observedTask.value
-                let radar = await radarTask.value ?? nil
-                let radarNowcast = await nowcastTask.value
+                guard gen == self.generation else { return }
+                if let observed {
+                    self.lastObservation[spot] = observed
+                    self.state = .loaded(base.applying(observed).calibratingEnsemblePop())
+                }
                 let googleHourly = await googleTask.value
                 guard gen == self.generation else { return }
-                if let observed { self.lastObservation[spot] = observed }
+                if googleHourly != nil {
+                    self.state = .loaded(base.applyingGoogleHourly(googleHourly).applying(observed).calibratingEnsemblePop())
+                }
+                let radar = await radarTask.value ?? nil
+                let radarNowcast = await nowcastTask.value
+                guard gen == self.generation else { return }
                 self.state = .loaded(base.applyingGoogleHourly(googleHourly).applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast).calibratingEnsemblePop())
             }
         }
@@ -214,6 +240,13 @@ final class WeatherViewModel: ObservableObject {
         if place == nil { WidgetCenter.shared.reloadAllTimelines() }
         #endif
         Self.saveDiskCache(shown, for: key)
+
+        if let fresh = await freshCoordTask?.value, gen == generation {
+            onCurrentLocation?(fresh)
+            if EnvironmentCanadaProvider.distanceKm(target, fresh) > 1.5 {
+                await load(place: nil, allowLocationFollowUp: false)
+            }
+        }
     }
 
     /// Fetches saved places in the background so the first switch to each one is instant.

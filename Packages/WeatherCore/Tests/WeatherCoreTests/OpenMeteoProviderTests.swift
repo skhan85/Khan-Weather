@@ -433,4 +433,22 @@ final class OpenMeteoProviderTests: XCTestCase {
                                                         coordinate: spotA)
         XCTAssertEqual(anchored.hourly[h0130]!.temperature, 5.0, accuracy: 0.001)
     }
+
+    func testLikelyPrecipitationPromotesOvercastHourCondition() {
+        let t0 = Date(timeIntervalSince1970: 1762952400)
+        var overcastHighPop = HourlyForecast(time: t0, temperature: 4.0, precipitationProbability: 70,
+                                             precipitation: 0.0, condition: .overcast)
+        overcastHighPop.promoteLikelyPrecipitation()
+        XCTAssertEqual(overcastHighPop.condition, .rain)
+
+        var coldHighPop = HourlyForecast(time: t0, temperature: -2.0, precipitationProbability: 70,
+                                         precipitation: 0.0, condition: .overcast)
+        coldHighPop.promoteLikelyPrecipitation()
+        XCTAssertEqual(coldHighPop.condition, .snow)
+
+        var lowPopCloud = HourlyForecast(time: t0, temperature: 4.0, precipitationProbability: 25,
+                                         precipitation: 0.0, condition: .overcast)
+        lowPopCloud.promoteLikelyPrecipitation()
+        XCTAssertEqual(lowPopCloud.condition, .overcast)
+    }
 }

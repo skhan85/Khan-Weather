@@ -368,6 +368,7 @@ fun Forecast.applying(temps: OpenMeteoProvider.ModelTemperatures): Forecast {
                 h.rain = max(0.0, p - s * 0.7)
             }
             t.type?.let { h.setPrecipitationType(it, t.snowShare) }
+            h.promoteLikelyPrecipitation(t.snowShare)
         }
         h
     }

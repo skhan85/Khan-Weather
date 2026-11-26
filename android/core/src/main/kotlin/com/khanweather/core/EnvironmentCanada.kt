@@ -101,7 +101,7 @@ class EnvironmentCanadaProvider(
     override suspend fun observation(near: Coordinate): Observation? {
         if (!ECCC.mightBeInCanada(near)) return null
         for (span in listOf(0.6, 2.0)) {
-            val data = loader.fetch(url(near, span), timeoutSeconds = 20)
+            val data = loader.fetch(url(near, span), timeoutSeconds = 8)
             parse(data, near, nowEpoch(), maxStationDistanceKm, maxAge)?.let { return it }
         }
         return null
@@ -110,7 +110,7 @@ class EnvironmentCanadaProvider(
     fun url(c: Coordinate, span: Double): String = buildUrl(baseURL,
         "f" to "json", "lang" to "en",
         "bbox" to ECCC.bbox(c.longitude - span * 1.5, c.latitude - span, c.longitude + span * 1.5, c.latitude + span),
-        "limit" to "30")
+        "limit" to "10")
 
     companion object {
         fun parse(data: ByteArray, near: Coordinate, now: Epoch, maxDistanceKm: Double, maxAge: Double): Observation? {
@@ -179,7 +179,7 @@ class SWOBProvider(
     override suspend fun observation(near: Coordinate): Observation? {
         if (!ECCC.mightBeInCanada(near)) return null
         val now = nowEpoch()
-        return parse(loader.fetch(url(near, now), timeoutSeconds = 20), near, now, maxStationDistanceKm, maxAge)
+        return parse(loader.fetch(url(near, now), timeoutSeconds = 8), near, now, maxStationDistanceKm, maxAge)
     }
 
     fun url(c: Coordinate, now: Epoch): String = buildUrl(baseURL,
@@ -188,7 +188,7 @@ class SWOBProvider(
         "datetime" to isoString(now - maxAge) + "/..",
         "_is-minutely_obs-value" to "false",
         "sortby" to "-obs_date_tm",
-        "limit" to "500")
+        "limit" to "120")
 
     companion object {
         fun parse(data: ByteArray, near: Coordinate, now: Epoch, maxDistanceKm: Double, maxAge: Double): Observation? {
@@ -265,22 +265,25 @@ class PartnerStationProvider(
         val query = buildUrl(stationsURL, "f" to "json",
             "bbox" to ECCC.bbox(near.longitude - 0.28, near.latitude - 0.2, near.longitude + 0.28, near.latitude + 0.2),
             "limit" to "100")
-        val stations = parseStations(loader.fetch(query), near, maxStationDistanceKm)
+        val stations = parseStations(loader.fetch(query, timeoutSeconds = 6), near, maxStationDistanceKm)
+        val candidates = stations.take(3)
+        if (candidates.isEmpty()) return null
         val now = nowEpoch()
-        for (station in stations.take(3)) {
-            val o = tryOrNull { latest(station, now) } ?: continue
-            o.distanceKm = station.distanceKm
-            return o
+        return coroutineScope {
+            candidates.map { station ->
+                async {
+                    tryOrNull { latest(station, now) }?.also { it.distanceKm = station.distanceKm }
+                }
+            }.mapNotNull { it.await() }.firstOrNull()
         }
-        return null
     }
 
     private suspend fun latest(station: Station, now: Epoch): Observation? {
         for (day in listOf(now, now - 86400)) {
             val folder = datamartURL + station.folder + "/" + dayString(day) + "/" + station.id + "/"
-            val listing = tryOrNull { loader.fetch(folder) } ?: continue
+            val listing = tryOrNull { loader.fetch(folder, timeoutSeconds = 6) } ?: continue
             val file = newestFile(listing.decodeToString()) ?: continue
-            val o = parseSWOBML(loader.fetch(folder + file).decodeToString()) ?: return null
+            val o = parseSWOBML(loader.fetch(folder + file, timeoutSeconds = 6).decodeToString()) ?: return null
             if (now - o.observedAt > maxAge) return null
             return o
         }

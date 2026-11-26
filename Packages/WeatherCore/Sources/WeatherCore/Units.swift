@@ -196,6 +196,10 @@ public extension WeatherCondition {
         }
     }
 
+    var isWetOrStorm: Bool {
+        isPrecipitation || self == .thunderstorm || self == .thunderstormHail
+    }
+
     /// The model sometimes flags a stray flurry or sprinkle that barely registers. Two spots a
     /// kilometre apart can then show snow and cloud for the same hour. When the amount is a trace
     /// and the chance is low, show cloud instead. Needs a known amount; otherwise unchanged.

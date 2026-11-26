@@ -64,7 +64,7 @@ object WeatherLoader {
     suspend fun observation(target: Coordinate): Observation? {
         val provider = observations()
         val previous = ObservationMemory.last(target)
-        return deadline(8.0) { runCatching { provider.observation(target) }.getOrNull() }?.smoothed(previous)
+        return deadline(5.0) { runCatching { provider.observation(target) }.getOrNull() }?.smoothed(previous)
     }
 
     suspend fun radar(target: Coordinate): RadarNow? =
@@ -293,10 +293,11 @@ object WeatherLoader {
     fun Forecast.calibratingEnsemblePop(): Forecast {
         val calHours = hourly.map { h ->
             val n = h.modelCount; val w = h.modelsWet; val raw = h.precipitationProbability
-            if (n != null && n == 3 && w != null && raw != null) {
+            val out = if (n != null && n == 3 && w != null && raw != null) {
                 val ens = (w.toDouble() / n.toDouble()) * 100.0
                 h.copy(precipitationProbability = (0.6 * raw + 0.4 * ens).roundToInt().toDouble())
-            } else h
+            } else h.copy()
+            out.apply { promoteLikelyPrecipitation() }
         }
         val calendar = cal
         val calDays = daily.map { d ->

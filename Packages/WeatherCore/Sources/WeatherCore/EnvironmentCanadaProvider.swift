@@ -112,7 +112,7 @@ public struct EnvironmentCanadaProvider: ObservationProvider {
     }
 
     private func fetch(_ url: URL) async throws -> Data {
-        let (data, response) = try await loader(URLRequest(url: url, timeoutInterval: 20))
+        let (data, response) = try await loader(URLRequest(url: url, timeoutInterval: 8))
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw ForecastError.httpStatus(http.statusCode)
         }
@@ -128,7 +128,7 @@ public struct EnvironmentCanadaProvider: ObservationProvider {
             URLQueryItem(name: "f", value: "json"),
             URLQueryItem(name: "lang", value: "en"),
             URLQueryItem(name: "bbox", value: bbox),
-            URLQueryItem(name: "limit", value: "30"),
+            URLQueryItem(name: "limit", value: "10"),
         ]
         return components.url!
     }

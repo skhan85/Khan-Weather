@@ -11,7 +11,7 @@ struct HourlyCurve: View {
     var firstIsNow = true
 
     private let columnWidth: CGFloat = 58
-    private enum CurveMode: String, CaseIterable { case temp = "Temp", rain = "Rain", wind = "Wind" }
+    private enum CurveMode: String, CaseIterable { case temp = "Temp", rain = "Rain", snow = "Snow", wind = "Wind" }
     @State private var mode: CurveMode = .temp
     @State private var selectedIndex: Int?
 
@@ -61,7 +61,9 @@ struct HourlyCurve: View {
                             curve
                         }
                     case .rain:
-                        rainStrip
+                        precipStrip(snowMode: false)
+                    case .snow:
+                        precipStrip(snowMode: true)
                     case .wind:
                         windStrip
                     }
@@ -136,44 +138,39 @@ struct HourlyCurve: View {
         .background(.black.opacity(0.35), in: Capsule())
         }
 
-    private var rainStrip: some View {
-        let maxWater = max(hours.map { max($0.precipitation ?? 0, ($0.snowfall ?? 0) * 0.7) }.max() ?? 0, 2.0)
+    private func precipStrip(snowMode: Bool) -> some View {
+        let inches = UnitSettings.current.precipitation == .inches
+        let maxVal = max(hours.map { h -> Double in
+            let s = h.snowfall ?? 0
+            if snowMode { return s }
+            return h.rain ?? (s >= 0.1 ? max(0, (h.precipitation ?? 0) - s * 0.7) : (h.precipitation ?? 0))
+        }.max() ?? 0, 2.0)
         return HStack(alignment: .bottom, spacing: 0) {
             ForEach(hours) { h in
                 let snow = h.snowfall ?? 0
-                let rain = h.rain ?? 0
-                let mm = h.precipitation ?? 0
-                let water = max(mm, snow * 0.7)
+                let amount = snowMode
+                    ? snow
+                    : (h.rain ?? (snow >= 0.1 ? max(0, (h.precipitation ?? 0) - snow * 0.7) : (h.precipitation ?? 0)))
                 let pop = h.precipitationProbability ?? 0
-                let isSnowOnly = snow >= 0.1 && rain < 0.1
-                let isMixed = h.isMixedPrecipitation
-                let hasAmount = water >= 0.1 || snow >= 0.1
-                let frac = hasAmount ? min(1.0, water / maxWater) : (pop >= 20 ? 0.12 : 0.0)
+                let kindMatches = snowMode
+                    ? (h.precipitationKind == .snow || h.precipitationKind == .mixed || h.temperature <= 1)
+                    : (h.precipitationKind != .snow)
+                let hasAmount = amount >= 0.1
+                let frac = hasAmount ? min(1.0, amount / maxVal) : (kindMatches && pop >= 20 ? 0.12 : 0.0)
                 let label: String = {
-                    if isSnowOnly {
-                        return UnitSettings.current.precipitation == .inches
-                            ? String(format: "%.1f\"", max(0.1, snow / 2.54))
-                            : String(format: "%.1f cm", snow)
-                    }
                     if hasAmount {
-                        return UnitSettings.current.precipitation == .inches
-                            ? String(format: "%.1f\"", max(0.1, mm / 25.4))
-                            : String(format: "%.1f", mm)
+                        if snowMode {
+                            return inches ? String(format: "%.1f\"", max(0.1, amount / 2.54)) : String(format: "%.1f cm", amount)
+                        }
+                        return inches ? String(format: "%.1f\"", max(0.1, amount / 25.4)) : String(format: "%.1f", amount)
                     }
-                    return pop >= 10 ? "\(Int(pop.rounded()))%" : "–"
+                    return kindMatches && pop >= 10 ? "\(Int(pop.rounded()))%" : "–"
                 }()
-                let barColor: Color = {
-                    if frac <= 0 { return Color.white.opacity(0.18) }
-                    if isSnowOnly { return .white }
-                    if isMixed { return Color(red: 0.78, green: 0.72, blue: 1.0) }
-                    return Color(red: 0.24, green: 0.91, blue: 1.0)
-                }()
-                let textColor: Color = {
-                    if !(hasAmount || pop >= 20) { return .white.opacity(0.55) }
-                    if isSnowOnly { return .white }
-                    if isMixed { return Color(red: 0.78, green: 0.72, blue: 1.0) }
-                    return Color(red: 0.24, green: 0.91, blue: 1.0)
-                }()
+                let activeColor: Color = h.isMixedPrecipitation
+                    ? Color(red: 0.78, green: 0.72, blue: 1.0)
+                    : (snowMode ? .white : Color(red: 0.24, green: 0.91, blue: 1.0))
+                let barColor = frac <= 0 ? Color.white.opacity(0.18) : activeColor
+                let textColor = (hasAmount || (kindMatches && pop >= 20)) ? activeColor : Color.white.opacity(0.55)
                 VStack(spacing: 4) {
                     Spacer(minLength: 0)
                     Text(label)

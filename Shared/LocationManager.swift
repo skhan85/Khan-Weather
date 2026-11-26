@@ -16,6 +16,13 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         manager.desiredAccuracy = kCLLocationAccuracyHundredMeters // hyperlocal, without draining battery
     }
 
+    /// Last cached fix when already authorized, without waiting for a new GPS wake-up.
+    var cachedCoordinate: Coordinate? {
+        let s = manager.authorizationStatus
+        guard s == .authorizedWhenInUse || s == .authorizedAlways else { return nil }
+        return manager.location.map(Self.coordinate)
+    }
+
     /// Asks for permission if needed, then returns the current position, or nil if unavailable.
     func currentCoordinate() async -> Coordinate? {
         if pending != nil { return manager.location.map(Self.coordinate) }

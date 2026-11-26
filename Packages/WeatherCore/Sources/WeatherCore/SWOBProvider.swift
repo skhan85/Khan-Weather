@@ -30,7 +30,7 @@ public struct SWOBProvider: ObservationProvider {
     public func observation(near coordinate: Coordinate) async throws -> Observation? {
         guard EnvironmentCanadaProvider.mightBeInCanada(coordinate) else { return nil }
         let now = Date()
-        let (data, response) = try await loader(URLRequest(url: url(for: coordinate, now: now), timeoutInterval: 20))
+        let (data, response) = try await loader(URLRequest(url: url(for: coordinate, now: now), timeoutInterval: 8))
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw ForecastError.httpStatus(http.statusCode)
         }
@@ -52,7 +52,7 @@ public struct SWOBProvider: ObservationProvider {
             // Minutely stations would otherwise flood the page with near-identical records.
             URLQueryItem(name: "_is-minutely_obs-value", value: "false"),
             URLQueryItem(name: "sortby", value: "-obs_date_tm"),
-            URLQueryItem(name: "limit", value: "500"),
+            URLQueryItem(name: "limit", value: "120"),
         ]
         return components.url!
     }

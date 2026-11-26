@@ -32,7 +32,7 @@ public struct PartnerStationProvider: ObservationProvider {
         self.loader = loader
     }
 
-    struct Station: Equatable {
+    struct Station: Equatable, Sendable {
         var name: String
         var folder: String      // e.g. "on-mto"
         var id: String          // e.g. "roncr27"
@@ -44,15 +44,24 @@ public struct PartnerStationProvider: ObservationProvider {
         guard EnvironmentCanadaProvider.mightBeInCanada(coordinate) else { return nil }
         let stations = try Self.parseStations(try await get(stationsQuery(for: coordinate)), near: coordinate,
                                               maxDistanceKm: maxStationDistanceKm)
+        let candidates = Array(stations.prefix(3))
+        guard !candidates.isEmpty else { return nil }
         let now = Date()
-        // Nearest first; a station that has gone quiet falls through to the next one.
-        for station in stations.prefix(3) {
-            if var o = try? await latest(for: station, now: now) {
-                o.distanceKm = station.distanceKm
-                return o
+        // Query all top candidate stations concurrently (today's folder first, then yesterday fallback).
+        return await withTaskGroup(of: (Int, Observation?).self) { group in
+            for (idx, station) in candidates.enumerated() {
+                group.addTask {
+                    guard var o = try? await self.latest(for: station, now: now) else { return (idx, nil) }
+                    o.distanceKm = station.distanceKm
+                    return (idx, o)
+                }
             }
+            var hits: [(Int, Observation)] = []
+            for await (idx, obs) in group {
+                if let obs { hits.append((idx, obs)) }
+            }
+            return hits.min(by: { $0.0 < $1.0 })?.1
         }
-        return nil
     }
 
     private func latest(for station: Station, now: Date) async throws -> Observation? {
@@ -73,7 +82,7 @@ public struct PartnerStationProvider: ObservationProvider {
     }
 
     private func get(_ url: URL) async throws -> Data {
-        let (data, response) = try await loader(URLRequest(url: url, timeoutInterval: 15))
+        let (data, response) = try await loader(URLRequest(url: url, timeoutInterval: 6))
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw ForecastError.httpStatus(http.statusCode)
         }

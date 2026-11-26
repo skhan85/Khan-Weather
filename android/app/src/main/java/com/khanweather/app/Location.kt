@@ -27,6 +27,16 @@ object LocationHelper {
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
+    /** Immediate cached coordinate when permission is granted, so loads don't block on GPS. */
+    @SuppressLint("MissingPermission")
+    suspend fun cached(context: Context): Coordinate? {
+        if (!hasPermission(context)) return null
+        val client = LocationServices.getFusedLocationProviderClient(context)
+        val loc = withTimeoutOrNull(150) { runCatching { client.lastLocation.await() }.getOrNull() }
+        if (loc != null) return Coordinate(loc.latitude, loc.longitude).also { Prefs.lastLocation = it }
+        return Prefs.lastLocation
+    }
+
     /** A fresh fix if one comes within 10 seconds, otherwise the last one the phone knows. */
     @SuppressLint("MissingPermission")
     suspend fun current(context: Context): Coordinate? {

@@ -12,6 +12,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 sealed class LoadState {
     data object Loading : LoadState()
@@ -58,14 +59,20 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private suspend fun refresh(place: SavedPlace?) = coroutineScope {
+    private suspend fun refresh(place: SavedPlace?, allowLocationFollowUp: Boolean = true) = coroutineScope {
         generation += 1
         val gen = generation
         val key = place?.id
         if (lastPlaceKey != key) {
             lastPlaceKey = key
-            val snap = cache[key]
+            val snap = cache[key] ?: SnapshotStore.load(context, key, maxAge = 2 * 3600.0)?.let { disk ->
+                if (nowEpoch() - disk.forecast.fetchedAt < cacheAge) disk
+                else disk.copy(forecast = disk.forecast.rolledForward())
+            }
             if (snap != null && nowEpoch() - snap.savedAt < cacheAge) {
+                state = LoadState.Loaded(snap.forecast)
+                placeName = snap.placeName; alerts = snap.alerts; airQuality = snap.airQuality
+            } else if (snap != null) {
                 state = LoadState.Loaded(snap.forecast)
                 placeName = snap.placeName; alerts = snap.alerts; airQuality = snap.airQuality
             } else {
@@ -74,14 +81,23 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         val target: Coordinate
-        if (place != null) {
+        val freshCoordTask = if (place == null) {
+            val cached = LocationHelper.cached(context)
+            if (cached != null) {
+                target = cached
+                usingFallbackLocation = false
+                if (allowLocationFollowUp) async { LocationHelper.current(context) } else null
+            } else {
+                val c = LocationHelper.current(context)
+                if (gen != generation) return@coroutineScope
+                usingFallbackLocation = c == null
+                target = c ?: Coordinate.fallback
+                null
+            }
+        } else {
             target = place.coordinate
             usingFallbackLocation = false
-        } else {
-            val c = LocationHelper.current(context)
-            if (gen != generation) return@coroutineScope
-            usingFallbackLocation = c == null
-            target = c ?: Coordinate.fallback
+            null
         }
         val fallbackName = if (usingFallbackLocation) "Toronto" else null
 
@@ -101,7 +117,7 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
             WeatherLoader.forecastProvider.forecast(
                 target,
                 regionalWeights = { weightsTask.await() },
-            ) { observedTask.await()?.blendAnchor }
+            ) { withTimeoutOrNull(1500) { observedTask.await()?.blendAnchor } }
         } catch (e: Exception) {
             if (gen != generation) return@coroutineScope
             if (state is LoadState.Loaded) return@coroutineScope
@@ -128,11 +144,21 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
         launch { val a = airTask.await(); if (a != null && gen == generation) airQuality = a }
         launch { val n = normalsTask.await(); if (n != null && gen == generation) normals = n }
         val observed = observedTask.await()
-        val radar = radarTask.await()
-        val radarNowcast = nowcastTask.await()
+        if (gen != generation) return@coroutineScope
+        if (observed != null) {
+            ObservationMemory.remember(target, observed)
+            state = LoadState.Loaded(with(WeatherLoader) { base.applying(observed).calibratingEnsemblePop() })
+        }
         val googleHourly = googleTask.await()
         if (gen != generation) return@coroutineScope
-        observed?.let { ObservationMemory.remember(target, it) }
+        if (googleHourly != null) {
+            state = LoadState.Loaded(with(WeatherLoader) {
+                base.applyingGoogleHourly(googleHourly).applying(observed).calibratingEnsemblePop()
+            })
+        }
+        val radar = radarTask.await()
+        val radarNowcast = nowcastTask.await()
+        if (gen != generation) return@coroutineScope
         val loaded = with(WeatherLoader) {
             base.applyingGoogleHourly(googleHourly).applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast).calibratingEnsemblePop()
         }
@@ -147,6 +173,10 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
         val snap = Snapshot(shown, placeName, alerts, airQuality, nowEpoch(), !usingFallbackLocation)
         cache[key] = snap
         SnapshotStore.save(context, key, snap)
+        val fresh = freshCoordTask?.await()
+        if (fresh != null && gen == generation && distanceKm(target, fresh) > 1.5) {
+            refresh(null, allowLocationFollowUp = false)
+        }
     }
 
     /** Fetches saved places in the background so the first switch to each one is quick. */

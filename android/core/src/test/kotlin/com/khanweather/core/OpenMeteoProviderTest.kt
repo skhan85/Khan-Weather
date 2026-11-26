@@ -361,6 +361,24 @@ class OpenMeteoProviderTest {
         close(5.0, anchored.hourly[h0130]!!.temperature, 0.001)
     }
 
+    @Test fun likelyPrecipitationPromotesOvercastHourCondition() {
+        val t0 = 1762952400.0
+        val rainHour = HourlyForecast(time = t0, temperature = 4.0, precipitationProbability = 70.0,
+            precipitation = 0.0, condition = WeatherCondition.overcast)
+        rainHour.promoteLikelyPrecipitation()
+        assertEquals(WeatherCondition.rain, rainHour.condition)
+
+        val snowHour = HourlyForecast(time = t0, temperature = -2.0, precipitationProbability = 70.0,
+            precipitation = 0.0, condition = WeatherCondition.overcast)
+        snowHour.promoteLikelyPrecipitation()
+        assertEquals(WeatherCondition.snow, snowHour.condition)
+
+        val dryCloud = HourlyForecast(time = t0, temperature = 4.0, precipitationProbability = 25.0,
+            precipitation = 0.0, condition = WeatherCondition.overcast)
+        dryCloud.promoteLikelyPrecipitation()
+        assertEquals(WeatherCondition.overcast, dryCloud.condition)
+    }
+
     private val testRegion get() = Regions.testRegion
 
     object Regions {
