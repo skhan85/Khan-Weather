@@ -40,6 +40,13 @@ public struct Observation: Equatable, Codable, Sendable {
     /// Home stations only: each nearby station's reading, nearest first, so a sun-heated one can
     /// be set aside against the forecast (see `Forecast.applying(_:)`).
     public var stationTemperatures: [Double]?
+    /// Home stations only: the official station they were allowed to disagree with by more than
+    /// `HyperlocalObservationProvider.tieBreakGap`, kept so the models can break the tie
+    /// (see `Forecast.applying(_:)`).
+    public var officialTemperature: Double?
+    public var officialStationName: String?
+    public var officialDistanceKm: Double?
+    public var officialProvider: String?
 
     /// Local gauges report and none caught a drop in the last hour.
     public var gaugesSayDry: Bool { (rainGauges ?? 0) > 0 && (rainLastHourMm ?? 1) == 0 }
@@ -322,6 +329,7 @@ public extension Forecast {
     /// eases the next few forecast hours toward it (see `nudged(toward:at:)`).
     func applying(_ observation: Observation?) -> Forecast {
         guard var o = observation else { return self }
+        o = tieBroken(o)
         var copy = self
         var c = current
         // A sky reported by a station far away (Pearson, 25 km from Milton) says nothing about
@@ -390,6 +398,29 @@ public extension Forecast {
         copy.hourly = nudged(toward: o)
         copy.daily = copy.dailyIncluding(c, at: o.observedAt)
         return copy.dryIfGaugesSay(o)
+    }
+
+    /// A tight group of home stations is allowed to stand against a road-weather station up to
+    /// 4.5° away (`HyperlocalObservationProvider.merge`), but home stations as a group run warm on
+    /// clear, still nights. When the two disagree by more than `tieBreakGap`, the side the models
+    /// are closer to wins: the models' middle (the midpoint of their spread, which a station
+    /// reading doesn't re-weight) at the time of the reading is the third opinion.
+    func tieBroken(_ o: Observation) -> Observation {
+        guard o.dataProvider == "NETATMO", let official = o.officialTemperature,
+              abs(o.temperature - official) > HyperlocalObservationProvider.tieBreakGap else { return o }
+        let low = forecastValue(at: o.observedAt) { $0.modelLow }
+        let high = forecastValue(at: o.observedAt) { $0.modelHigh }
+        let models = (low != nil && high != nil) ? (low! + high!) / 2 : forecastTemperature(at: o.observedAt)
+        guard let models, abs(official - models) < abs(o.temperature - models) else { return o }
+        var b = o
+        b.temperature = official
+        b.stationName = o.officialStationName ?? o.stationName
+        b.distanceKm = o.officialDistanceKm
+        b.dataProvider = o.officialProvider
+        b.stationTemperatures = nil
+        b.humidity = nil
+        b.officialTemperature = nil
+        return b
     }
 
     /// Rain from a distant station or the model, when the rain gauges right here are dry, becomes

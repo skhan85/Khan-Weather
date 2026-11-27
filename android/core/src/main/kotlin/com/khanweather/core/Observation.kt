@@ -34,6 +34,11 @@ data class Observation(
     var rainLastHourMm: Double? = null,
     /** Home stations only: each nearby station's reading, nearest first. */
     var stationTemperatures: List<Double>? = null,
+    /** Home stations only: the official station they disagree with by more than the tie-break gap. */
+    var officialTemperature: Double? = null,
+    var officialStationName: String? = null,
+    var officialDistanceKm: Double? = null,
+    var officialProvider: String? = null,
 ) {
     /** Whether the sky (rain, snow, cloud) was reported within `localRadiusKm`. */
     val skyIsLocal: Boolean
@@ -97,7 +102,7 @@ fun median(values: List<Double>): Double? {
  * the next few forecast hours toward it.
  */
 fun Forecast.applying(observation: Observation?): Forecast {
-    val o = observation?.copy() ?: return this
+    val o = observation?.let { tieBroken(it) }?.copy() ?: return this
     val copy = deepCopy()
     val c = current.copy()
     // A sky reported by a station far away says nothing about the sky here.
@@ -157,6 +162,26 @@ fun Forecast.applying(observation: Observation?): Forecast {
     copy.hourly = nudged(o)
     copy.daily = copy.dailyIncluding(c, o.observedAt)
     return copy.dryIfGaugesSay(o)
+}
+
+/**
+ * Home stations may stand against a road-weather station up to 4.5° away, but as a group they run
+ * warm on clear, still nights. Past `HyperlocalObservationProvider.tieBreakGap`, the side the
+ * models' middle (midpoint of their spread at the reading's time) is closer to wins.
+ */
+fun Forecast.tieBroken(o: Observation): Observation {
+    val official = o.officialTemperature
+    if (o.dataProvider != "NETATMO" || official == null ||
+        abs(o.temperature - official) <= HyperlocalObservationProvider.tieBreakGap) return o
+    val low = forecastValue(o.observedAt) { it.modelLow }
+    val high = forecastValue(o.observedAt) { it.modelHigh }
+    val models = (if (low != null && high != null) (low + high) / 2 else forecastTemperature(o.observedAt)) ?: return o
+    if (abs(official - models) >= abs(o.temperature - models)) return o
+    return o.copy(
+        temperature = official, stationName = o.officialStationName ?: o.stationName,
+        distanceKm = o.officialDistanceKm, dataProvider = o.officialProvider,
+        stationTemperatures = null, humidity = null, officialTemperature = null,
+    )
 }
 
 /** Rain from a distant station or the model, when the rain gauges here are dry, becomes cloud. */

@@ -131,6 +131,26 @@ class NetatmoRelayTest {
         assertNull(dry.observation?.conditionText)
     }
 
+    @Test fun modelsBreakTieBetweenWarmClusterAndRoadStation() {
+        val road = Observation("CR-27 Campbellville", now, 1.0, distanceKm = 8.0, dataProvider = "ON-MTO")
+        val cluster = Observation("3 Netatmo stations in Milton", now, 5.0, distanceKm = 0.5, dataProvider = "NETATMO",
+            stationTemperatures = listOf(4.8, 5.0, 5.3))
+        val merged = HyperlocalObservationProvider.merge(road, cluster)
+        assertEquals(5.0, merged.temperature)
+        assertEquals(1.0, merged.officialTemperature)
+        fun forecast(low: Double, high: Double) = Forecast(milton, "America/Toronto",
+            CurrentConditions(now, 3.0, 3.0, FeelsLikeKind.apparent, condition = WeatherCondition.clear, isDay = false),
+            listOf(now - 1800, now + 1800).map {
+                HourlyForecast(it, 3.0, condition = WeatherCondition.clear, isDay = false).apply { modelLow = low; modelHigh = high }
+            }, emptyList(), "t", now)
+        val cold = forecast(0.5, 2.5).applying(merged)
+        assertEquals(1.0, cold.current.temperature)
+        assertEquals("CR-27 Campbellville", cold.observation?.stationName)
+        val mild = forecast(3.5, 5.5).applying(merged)
+        assertEquals(5.0, mild.current.temperature)
+        assertEquals("NETATMO", mild.observation?.dataProvider)
+    }
+
     @Test fun smoothingPreservedWhenNoSunOutlierRemoved() {
         val prev = Observation("2 Netatmo stations", now - 600, 2.0, distanceKm = 1.0).apply { dataProvider = "NETATMO" }
         val cur = Observation("2 Netatmo stations", now, 3.0, distanceKm = 1.0).apply {

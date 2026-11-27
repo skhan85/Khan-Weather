@@ -127,6 +127,8 @@ class HyperlocalObservationProvider(
 
     companion object {
         const val officialLimit = 2.0
+        /** Past this gap from a road-weather station, the models decide who is right (`Forecast.tieBroken`). */
+        const val tieBreakGap = 3.0
         const val homeDeadline = 7.0
 
         fun merge(base: Observation?, netatmo: Observation): Observation {
@@ -150,7 +152,12 @@ class HyperlocalObservationProvider(
                 val place = if (i >= 0) local.stationName.substring(i) else ""
                 local.stationName = (if (v.size == 1) "Netatmo station" else "${v.size} Netatmo stations") + place
             }
+            val disagrees = base != null && (base.distanceKm ?: 0.0) <= 10.0 && abs(base.temperature - local.temperature) > tieBreakGap
             val merged = local.copy(
+                officialTemperature = if (disagrees) base!!.temperature else null,
+                officialStationName = if (disagrees) base!!.stationName else null,
+                officialDistanceKm = if (disagrees) base!!.distanceKm else null,
+                officialProvider = if (disagrees) base!!.dataProvider else null,
                 condition = base?.condition, conditionText = base?.conditionText,
                 skyStationName = base?.stationName, skyDataProvider = base?.dataProvider, skyDistanceKm = base?.distanceKm,
             )
