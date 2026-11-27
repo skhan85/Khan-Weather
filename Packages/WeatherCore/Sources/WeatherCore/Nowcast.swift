@@ -110,6 +110,17 @@ public extension Forecast {
             )
         }
 
+        // The Now card and this line must agree: when the card says it's raining or snowing now
+        // (a nearby station's drizzle, or snow the radar can miss) but the 15-minute data is dry,
+        // the current slot gets a light amount, so it reads "Rain stopping in..." rather than
+        // "Rain starting in about 55 min" under "Light Rain".
+        if !slots[0].isWet, current.condition.isPrecipitation {
+            let snow = !current.condition.isRainLike
+            slots[0] = PrecipitationSlot(time: slots[0].time, precipitation: PrecipitationSlot.wetThreshold,
+                                         rain: snow ? 0 : PrecipitationSlot.wetThreshold,
+                                         snowfall: snow ? PrecipitationSlot.wetThreshold / 0.7 : 0)
+        }
+
         // Each slot takes the same rain-or-snow call as its hour in the hourly list and on the Now
         // card (the models' vote, `RadarNow.typed`). Open-Meteo's 15-minute data puts a trace of snow
         // into most wet slots near 1°, which drew purple "Mixed" bars and "Rain and snow" in plain rain.
