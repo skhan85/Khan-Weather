@@ -173,15 +173,6 @@ struct NextTwoHoursView: View {
                 Image(systemName: symbol)
                     .foregroundStyle(Brand.gold)
             }
-            HStack(alignment: .bottom, spacing: 4) {
-                ForEach(slots, id: \.time) { s in
-                    Capsule()
-                        .fill(color(s))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: height(s))
-                }
-            }
-            .frame(height: 62, alignment: .bottom)
             let midTime = slots.count > 4 ? slots[slots.count / 2].time : Date().addingTimeInterval(3600)
             let endTime = slots.last?.time.addingTimeInterval(900) ?? Date().addingTimeInterval(7200)
             let tickLabel: (Date) -> String = { d in
@@ -193,6 +184,45 @@ struct NextTwoHoursView: View {
                 f.dateFormat = cal.component(.minute, from: d) == 0 ? "h a" : "h:mm a"
                 return f.string(from: d).lowercased()
             }
+            HStack(alignment: .bottom, spacing: 8) {
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text("Heavy")
+                    Spacer()
+                    Text("Moderate")
+                    Spacer()
+                    Text("Light")
+                    Spacer().frame(height: 12)
+                }
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.white.opacity(0.62))
+                .frame(width: 48, height: 92)
+
+                ZStack(alignment: .bottom) {
+                    VStack(spacing: 0) {
+                        Rectangle().fill(.white.opacity(0.14)).frame(height: 0.75)
+                        Spacer()
+                        Rectangle().fill(.white.opacity(0.14)).frame(height: 0.75)
+                        Spacer()
+                        Rectangle().fill(.white.opacity(0.14)).frame(height: 0.75)
+                        Spacer()
+                        Rectangle().fill(.white.opacity(0.24)).frame(height: 1)
+                    }
+                    .frame(height: 92)
+
+                    HStack(alignment: .bottom, spacing: 5) {
+                        ForEach(slots, id: \.time) { s in
+                            let h: CGFloat = s.isWet
+                                ? max(14, min(88, 14 + 74 * CGFloat(sqrt(min(max(s.precipitation, s.snowfall) / 1.0, 1.0)))))
+                                : 3
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(color(s))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: h)
+                        }
+                    }
+                    .frame(height: 92, alignment: .bottom)
+                }
+            }
             HStack {
                 Text("Now")
                 Spacer()
@@ -200,11 +230,27 @@ struct NextTwoHoursView: View {
                 Spacer()
                 Text(tickLabel(endTime))
             }
+            .padding(.leading, 56)
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(.white.opacity(0.82))
-            Text("Light · Moderate · Heavy")
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.7))
+            .foregroundStyle(.white.opacity(0.84))
+            HStack(spacing: 14) {
+                HStack(spacing: 5) {
+                    Capsule().fill(Color(red: 0.45, green: 0.75, blue: 1.0)).frame(width: 14, height: 6)
+                    Text("Rain")
+                }
+                HStack(spacing: 5) {
+                    Capsule().fill(.white).frame(width: 14, height: 6)
+                    Text("Snow")
+                }
+                HStack(spacing: 5) {
+                    Capsule().fill(Color(red: 0.78, green: 0.72, blue: 1.0)).frame(width: 14, height: 6)
+                    Text("Mixed")
+                }
+            }
+            .padding(.leading, 56)
+            .padding(.top, 2)
+            .font(.caption2)
+            .foregroundStyle(.white.opacity(0.75))
         }
         .foregroundStyle(.white)
         .padding(.vertical, 4)

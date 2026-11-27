@@ -281,31 +281,60 @@ fun NextTwoHours(nowcast: Nowcast, slots: List<PrecipitationSlot>) {
             Nowcast.Kind.rain -> Icons.Filled.Umbrella
         }
         LabelLine(nowcastIcon, nowcast.text)
-        Row(Modifier.fillMaxWidth().height(62.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.Bottom) {
-            for (s in slots) {
-                val h = if (!s.isWet) 3.0 else 10 + 50 * min(sqrt(max(s.precipitation, s.snowfall) / 1.0), 1.0)
-                val colour = when {
-                    !s.isWet -> Color.White.copy(alpha = 0.3f)
-                    s.snowfall > 0 && s.rain < PrecipitationSlot.wetThreshold -> Color.White
-                    s.snowfall > 0 -> rgb(0.78, 0.72, 1.0)
-                    else -> rgb(0.45, 0.75, 1.0)
-                }
-                Box(Modifier.weight(1f).height(h.dp).clip(RoundedCornerShape(50)).background(colour))
-            }
-        }
         val midEpoch = if (slots.size > 4) slots[slots.size / 2].time else nowEpoch() + 3600L
         val endEpoch = (slots.lastOrNull()?.time?.plus(900L)) ?: (nowEpoch() + 7200L)
         fun tickLabel(epoch: Long): String {
-            val zdt = java.time.Instant.ofEpochSecond(epoch).atZone(java.time.ZoneId.of(java.util.TimeZone.getDefault().id))
+            val zdt = java.time.Instant.ofEpochSecond(epoch).atZone(java.time.ZoneId.of(java.util.TimeZone.getDefault())
             val fmt = if (zdt.minute == 0) "h a" else "h:mm a"
             return java.time.format.DateTimeFormatter.ofPattern(fmt, java.util.Locale.US).format(zdt).lowercase()
         }
-        Row {
+        Row(Modifier.fillMaxWidth().height(92.dp), verticalAlignment = Alignment.Bottom) {
+            Column(Modifier.width(50.dp).fillMaxHeight().padding(end = 6.dp), horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.SpaceBetween) {
+                Text("Heavy", style = style(10.sp, color = Color.White.copy(alpha = 0.62f)))
+                Text("Moderate", style = style(10.sp, color = Color.White.copy(alpha = 0.62f)))
+                Text("Light", style = style(10.sp, color = Color.White.copy(alpha = 0.62f)))
+                Spacer(Modifier.height(10.dp))
+            }
+            Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.BottomStart) {
+                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.14f)))
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.14f)))
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.14f)))
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.24f)))
+                }
+                Row(Modifier.fillMaxWidth().fillMaxHeight(), horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.Bottom) {
+                    for (s in slots) {
+                        val h = if (!s.isWet) 3.0 else 14 + 74 * min(sqrt(max(s.precipitation, s.snowfall) / 1.0), 1.0)
+                        val colour = when {
+                            !s.isWet -> Color.White.copy(alpha = 0.25f)
+                            s.snowfall > 0 && s.rain < PrecipitationSlot.wetThreshold -> Color.White
+                            s.snowfall > 0 -> rgb(0.78, 0.72, 1.0)
+                            else -> rgb(0.45, 0.75, 1.0)
+                        }
+                        Box(Modifier.weight(1f).height(h.dp).clip(RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp, bottomStart = 2.dp, bottomEnd = 2.dp)).background(colour))
+                    }
+                }
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(start = 50.dp)) {
             Text("Now", style = style(11.sp, FontWeight.SemiBold, White82)); Spacer(Modifier.weight(1f))
             Text(tickLabel(midEpoch), style = style(11.sp, FontWeight.SemiBold, White82)); Spacer(Modifier.weight(1f))
             Text(tickLabel(endEpoch), style = style(11.sp, FontWeight.SemiBold, White82))
         }
-        Text("Light · Moderate · Heavy", style = style(11.sp, color = Color.White.copy(alpha = 0.7f)))
+        Row(Modifier.padding(start = 50.dp, top = 2.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.width(14.dp).height(6.dp).clip(RoundedCornerShape(50)).background(rgb(0.45, 0.75, 1.0)))
+                Text("Rain", style = style(11.sp, color = Color.White.copy(alpha = 0.75f)))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.width(14.dp).height(6.dp).clip(RoundedCornerShape(50)).background(Color.White))
+                Text("Snow", style = style(11.sp, color = Color.White.copy(alpha = 0.75f)))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.width(14.dp).height(6.dp).clip(RoundedCornerShape(50)).background(rgb(0.78, 0.72, 1.0)))
+                Text("Mixed", style = style(11.sp, color = Color.White.copy(alpha = 0.75f)))
+            }
+        }
     }
 }
 
