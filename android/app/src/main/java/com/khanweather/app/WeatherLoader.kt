@@ -64,7 +64,7 @@ object WeatherLoader {
     suspend fun observation(target: Coordinate): Observation? {
         val provider = observations()
         val previous = ObservationMemory.last(target)
-        return deadline(5.0) { runCatching { provider.observation(target) }.getOrNull() }?.smoothed(previous)
+        return deadline(8.0) { runCatching { provider.observation(target) }.getOrNull() }?.smoothed(previous)
     }
 
     suspend fun radar(target: Coordinate): RadarNow? =
@@ -114,8 +114,17 @@ object WeatherLoader {
         }
     }
 
-    fun Forecast.applyingRadarNowcast(nc: RelayNowcast?): Forecast {
+    /**
+     * `radarNow` is the checked reading over the spot. When it is dry but the relay says it's coming
+     * down right now, the relay is carrying an echo the check threw out (clutter that doesn't move),
+     * so the relay is ignored.
+     */
+    fun Forecast.applyingRadarNowcast(nc: RelayNowcast?, radarNow: RadarNow? = null): Forecast {
         if (nc == null || nc.slots.isEmpty() || minutely.isEmpty()) return this
+        if (radarNow != null && (!radarNow.isPrecipitating || !radarEchoCanReachGround)) {
+            val atFrame = nc.slots.filter { kotlin.math.abs(it.epoch - radarNow.time) <= 600.0 }
+            if (atFrame.any { maxOf(it.rain_mmh, it.snow_cmh, it.precip_mmh) >= 0.5 }) return this
+        }
         val temp = current.temperature
         val rh = current.humidity ?: 100.0
         val startEpoch = minutely[0].time
@@ -390,7 +399,7 @@ object WeatherLoader {
         val base = forecastProvider.forecast(target, regionalWeights = { weightsTask.await() }) { observed?.blendAnchor }
         observed?.let { ObservationMemory.remember(target, it) }
         // Same order as the app's main screen, so widgets and saved places match it.
-        base.applyingMosmixHourly(mosmixTask.await()).applyingGoogleHourly(googleTask.await()).applying(observed).applyingRadar(radar).applyingRadarNowcast(ncTask.await()).calibratingEnsemblePop()
+        base.applyingMosmixHourly(mosmixTask.await()).applyingGoogleHourly(googleTask.await()).applying(observed).applyingRadar(radar).applyingRadarNowcast(ncTask.await(), radar).calibratingEnsemblePop()
     }
 
     @Serializable

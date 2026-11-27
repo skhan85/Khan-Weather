@@ -25,15 +25,45 @@ class NetatmoRelayProvider(
     val radiusKm = 8.0
     val maxAge = 3600.0
 
+    /**
+     * The first call after the app has been closed a while can come back empty (the relay errors, or
+     * hands back readings too old to use while it fetches new ones), and the app then fell back to the
+     * official station 8 km away for that whole load. One quick second try fixes that; it isn't made
+     * when the relay answered with fresh data and there are simply no stations near.
+     */
     override suspend fun observation(near: Coordinate): Observation? {
         val url = buildUrl(baseURL, "lat" to fmt("%.4f", near.latitude), "lon" to fmt("%.4f", near.longitude))
-        return parse(loader.fetch(url, timeoutSeconds = 8), near, nowEpoch(), radiusKm, maxAge)
+        try {
+            val data = loader.fetch(url, timeoutSeconds = 6)
+            val now = nowEpoch()
+            val o = parse(data, near, now, radiusKm, maxAge)
+            if (o != null || !hasOnlyStaleStations(data, near, now, radiusKm, maxAge)) return o
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // One retry below.
+        }
+        kotlinx.coroutines.delay((retryDelay * 1000).toLong())
+        return parse(loader.fetch(url, timeoutSeconds = 6), near, nowEpoch(), radiusKm, maxAge)
     }
 
     companion object {
         const val defaultBaseURL = "https://weather-relay.khanofmilton.ca/v1/netatmo"
         const val fillRadiusKm = 10.0
         const val outlierLimit = 2.5
+        const val retryDelay = 1.5
+
+        /** True when the relay listed stations within the radius but every one was too old to use. */
+        fun hasOnlyStaleStations(data: ByteArray, near: Coordinate, now: Epoch, radiusKm: Double, maxAge: Double): Boolean {
+            val stations = runCatching { parseJson(data)["stations"].arr }.getOrNull() ?: return false
+            val close = stations.filter { s ->
+                val lat = s["lat"].numOnly
+                val lon = s["lon"].numOnly
+                s["temperature"].numOnly != null && lat != null && lon != null &&
+                    distanceKm(near, Coordinate(lat, lon)) <= radiusKm
+            }
+            return close.isNotEmpty() && close.all { s -> s["observed"].numOnly?.let { now - it >= maxAge } ?: true }
+        }
 
         private class S(val temperature: Double?, val humidity: Double?, val city: String?, val rain: Double?,
                         val wind: Double?, val angle: Double?, val gust: Double?)
@@ -88,7 +118,8 @@ class HyperlocalObservationProvider(
 ) : ObservationProvider {
     override suspend fun observation(near: Coordinate): Observation? = coroutineScope {
         val a = async { safely { official.observation(near) } }
-        val b = async { safely { netatmo.observation(near) } }
+        // Home stations get a little under the app's wait, so a slow relay still leaves the official reading.
+        val b = async { kotlinx.coroutines.withTimeoutOrNull((homeDeadline * 1000).toLong()) { safely { netatmo.observation(near) } } }
         val base = a.await()
         val local = b.await() ?: return@coroutineScope base
         merge(base, local)
@@ -96,6 +127,7 @@ class HyperlocalObservationProvider(
 
     companion object {
         const val officialLimit = 2.0
+        const val homeDeadline = 7.0
 
         fun merge(base: Observation?, netatmo: Observation): Observation {
             val local = netatmo.copy()

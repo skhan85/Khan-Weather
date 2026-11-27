@@ -230,8 +230,17 @@ public extension Forecast {
     }
 
     /// Merges 6-minute radar extrapolation from the relay into 15-minute `minutely` slots.
-    func applyingRadarNowcast(_ nc: RelayNowcast?) -> Forecast {
+    /// `radarNow` is the checked reading over the spot (`ECCCRadarProvider.now`). When it is dry, or the air
+    /// here is too dry for its echo to reach the ground, but the relay's extrapolation says it's coming down
+    /// right now, the relay is carrying the same false echo (clutter doesn't move, so it would be "falling"
+    /// for the whole two hours), and is ignored.
+    func applyingRadarNowcast(_ nc: RelayNowcast?, radarNow: RadarNow? = nil) -> Forecast {
         guard let nc, !nc.slots.isEmpty, !minutely.isEmpty else { return self }
+        if let radarNow, !radarNow.isPrecipitating || !radarEchoCanReachGround {
+            let t = radarNow.time.timeIntervalSince1970
+            let atFrame = nc.slots.filter { abs($0.epoch - t) <= 600 }
+            if atFrame.contains(where: { max($0.rain_mmh, $0.snow_cmh, $0.precip_mmh) >= 0.5 }) { return self }
+        }
         var copy = self
         let temp = current.temperature
         let rh = current.humidity ?? 100

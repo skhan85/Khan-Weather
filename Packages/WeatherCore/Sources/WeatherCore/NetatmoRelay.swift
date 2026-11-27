@@ -36,15 +36,52 @@ public struct NetatmoRelayProvider: ObservationProvider {
         self.loader = loader
     }
 
+    /// Pause before asking the relay a second time.
+    static let retryDelay: TimeInterval = 1.5
+
+    /// The first call after the app has been closed for a while can come back empty: the relay
+    /// errors or hands back readings that are too old while it fetches new ones from Netatmo.
+    /// Then the app fell back to the official station 8 km away for that whole load (26 Nov:
+    /// Campbellville 0° and snow on opening, 3 home stations 3 km away at 2° after a pull to
+    /// refresh). One quick second try fixes that. It isn't made when the relay answered with
+    /// fresh data and there simply are no stations near.
     public func observation(near coordinate: Coordinate) async throws -> Observation? {
+        do {
+            let (o, staleOnly) = try await fetch(near: coordinate)
+            if o != nil || !staleOnly { return o }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // Fall through to one retry.
+        }
+        try await Task.sleep(nanoseconds: UInt64(Self.retryDelay * 1_000_000_000))
+        return try await fetch(near: coordinate).observation
+    }
+
+    private func fetch(near coordinate: Coordinate) async throws -> (observation: Observation?, staleOnly: Bool) {
         var parts = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)!
         parts.queryItems = [URLQueryItem(name: "lat", value: String(format: "%.4f", coordinate.latitude)),
                             URLQueryItem(name: "lon", value: String(format: "%.4f", coordinate.longitude))]
-        var request = URLRequest(url: parts.url!, timeoutInterval: 8)
+        var request = URLRequest(url: parts.url!, timeoutInterval: 6)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         let (data, response) = try await loader(request)
         if let http = response as? HTTPURLResponse, http.statusCode != 200 { throw ForecastError.httpStatus(http.statusCode) }
-        return try Self.parse(data, near: coordinate, now: Date(), radiusKm: radiusKm, maxAge: maxAge)
+        let now = Date()
+        let o = try Self.parse(data, near: coordinate, now: now, radiusKm: radiusKm, maxAge: maxAge)
+        return (o, o == nil && Self.hasOnlyStaleStations(data, near: coordinate, now: now, radiusKm: radiusKm, maxAge: maxAge))
+    }
+
+    /// True when the relay listed stations within the radius but every one was too old to use.
+    static func hasOnlyStaleStations(_ data: Data, near c: Coordinate, now: Date, radiusKm: Double, maxAge: TimeInterval) -> Bool {
+        struct R: Decodable { let stations: [NetatmoStation] }
+        guard let stations = try? JSONDecoder().decode(R.self, from: data).stations else { return false }
+        let near = stations.filter {
+            $0.temperature != nil &&
+                EnvironmentCanadaProvider.distanceKm(c, Coordinate(latitude: $0.lat, longitude: $0.lon)) <= radiusKm
+        }
+        return !near.isEmpty && near.allSatisfy { s in
+            s.observed.map { now.timeIntervalSince(Date(timeIntervalSince1970: $0)) >= maxAge } ?? true
+        }
     }
 
     /// How far out to look for stations to make up three when fewer are within the radius.
@@ -119,11 +156,16 @@ public struct HyperlocalObservationProvider: ObservationProvider {
 
     public func observation(near coordinate: Coordinate) async throws -> Observation? {
         async let a = try? official.observation(near: coordinate)
-        async let b = try? netatmo.observation(near: coordinate)
+        // Home stations get a little under the app's 8 s wait, so a slow relay still leaves the
+        // official reading rather than nothing.
+        let netatmo = self.netatmo
+        async let b = Deadline.run(Self.homeDeadline) { try? await netatmo.observation(near: coordinate) }
         let base = await a ?? nil
         guard let local = await b ?? nil else { return base }
         return Self.merge(official: base, netatmo: local)
     }
+
+    static let homeDeadline: Double = 7
 
     /// Further than this from a nearby official station, the Netatmo reading is set aside.
     static let officialLimit: Double = 2

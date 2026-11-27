@@ -80,12 +80,56 @@ public struct ECCCRadarProvider: Sendable {
     }
 
     public func now(at coordinate: Coordinate) async throws -> RadarNow? {
-        async let rain = sample("RADAR_1KM_RRAI", at: coordinate)
-        async let snow = sample("RADAR_1KM_RSNO", at: coordinate)
+        async let rain = neighbourhood("RADAR_1KM_RRAI", at: coordinate)
+        async let snow = neighbourhood("RADAR_1KM_RSNO", at: coordinate)
         let (r, s) = try await (rain, snow)
         guard let time = [r?.time, s?.time].compactMap({ $0 }).max(),
               Date().timeIntervalSince(time) < maxAge else { return nil }
         return RadarNow(rainMmPerHour: r?.value ?? 0, snowCmPerHour: s?.value ?? 0, time: time)
+    }
+
+    /// About 2 km apart: wider than one 1 km pixel, narrower than any real band of rain or snow.
+    static let neighbourOffsetKm = 2.0
+
+    /// The spot plus four points about 2 km north, south, east and west of it.
+    static func neighbourhoodPoints(around c: Coordinate) -> [Coordinate] {
+        let dLat = neighbourOffsetKm / 111.0
+        let dLon = neighbourOffsetKm / (111.0 * max(0.2, cos(c.latitude * .pi / 180)))
+        return [c,
+                Coordinate(latitude: c.latitude + dLat, longitude: c.longitude),
+                Coordinate(latitude: c.latitude - dLat, longitude: c.longitude),
+                Coordinate(latitude: c.latitude, longitude: c.longitude + dLon),
+                Coordinate(latitude: c.latitude, longitude: c.longitude - dLon)]
+    }
+
+    /// The median of the five points' readings. One bright pixel over the spot (ground clutter
+    /// from a tower, a hill or the escarpment, which shows up most on cold, clear nights) is
+    /// outvoted by its dry neighbours, while real rain or snow covers all five and still counts.
+    static func median(_ values: [Double]) -> Double {
+        let v = values.sorted()
+        guard !v.isEmpty else { return 0 }
+        return v.count % 2 == 1 ? v[v.count / 2] : (v[v.count / 2 - 1] + v[v.count / 2]) / 2
+    }
+
+    private func neighbourhood(_ layer: String, at coordinate: Coordinate) async throws -> (value: Double, time: Date)? {
+        let points = Self.neighbourhoodPoints(around: coordinate)
+        let readings = try await withThrowingTaskGroup(of: (Int, (value: Double, time: Date)?).self) { group in
+            for (i, p) in points.enumerated() {
+                group.addTask {
+                    // A neighbour that fails just drops out; only the spot itself must answer.
+                    if i == 0 { return (i, try await self.sample(layer, at: p)) }
+                    return (i, try? await self.sample(layer, at: p))
+                }
+            }
+            var out: [Int: (value: Double, time: Date)] = [:]
+            for try await (i, r) in group { if let r { out[i] = r } }
+            return out
+        }
+        guard let centre = readings[0] else { return nil }
+        // Only neighbours from the same frame vote.
+        let sameFrame = readings.values.filter { abs($0.time.timeIntervalSince(centre.time)) < 60 }.map(\.value)
+        guard sameFrame.count >= 3 else { return centre }
+        return (Self.median(sameFrame), centre.time)
     }
 
     /// Environment Canada's mosaic covers Canada and the northern US.
@@ -147,11 +191,24 @@ public extension Forecast {
     /// Radar rain lighter than this (mm/h) is overruled by dry local rain gauges.
     static let gaugeVetoRate: Double = 1.0
 
+    /// Rain or snow that reaches the ground moistens the air it falls through within minutes, so a
+    /// radar echo over air drier than this is falling apart aloft (virga) or isn't weather at all
+    /// (26 Nov, 9:43 pm in Milton: "moderate rain" from the radar at 73% humidity, nothing falling).
+    /// Below -2° the bar is lower, since snow can fall through air that is dry by the water scale.
+    static func dryAirHumidity(at celsius: Double) -> Double { celsius > -2 ? 80 : 70 }
+
+    /// False when the air here is too dry for the radar's echo to be reaching the ground.
+    var radarEchoCanReachGround: Bool {
+        guard let rh = current.humidity else { return true }
+        return rh >= Self.dryAirHumidity(at: current.temperature)
+    }
+
     /// When the radar shows rain or snow falling here now, say so even if the model or a
     /// distant station says cloudy. A dry radar changes nothing: it can miss very light snow.
     func applyingRadar(_ radar: RadarNow?) -> Forecast {
         let rawRadarRain = radar?.rainMmPerHour ?? 0
         guard let radar = radar?.typed(byTemperature: current.temperature) else { return self }
+        if radar.isPrecipitating, !radarEchoCanReachGround { return self }
         // Virga guard: in dry surface air (RH < 80%), weak overhead radar (< 1.0 mm/h)
         // evaporates before reaching the ground; below 88% RH, ignore < 0.5 mm/h clutter.
         if current.temperature >= 3, (radar.rainMmPerHour < 0.5 || (rawRadarRain < 0.5)) {

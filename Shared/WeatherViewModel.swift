@@ -160,10 +160,10 @@ final class WeatherViewModel: ObservableObject {
         let likelyCold = knownTemp.map { $0 <= 4 } ?? (abs(target.latitude) >= 25)
 
         // Everything starts at once. Cap the anchor wait inside OpenMeteoProvider at 1.5s so slow
-        // stations never stall the initial forecast, while `observedTask` finishes up to 5s total.
+        // stations never stall the initial forecast, while `observedTask` finishes up to 8s total (home stations get one quick retry).
         let nameTask = Task { await Self.name(for: place, at: target) }
         let observedTask = Task {
-            await Deadline.run(5) { try? await observations.observation(near: target) }?
+            await Deadline.run(8) { try? await observations.observation(near: target) }?
                 .smoothed(after: previous)
         }
         let radarTask = Task { try? await ECCCRadarProvider().now(at: target) }
@@ -239,7 +239,7 @@ final class WeatherViewModel: ObservableObject {
                 let radar = await radarTask.value ?? nil
                 let radarNowcast = await nowcastTask.value
                 guard gen == self.generation else { return }
-                self.state = .loaded(base.applyingMosmixHourly(mosmixHourly).applyingGoogleHourly(googleHourly).applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast).calibratingEnsemblePop())
+                self.state = .loaded(base.applyingMosmixHourly(mosmixHourly).applyingGoogleHourly(googleHourly).applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast, radarNow: radar).calibratingEnsemblePop())
             }
         }
         guard gen == generation, case .loaded(let shown) = state else { return }
@@ -288,8 +288,9 @@ final class WeatherViewModel: ObservableObject {
                 base = try? await provider.forecast(for: target)
             }
             guard let base else { continue }
-            let full = base.applyingMosmixHourly(await mosmixHourly).applyingGoogleHourly(await googleHourly).applying(obs).applyingRadar(await radar ?? nil)
-                .applyingRadarNowcast(await nowcast).calibratingEnsemblePop()
+            let radarNow = await radar ?? nil
+            let full = base.applyingMosmixHourly(await mosmixHourly).applyingGoogleHourly(await googleHourly).applying(obs).applyingRadar(radarNow)
+                .applyingRadarNowcast(await nowcast, radarNow: radarNow).calibratingEnsemblePop()
             let snap = Snapshot(forecast: full, name: place.name, alerts: await fetchedAlerts ?? [],
                                 airQuality: await air, at: Date())
             // Don't overwrite a fresher entry from a refresh that ran meanwhile.
