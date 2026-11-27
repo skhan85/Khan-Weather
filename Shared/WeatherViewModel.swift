@@ -112,12 +112,13 @@ final class WeatherViewModel: ObservableObject {
         if lastPlaceID != .some(key) {
             lastPlaceID = .some(key)
             if let snap = cache[key], Date().timeIntervalSince(snap.at) < cacheAge {
-                state = .loaded(snap.forecast.calibratingEnsemblePop())
+                // Saved forecasts were calibrated before saving; calibrating again would push rain chances up.
+                state = .loaded(snap.forecast)
                 placeName = snap.name
                 alerts = snap.alerts
                 airQuality = snap.airQuality
             } else if let cached = Self.loadDiskCache(for: key, maxAge: 2 * 3600) {
-                let shown = (Date().timeIntervalSince(cached.fetchedAt) < cacheAge ? cached : cached.rolledForward()).calibratingEnsemblePop()
+                let shown = Date().timeIntervalSince(cached.fetchedAt) < cacheAge ? cached : cached.rolledForward()
                 state = .loaded(shown)
                 showingStaleDiskCache = true
                 placeName = place?.name
@@ -190,7 +191,7 @@ final class WeatherViewModel: ObservableObject {
             // Keep showing the last good forecast if we have one.
             if case .loaded = state { return }
             if let cached = Self.loadDiskCache(for: key) {
-                state = .loaded(cached.rolledForward().calibratingEnsemblePop())
+                state = .loaded(cached.rolledForward())
                 return
             }
             state = .failed(error.localizedDescription)
@@ -272,6 +273,7 @@ final class WeatherViewModel: ObservableObject {
             async let nowcast = RelayExtrasProvider().nowcast(near: target, cold: likelyCold)
             let weightsTask = Task { await Deadline.run(3) { await RelayExtrasProvider().regionalWeights(near: target) } }
             async let googleHourly = Deadline.run(3) { await RelayExtrasProvider().googleHourly(near: target) }
+            async let mosmixHourly = Deadline.run(2.5) { await RelayExtrasProvider().mosmixHourly(near: target) }
             async let fetchedAlerts = try? alertProvider.alerts(near: target)
             async let air = try? AirQualityProvider().airQuality(at: target)
             let obs = await observed
@@ -286,7 +288,7 @@ final class WeatherViewModel: ObservableObject {
                 base = try? await provider.forecast(for: target)
             }
             guard let base else { continue }
-            let full = base.applyingGoogleHourly(await googleHourly).applying(obs).applyingRadar(await radar ?? nil)
+            let full = base.applyingMosmixHourly(await mosmixHourly).applyingGoogleHourly(await googleHourly).applying(obs).applyingRadar(await radar ?? nil)
                 .applyingRadarNowcast(await nowcast).calibratingEnsemblePop()
             let snap = Snapshot(forecast: full, name: place.name, alerts: await fetchedAlerts ?? [],
                                 airQuality: await air, at: Date())

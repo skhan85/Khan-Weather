@@ -70,7 +70,8 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
             val snap = memSnap ?: SnapshotStore.load(context, key, maxAge = 2 * 3600.0)?.let { disk ->
                 showingStaleDiskCache = true
                 val f = if (nowEpoch() - disk.forecast.fetchedAt < cacheAge) disk.forecast else disk.forecast.rolledForward()
-                disk.copy(forecast = with(WeatherLoader) { f.calibratingEnsemblePop() })
+                // Saved forecasts were calibrated before saving; calibrating again would push rain chances up.
+                disk.copy(forecast = f)
             }
             if (snap != null) {
                 state = LoadState.Loaded(snap.forecast)
