@@ -33,21 +33,31 @@ public struct RadarNow: Equatable, Codable, Sendable {
         return nil
     }
 
-    /// The mosaic's rain and snow layers can both light up for the same echo, and outside Canada
-    /// the snow layer isn't split by temperature at all. Decide the type from the air temperature:
-    /// snow at or below 1°C, rain at 3°C and above, and between the two keep what the radar says.
-    public func typed(byTemperature celsius: Double?) -> RadarNow {
+    /// The mosaic's rain and snow layers both light up for the same echo (each is the echo read as
+    /// rain, or as snow), and outside Canada the snow layer isn't split by temperature at all. So the
+    /// type comes from here: rain at 3°C and above, snow at -2°C and below, and in between whatever
+    /// the models' rain-or-snow vote says for this hour (`ModelBlend.precipitationType`, 97% right
+    /// against ECCC observers), falling back to snow at or below 1°C when the models are split or dry.
+    /// 26 Nov, 9:40 pm in Milton: 0° from a station 8 km away turned a 3.2 mm/h rain echo into
+    /// "Heavy snow" while it was raining (Pearson and Hamilton reported rain at 1-2°).
+    ///
+    /// The rate comes from the matching layer: snow uses the snow layer's cm/h, not the rain
+    /// layer's mm/h (3.2 mm/h of rain is about 1.7 cm/h of snow, not 3.2).
+    public func typed(byTemperature celsius: Double?, models: PrecipitationKind? = nil) -> RadarNow {
         guard let t = celsius, isPrecipitating else { return self }
+        let snow: Bool
+        if t >= 3 { snow = false }
+        else if t <= -2 { snow = true }
+        else if models == .rain { snow = false }
+        else if models == .snow { snow = true }
+        else { snow = t <= 1 }
         var r = self
-        if t >= 3, isSnowing {
-            // Roughly 1 cm of snow per 1 mm of water.
-            r.rainMmPerHour = max(rainMmPerHour, snowCmPerHour)
-            r.snowCmPerHour = 0
-        } else if t <= 1, isRaining {
-            r.snowCmPerHour = max(snowCmPerHour, rainMmPerHour)
+        if snow {
+            r.snowCmPerHour = snowCmPerHour > 0 ? snowCmPerHour : rainMmPerHour
             r.rainMmPerHour = 0
-        } else if isSnowing, isRaining {
-            r.snowCmPerHour = 0   // mixed near freezing: call it rain unless cold enough
+        } else {
+            r.rainMmPerHour = rainMmPerHour > 0 ? rainMmPerHour : snowCmPerHour
+            r.snowCmPerHour = 0
         }
         return r
     }
@@ -80,12 +90,56 @@ public struct ECCCRadarProvider: Sendable {
     }
 
     public func now(at coordinate: Coordinate) async throws -> RadarNow? {
-        async let rain = sample("RADAR_1KM_RRAI", at: coordinate)
-        async let snow = sample("RADAR_1KM_RSNO", at: coordinate)
+        async let rain = neighbourhood("RADAR_1KM_RRAI", at: coordinate)
+        async let snow = neighbourhood("RADAR_1KM_RSNO", at: coordinate)
         let (r, s) = try await (rain, snow)
         guard let time = [r?.time, s?.time].compactMap({ $0 }).max(),
               Date().timeIntervalSince(time) < maxAge else { return nil }
         return RadarNow(rainMmPerHour: r?.value ?? 0, snowCmPerHour: s?.value ?? 0, time: time)
+    }
+
+    /// About 2 km apart: wider than one 1 km pixel, narrower than any real band of rain or snow.
+    static let neighbourOffsetKm = 2.0
+
+    /// The spot plus four points about 2 km north, south, east and west of it.
+    static func neighbourhoodPoints(around c: Coordinate) -> [Coordinate] {
+        let dLat = neighbourOffsetKm / 111.0
+        let dLon = neighbourOffsetKm / (111.0 * max(0.2, cos(c.latitude * .pi / 180)))
+        return [c,
+                Coordinate(latitude: c.latitude + dLat, longitude: c.longitude),
+                Coordinate(latitude: c.latitude - dLat, longitude: c.longitude),
+                Coordinate(latitude: c.latitude, longitude: c.longitude + dLon),
+                Coordinate(latitude: c.latitude, longitude: c.longitude - dLon)]
+    }
+
+    /// The median of the five points' readings. One bright pixel over the spot (ground clutter
+    /// from a tower, a hill or the escarpment, which shows up most on cold, clear nights) is
+    /// outvoted by its dry neighbours, while real rain or snow covers all five and still counts.
+    static func median(_ values: [Double]) -> Double {
+        let v = values.sorted()
+        guard !v.isEmpty else { return 0 }
+        return v.count % 2 == 1 ? v[v.count / 2] : (v[v.count / 2 - 1] + v[v.count / 2]) / 2
+    }
+
+    private func neighbourhood(_ layer: String, at coordinate: Coordinate) async throws -> (value: Double, time: Date)? {
+        let points = Self.neighbourhoodPoints(around: coordinate)
+        let readings = try await withThrowingTaskGroup(of: (Int, (value: Double, time: Date)?).self) { group in
+            for (i, p) in points.enumerated() {
+                group.addTask {
+                    // A neighbour that fails just drops out; only the spot itself must answer.
+                    if i == 0 { return (i, try await self.sample(layer, at: p)) }
+                    return (i, try? await self.sample(layer, at: p))
+                }
+            }
+            var out: [Int: (value: Double, time: Date)] = [:]
+            for try await (i, r) in group { if let r { out[i] = r } }
+            return out
+        }
+        guard let centre = readings[0] else { return nil }
+        // Only neighbours from the same frame vote.
+        let sameFrame = readings.values.filter { abs($0.time.timeIntervalSince(centre.time)) < 60 }.map(\.value)
+        guard sameFrame.count >= 3 else { return centre }
+        return (Self.median(sameFrame), centre.time)
     }
 
     /// Environment Canada's mosaic covers Canada and the northern US.
@@ -147,11 +201,19 @@ public extension Forecast {
     /// Radar rain lighter than this (mm/h) is overruled by dry local rain gauges.
     static let gaugeVetoRate: Double = 1.0
 
+    /// The models' rain-or-snow call for the hour holding `time`, when that hour has rain or snow in it.
+    func modelPrecipitationKind(at time: Date) -> PrecipitationKind? {
+        guard let h = hourly.last(where: { $0.time <= time }), time.timeIntervalSince(h.time) < 3600,
+              (h.rain ?? 0) > 0 || (h.snowfall ?? 0) > 0 else { return nil }
+        return h.precipitationKind
+    }
+
     /// When the radar shows rain or snow falling here now, say so even if the model or a
     /// distant station says cloudy. A dry radar changes nothing: it can miss very light snow.
     func applyingRadar(_ radar: RadarNow?) -> Forecast {
         let rawRadarRain = radar?.rainMmPerHour ?? 0
-        guard let radar = radar?.typed(byTemperature: current.temperature) else { return self }
+        guard let radar = radar?.typed(byTemperature: current.temperature,
+                                       models: modelPrecipitationKind(at: current.time)) else { return self }
         // Virga guard: in dry surface air (RH < 80%), weak overhead radar (< 1.0 mm/h)
         // evaporates before reaching the ground; below 88% RH, ignore < 0.5 mm/h clutter.
         if current.temperature >= 3, (radar.rainMmPerHour < 0.5 || (rawRadarRain < 0.5)) {

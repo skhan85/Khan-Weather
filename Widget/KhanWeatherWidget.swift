@@ -193,12 +193,13 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
                 anchor: { obs?.blendAnchor },
                 regionalWeights: { await weightsTask.value }
             )
+            let radar = await radarNow ?? nil
             let forecast = base
                 .applyingMosmixHourly(await mosmixHourly)
                 .applyingGoogleHourly(await googleHourly)
                 .applying(obs)
-                .applyingRadar(await radarNow)
-                .applyingRadarNowcast(await radarNowcast)
+                .applyingRadar(radar)
+                .applyingRadarNowcast(await radarNowcast, radarNow: radar)
                 .calibratingEnsemblePop()
             WidgetForecastMemory.remember(forecast)
             return Loaded(forecast: forecast, fresh: true, placeName: await place, alert: alertTitle)

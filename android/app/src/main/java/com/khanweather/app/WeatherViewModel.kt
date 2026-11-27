@@ -163,7 +163,7 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
         val radarNowcast = nowcastTask.await()
         if (gen != generation) return@coroutineScope
         val loaded = with(WeatherLoader) {
-            base.applyingMosmixHourly(mosmixHourly).applyingGoogleHourly(googleHourly).applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast).calibratingEnsemblePop()
+            base.applyingMosmixHourly(mosmixHourly).applyingGoogleHourly(googleHourly).applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast, radar).calibratingEnsemblePop()
         }
         state = LoadState.Loaded(loaded)
         // Keep score of the models for where the user actually is, not saved places.

@@ -171,6 +171,22 @@ data class PrecipitationSlot(
 ) {
     val isWet: Boolean get() = precipitation >= wetThreshold || snowfall >= 0.1
 
+    /**
+     * How hard it's coming down, 0..1, in thirds matching Environment Canada's bands and the chart's
+     * Light / Moderate / Heavy lines: rain heavy from 7.6 mm/h, snow heavy from 1 cm/h.
+     */
+    val intensity: Double
+        get() {
+            fun scale(rate: Double, moderate: Double, heavy: Double): Double = when {
+                rate <= 0 -> 0.0
+                rate < moderate -> rate / moderate / 3
+                rate < heavy -> 1.0 / 3 + (rate - moderate) / (heavy - moderate) / 3
+                else -> kotlin.math.min(1.0, 2.0 / 3 + (rate - heavy) / heavy / 3)
+            }
+            val rainRate = kotlin.math.max(rain, if (snowfall > 0) 0.0 else precipitation) * 4
+            return kotlin.math.max(scale(rainRate, 2.5, 7.6), scale(snowfall * 4, 0.5, 1.0))
+        }
+
     companion object {
         const val wetThreshold = 0.1
     }
