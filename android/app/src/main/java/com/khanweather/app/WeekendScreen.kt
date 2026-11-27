@@ -112,7 +112,7 @@ fun WeekendScreen(forecast: Forecast) {
             val precipSum = max(sub.sumOf { it.precipitation ?: 0.0 }, rainSum + snowSum * 0.7)
             val isSnow = snowSum > rainSum && snowSum >= 0.1
             var cond = sub.firstOrNull { it.condition.isWetOrStorm }?.condition ?: sub[sub.size / 2].condition
-            if (!cond.isWetOrStorm && pop >= 50.0) cond = if (isSnow) WeatherCondition.SNOW else WeatherCondition.RAIN
+            if (!cond.isWetOrStorm && pop >= 50.0) cond = if (isSnow) WeatherCondition.snow else WeatherCondition.rain
             WeekendPart(label, cond, isDay, temp, feels, pop, precipSum, isSnow)
         }
     }
