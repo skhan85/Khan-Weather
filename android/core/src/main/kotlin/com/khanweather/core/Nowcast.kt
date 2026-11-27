@@ -99,6 +99,37 @@ fun Forecast.nowcastSlots(now: Epoch = nowEpoch()): List<PrecipitationSlot> {
     }
 }
 
+/**
+ * The Now card follows the first 15 minutes of Next 2 hours when those are wet and the card isn't
+ * (27 Nov, 8:54 am: "Overcast" under "Rain for at least the next 2 hours" while it drizzled).
+ */
+fun Forecast.agreeingNowWithNowcast(now: Epoch = nowEpoch()): Forecast {
+    val c = current.condition
+    if (c.isPrecipitation || c == WeatherCondition.thunderstorm || c == WeatherCondition.thunderstormHail) return this
+    val first = nowcastSlots(now).firstOrNull() ?: return this
+    if (!first.isWet) return this
+    val copy = deepCopy()
+    val text: String
+    when (first.kind) {
+        PrecipitationKind.snow -> {
+            copy.current.condition = WeatherCondition.snow
+            val r = first.snowfall * 4
+            text = if (r < 0.5) "Light snow" else if (r < 1) "Moderate snow" else "Heavy snow"
+        }
+        PrecipitationKind.mixed -> {
+            copy.current.condition = if (current.temperature <= 0) WeatherCondition.freezingRain else WeatherCondition.rain
+            text = "Rain and snow"
+        }
+        PrecipitationKind.rain -> {
+            val r = max(first.rain, first.precipitation) * 4
+            copy.current.condition = if (r < 0.5) WeatherCondition.drizzle else WeatherCondition.rain
+            text = if (r < 0.5) "Drizzle" else if (r < 2.5) "Light rain" else if (r < 7.6) "Moderate rain" else "Heavy rain"
+        }
+    }
+    copy.observation?.conditionText = text
+    return copy
+}
+
 /** What precipitation is doing over the next two hours, or null when it stays dry. */
 fun Forecast.nowcast(now: Epoch = nowEpoch()): Nowcast? {
     val slots = nowcastSlots(now)
