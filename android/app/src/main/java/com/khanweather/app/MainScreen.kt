@@ -281,10 +281,10 @@ fun NextTwoHours(nowcast: Nowcast, slots: List<PrecipitationSlot>) {
             Nowcast.Kind.rain -> Icons.Filled.Umbrella
         }
         LabelLine(nowcastIcon, nowcast.text)
-        val midEpoch = if (slots.size > 4) slots[slots.size / 2].time else nowEpoch() + 3600L
-        val endEpoch = (slots.lastOrNull()?.time?.plus(900L)) ?: (nowEpoch() + 7200L)
-        fun tickLabel(epoch: Long): String {
-            val zdt = java.time.Instant.ofEpochSecond(epoch).atZone(java.time.ZoneId.of(java.util.TimeZone.getDefault())
+        val midEpoch = if (slots.size > 4) slots[slots.size / 2].time else nowEpoch() + 3600.0
+        val endEpoch = (slots.lastOrNull()?.time?.plus(900.0)) ?: (nowEpoch() + 7200.0)
+        fun tickLabel(epoch: Double): String {
+            val zdt = java.time.Instant.ofEpochSecond(epoch.toLong()).atZone(java.time.ZoneId.systemDefault())
             val fmt = if (zdt.minute == 0) "h a" else "h:mm a"
             return java.time.format.DateTimeFormatter.ofPattern(fmt, java.util.Locale.US).format(zdt).lowercase()
         }
