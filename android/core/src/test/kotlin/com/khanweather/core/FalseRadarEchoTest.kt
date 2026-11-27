@@ -63,4 +63,41 @@ class FalseRadarEchoTest {
         assertNull(provider.observation(milton))
         assertEquals(1, calls)
     }
+
+    private fun slots(wetFrom: Int): List<PrecipitationSlot> {
+        val start = kotlin.math.floor(now / 900) * 900
+        return (0 until 8).map { i -> val a = if (i >= wetFrom) 0.3 else 0.0; PrecipitationSlot(start + i * 900, a, a) }
+    }
+
+    /** 27 Nov, 10:36 am in Milton: drizzling, radar dry, card "Overcast", rain "starting in about 40 min". */
+    @Test fun drizzleTheRadarCantSee() {
+        val f = forecast(3.0, 92.0).apply { minutely = slots(3) }
+        val shown = f.agreeingNowWithNowcast(now)
+        assertEquals(WeatherCondition.drizzle, shown.current.condition)
+        assertEquals(Nowcast.Change.Continuing, shown.nowcast(now)?.change)
+        val dry = forecast(3.0, 84.0).apply { minutely = slots(3) }
+        assertEquals(WeatherCondition.overcast, dry.agreeingNowWithNowcast(now).current.condition)
+        val later = forecast(3.0, 92.0).apply { minutely = slots(6) }
+        assertEquals(WeatherCondition.overcast, later.agreeingNowWithNowcast(now).current.condition)
+    }
+
+    @Test fun distantDrizzleReportNeedsDampAir() {
+        val o = Observation("Milton", now, 3.0, distanceKm = 3.0)
+        o.noteDrizzle("Hamilton Airport", 26.0, WeatherCondition.drizzle, now, now)
+        val f = forecast(3.0, 89.0).apply { observation = o; minutely = slots(99) }
+        assertEquals(WeatherCondition.drizzle, f.agreeingNowWithNowcast(now).current.condition)
+        val drier = forecast(3.0, 80.0).apply { observation = o; minutely = slots(99) }
+        assertEquals(WeatherCondition.overcast, drier.agreeingNowWithNowcast(now).current.condition)
+        val far = Observation("Milton", now, 3.0, distanceKm = 3.0)
+        far.noteDrizzle("Kitchener Airport", 55.0, WeatherCondition.drizzle, now, now)
+        assertNull(far.nearbyDrizzleStation)
+    }
+
+    @Test fun dryRadarKeepsDrizzleInDampAir() {
+        val dryRadar = RadarNow(0.0, 0.0, now)
+        val f = forecast(4.0, 93.0).apply { current.condition = WeatherCondition.drizzle }
+        assertEquals(WeatherCondition.drizzle, f.applyingRadar(dryRadar).current.condition)
+        val drier = forecast(4.0, 70.0).apply { current.condition = WeatherCondition.drizzle }
+        assertEquals(WeatherCondition.overcast, drier.applyingRadar(dryRadar).current.condition)
+    }
 }

@@ -167,6 +167,16 @@ val Forecast.skyStationBeyondRadarReach: Boolean
         return (km ?: 0.0) >= radarBeatsStationKm
     }
 
+/** Air this damp (%) under low cloud can drizzle. */
+const val drizzleHumidity = 88.0
+
+/** Drizzle in damp air: radar beams pass over the low cloud it falls from, so a dry radar doesn't overrule it. */
+val Forecast.drizzleRadarCantSee: Boolean
+    get() {
+        if (current.condition != WeatherCondition.drizzle && current.condition != WeatherCondition.freezingDrizzle) return false
+        return (current.humidity?.toDouble() ?: 0.0) >= drizzleHumidity || observation?.nearbyDrizzleStation != null
+    }
+
 /** When the radar shows rain or snow falling here now, say so even if the model says cloudy. */
 fun Forecast.applyingRadar(radarNow: RadarNow?): Forecast {
     val radar = radarNow?.typed(current.temperature, modelPrecipitationKind(current.time)) ?: return this
@@ -181,7 +191,7 @@ fun Forecast.applyingRadar(radarNow: RadarNow?): Forecast {
     val condition = radar.condition
     if (condition == null) {
         if (current.temperature <= 1 || !current.condition.isRainLike ||
-            ((observation?.skyIsLocal ?: false) && !skyStationBeyondRadarReach)) return this
+            ((observation?.skyIsLocal ?: false) && !skyStationBeyondRadarReach) || drizzleRadarCantSee) return this
         val copy = deepCopy()
         copy.current.condition = WeatherCondition.overcast
         copy.observation?.conditionText = null

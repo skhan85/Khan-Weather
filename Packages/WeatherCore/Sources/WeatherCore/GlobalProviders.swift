@@ -459,6 +459,7 @@ public struct RelayOfficialProvider: ObservationProvider {
 
 /// Picks the right national services for the spot, falling back to the nearest airport anywhere.
 public struct WorldObservationProvider: ObservationProvider {
+    static let airportDeadline: Double = 5
     public let attribution = "Observations: national weather services and airports"
     private let canada: ObservationProvider
     private let us: ObservationProvider
@@ -479,8 +480,18 @@ public struct WorldObservationProvider: ObservationProvider {
     }
 
     public func observation(near coordinate: Coordinate) async throws -> Observation? {
-        if Region.inCanada(coordinate), let o = try? await canada.observation(near: coordinate) {
-            return o
+        if Region.inCanada(coordinate) {
+            // The nearest airport too, only for drizzle: Milton has no official sky station close
+            // enough, and Hamilton airport's "DZ" is the best ground truth for drizzle nearby.
+            let airports = self.airports
+            async let metar = Deadline.run(Self.airportDeadline) { try? await airports.observation(near: coordinate) }
+            if var o = try? await canada.observation(near: coordinate) {
+                if let m = await metar ?? nil {
+                    o.noteDrizzle(station: m.stationName, km: m.distanceKm, condition: m.condition, observedAt: m.observedAt)
+                }
+                return o
+            }
+            _ = await metar
         }
         async let a = try? us.observation(near: coordinate)
         async let b = try? germany.observation(near: coordinate)
