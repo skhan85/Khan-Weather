@@ -241,7 +241,8 @@ def radar_mean_rate(lat, lon, hour_end):
     """Mean of three ECCC radar frames in the hour before `hour_end` (rain mm/h or snow cm/h), or None.
     Like a model's hourly precipitation, which is what fell in the hour up to its time."""
     vals = []
-    for minute in (50, 30, 10):
+    # ECCC 1 km radar frames come every 6 minutes (:00, :06 ... :54): ask for ones that exist.
+    for minute in (48, 30, 12):
         t = datetime.fromtimestamp(hour_end - minute * 60, timezone.utc).strftime("%Y-%m-%dT%H:%M:00Z")
         frame = 0.0
         for layer in ("RADAR_1KM_RRAI", "RADAR_1KM_RSNO"):
