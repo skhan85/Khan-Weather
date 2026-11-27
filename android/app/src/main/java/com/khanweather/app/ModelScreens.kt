@@ -124,7 +124,8 @@ fun ModelComparisonScreen(day: DailyForecast, forecast: Forecast, nav: (Screen) 
             }
             val source = if (used == WeatherModel.blend) BlendRegion.summary(location)
             else "Khan Weather's temperatures here come from ${used.displayName}."
-            Text(source + " The highlighted row's high and low come from the app's midnight-to-midnight hourly forecast, on the same 24-hour window as the other models. High-res models only reach a day or two ahead. Models via Open-Meteo.com (CC BY 4.0).",
+            val learnedHere = ModelBlend.learned(location)?.let { " " + it.summary } ?: ""
+            Text(source + learnedHere + " The highlighted row's high and low come from the app's midnight-to-midnight hourly forecast, on the same 24-hour window as the other models. High-res models only reach a day or two ahead. Models via Open-Meteo.com (CC BY 4.0).",
                 style = style(12.sp, color = Color.White.copy(alpha = 0.8f)), modifier = Modifier.padding(horizontal = 32.dp).padding(bottom = 14.dp))
         }
         Section(null, null, PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {

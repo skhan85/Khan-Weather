@@ -33,6 +33,7 @@ public enum ModelBlend {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var _regional: [String: [WeatherModel: Double]] = [:]
     nonisolated(unsafe) private static var _diurnalBias: [String: [Double]] = [:]
+    nonisolated(unsafe) private static var _learned: [String: LearnedCorrections] = [:]
 
     private static let synopticModels: Set<WeatherModel> = [
         .europeAI, .europe, .germany, .canada, .us, .uk,
@@ -70,6 +71,24 @@ public enum ModelBlend {
         lock.lock(); _diurnalBias[key] = bias3h; lock.unlock()
     }
 
+    /// Registers what the relay learned at this place (`RelayExtrasProvider.learned`). A proven
+    /// temperature correction takes the place of the relay's diurnal bias for the spot: both are
+    /// measured against the same uncorrected blend, so using both would correct twice.
+    public static func setLearned(_ learned: LearnedCorrections, for coordinate: Coordinate) {
+        lock.lock(); _learned[spotKey(coordinate)] = learned; lock.unlock()
+    }
+
+    public static func learned(for coordinate: Coordinate) -> LearnedCorrections? {
+        lock.lock(); defer { lock.unlock() }
+        return _learned[spotKey(coordinate)]
+    }
+
+    /// The learned multiplier on the chance of rain here, 1 when nothing is proven.
+    static func learnedPopFactor(for coordinate: Coordinate) -> Double {
+        guard let r = learned(for: coordinate)?.rain, r.enabled, let f = r.pop_factor, f.isFinite else { return 1 }
+        return min(max(f, 0.5), 1.6)
+    }
+
     static func liveShare(leadHours: Double,
                           observedTemperature: Double?,
                           currentModelTemps: [WeatherModel: Double]?) -> Double {
@@ -81,7 +100,8 @@ public enum ModelBlend {
     /// Smoothly interpolated local diurnal bias (°C to subtract from model temperatures) at `epoch`.
     static func diurnalBias(at epoch: Double, leadHours: Double, coordinate: Coordinate? = nil) -> Double {
         lock.lock()
-        let bins = coordinate.flatMap { _diurnalBias[spotKey($0)] } ?? _diurnalBias["default"]
+        let learnedBins = coordinate.flatMap { _learned[spotKey($0)]?.temperature?.provenBins }
+        let bins = learnedBins ?? coordinate.flatMap { _diurnalBias[spotKey($0)] } ?? _diurnalBias["default"]
         lock.unlock()
         guard let bins, bins.count == 8 else { return 0 }
         let secOfDay = ((epoch.truncatingRemainder(dividingBy: 86400)) + 86400).truncatingRemainder(dividingBy: 86400)
@@ -302,5 +322,65 @@ public enum ModelBlend {
         guard let openMeteo else { return share.rounded() }
         let w = dayIndex <= 1 ? 0.75 : 0.5
         return ((1 - w) * openMeteo + w * share).rounded()
+    }
+}
+
+/// What the relay learned about the forecast at one place (GET /v1/learned, tools/learn/learner.py):
+/// the blend's own error there, by 3-hour block of the day, and how often it really rains when the
+/// chance says it might. A correction is `enabled` only once it has beaten the plain forecast on the
+/// last 14 days, each day corrected with what was known before it.
+public struct LearnedCorrections: Codable, Equatable, Sendable {
+    public struct Temperature: Codable, Equatable, Sendable {
+        public var enabled: Bool
+        /// °C to subtract, 8 blocks of 3 hours from 00 UTC (positive = forecast runs warm here).
+        public var bias_3h: [Double]?
+        public var mae_raw: Double?
+        public var mae_learned: Double?
+        public var checked_days: Int?
+        public var truth: String?
+
+        var provenBins: [Double]? {
+            guard enabled, let b = bias_3h, b.count == 8, b.allSatisfy({ $0.isFinite && abs($0) <= 3 }) else { return nil }
+            return b
+        }
+    }
+    public struct Rain: Codable, Equatable, Sendable {
+        public var enabled: Bool
+        public var pop_factor: Double?
+        public var brier_raw: Double?
+        public var brier_learned: Double?
+        public var wet_hours: Int?
+        public var truth: String?
+    }
+    public var status: String?
+    public var days: Int?
+    public var temperature: Temperature?
+    public var rain: Rain?
+
+    public init(status: String? = nil, days: Int? = nil, temperature: Temperature? = nil, rain: Rain? = nil) {
+        self.status = status; self.days = days; self.temperature = temperature; self.rain = rain
+    }
+
+    /// One or two plain sentences for the compare screen, e.g. "Learned here over 21 days: forecasts
+    /// ran warm overnight, now corrected (checked error 1.4° → 1.1°)."
+    public var summary: String {
+        let d = days ?? 0
+        var parts: [String] = []
+        if let t = temperature, t.enabled, let raw = t.mae_raw, let new = t.mae_learned, let bins = t.bias_3h {
+            let worst = bins.max { abs($0) < abs($1) } ?? 0
+            let way = worst > 0 ? "warm" : "cold"
+            let k = UnitSettings.current.temperature == .fahrenheit ? 1.8 : 1.0   // a difference, not a reading
+            parts.append(String(format: "temperatures here ran up to %.1f° %@ at some hours, now corrected (checked error %.1f° → %.1f°)",
+                                abs(worst) * k, way, raw * k, new * k))
+        }
+        if let r = rain, r.enabled, let f = r.pop_factor {
+            parts.append(f < 1 ? "rain came less often than the chance said, so chances here are scaled down"
+                               : "rain came more often than the chance said, so chances here are scaled up")
+        }
+        if parts.isEmpty {
+            return d < 10 ? "Learning this place: \(d) of 10 days so far. Nothing is corrected until it proves itself."
+                          : "Checked over \(d) days here: no correction has proven itself yet, so the forecast is left as is."
+        }
+        return "Learned here over \(d) days: " + parts.joined(separator: "; ") + "."
     }
 }

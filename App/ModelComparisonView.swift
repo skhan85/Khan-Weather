@@ -139,7 +139,8 @@ struct ModelComparisonView: View {
         let source = usedModel == .blend
             ? BlendRegion.summary(at: location)
             : "Khan Weather's temperatures here come from \(usedModel.name)."
-        return source + " The highlighted row's high and low come from the app's midnight-to-midnight hourly forecast, on the same 24-hour window as the other models." + " High-res models only reach a day or two ahead. Models via Open-Meteo.com (CC BY 4.0)."
+        let learned = ModelBlend.learned(for: location).map { " " + $0.summary } ?? ""
+        return source + learned + " The highlighted row's high and low come from the app's midnight-to-midnight hourly forecast, on the same 24-hour window as the other models." + " High-res models only reach a day or two ahead. Models via Open-Meteo.com (CC BY 4.0)."
     }
 
     /// "Models agree within 2°" or "Models disagree: highs from 3° to 9°".

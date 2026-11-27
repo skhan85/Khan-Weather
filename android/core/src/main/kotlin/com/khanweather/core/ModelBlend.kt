@@ -58,6 +58,24 @@ object ModelBlend {
     /** The weight of `model` at `leadHours` from now, in `region`. */
     @Volatile private var regional: Map<String, Map<WeatherModel, Double>> = emptyMap()
     @Volatile private var diurnalBiasMap: Map<String, List<Double>> = emptyMap()
+    @Volatile private var learnedMap: Map<String, LearnedCorrections> = emptyMap()
+
+    /**
+     * Registers what the relay learned at this place. A proven temperature correction takes the place
+     * of the relay's diurnal bias for the spot (both are measured against the same uncorrected blend).
+     */
+    fun setLearned(learned: LearnedCorrections, coordinate: Coordinate) {
+        learnedMap = learnedMap + (spotKey(coordinate) to learned)
+    }
+
+    fun learned(coordinate: Coordinate): LearnedCorrections? = learnedMap[spotKey(coordinate)]
+
+    /** The learned multiplier on the chance of rain here, 1 when nothing is proven. */
+    fun learnedPopFactor(coordinate: Coordinate): Double {
+        val r = learned(coordinate)?.rain ?: return 1.0
+        val f = r.pop_factor ?: return 1.0
+        return if (r.enabled && f.isFinite()) f.coerceIn(0.5, 1.6) else 1.0
+    }
 
     private val synopticModels = setOf(
         WeatherModel.europeAI, WeatherModel.europe, WeatherModel.germany,
@@ -100,7 +118,8 @@ object ModelBlend {
     /** Smoothly interpolated local diurnal bias (°C to subtract from model temperatures) at `epoch`. */
     fun diurnalBias(epoch: Double, leadHours: Double, coordinate: Coordinate? = null): Double {
         val map = diurnalBiasMap
-        val bins = coordinate?.let { map[spotKey(it)] } ?: map["default"] ?: return 0.0
+        val learnedBins = coordinate?.let { learnedMap[spotKey(it)]?.temperature?.provenBins }
+        val bins = learnedBins ?: coordinate?.let { map[spotKey(it)] } ?: map["default"] ?: return 0.0
         if (bins.size != 8) return 0.0
         val secOfDay = ((epoch % 86400.0) + 86400.0) % 86400.0
         val pos = (secOfDay / 3600.0 - 1.5) / 3.0
