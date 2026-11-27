@@ -59,6 +59,21 @@ class OpenMeteoProvider(
         return null
     }
 
+    /**
+     * The blend's temperature at a weather station's own spot at `time` (no station re-weighting),
+     * so a reading there can be compared with what the models said for it.
+     */
+    suspend fun blendedTemperatureAtStation(station: Coordinate, time: Epoch): Double? {
+        val region = BlendRegion.at(station)
+        val url = buildUrl(baseURL,
+            "latitude" to fmt("%.4f", station.latitude), "longitude" to fmt("%.4f", station.longitude),
+            "hourly" to "temperature_2m", "models" to region.models.joinToString(",") { it.raw },
+            "timeformat" to "unixtime", "past_hours" to "6", "forecast_hours" to "6")
+        val data = safely { loader.fetch(url, timeoutSeconds = 6) } ?: return null
+        val temps = try { parseBlend(data, region, null, nowEpoch(), station) } catch (e: Exception) { return null }
+        return blendedTemperature(temps, time)
+    }
+
     fun blendURL(coordinate: Coordinate, region: BlendRegion = BlendRegion.at(coordinate)): String {
         val c = coordinate.rounded
         return buildUrl(baseURL,

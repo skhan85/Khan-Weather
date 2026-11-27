@@ -39,6 +39,10 @@ data class Observation(
     var officialStationName: String? = null,
     var officialDistanceKm: Double? = null,
     var officialProvider: String? = null,
+    /** Where the station is, when the service says. */
+    var stationCoordinate: Coordinate? = null,
+    /** The model blend at the station's own spot at `observedAt`, for a station beyond `localRadiusKm`. */
+    var modelAtStation: Double? = null,
 ) {
     /** Whether the sky (rain, snow, cloud) was reported within `localRadiusKm`. */
     val skyIsLocal: Boolean
@@ -48,6 +52,18 @@ data class Observation(
     val gaugesSayDry: Boolean get() = (rainGauges ?: 0) > 0 && (rainLastHourMm ?: 1.0) == 0.0
 
     val isLocal: Boolean get() = (distanceKm ?: 0.0) <= localRadiusKm
+
+    /** Degrees to shift the spot's "now" by, from a station beyond `localRadiusKm` (null if none). */
+    val neighbourShift: Double?
+        get() {
+            val m = modelAtStation ?: return null
+            val d = distanceKm ?: return null
+            if (isLocal || dataProvider == "NETATMO" || !temperature.isFinite()) return null
+            val gap = temperature - m
+            val k = neighbourShare(d)
+            if (k <= 0 || abs(gap) > neighbourMaxGap) return null
+            return k * gap
+        }
 
     /** The temperature that may re-weight the first hours of the model blend. */
     val blendAnchor: ModelBlend.Anchor?
@@ -66,6 +82,21 @@ data class Observation(
     companion object {
         /** Stations closer than this stand in for the user's own spot. */
         const val localRadiusKm = 10.0
+        /** Farther than this, a station's reading isn't used for the temperature at all. */
+        const val neighbourMaxKm = 40.0
+        /** Shares fitted at ~90 airports worldwide, held out by region (tools/score_neighbours.py). */
+        val neighbourShares = listOf(0.5, 0.4, 0.3)
+        const val neighbourMaxGap = 6.0
+        const val neighbourFadeHours = 6.0
+
+        /** How much of the models' error at a station beyond `localRadiusKm` is carried to the spot. */
+        fun neighbourShare(d: Double): Double = when {
+            d < localRadiusKm -> 0.0
+            d < 20 -> neighbourShares[0]
+            d < 35 -> neighbourShares[1]
+            d <= neighbourMaxKm -> neighbourShares[2]
+            else -> 0.0
+        }
         const val smoothingWindow = 45.0 * 60
         const val smoothingLimit = 1.5
     }
@@ -133,6 +164,17 @@ fun Forecast.applying(observation: Observation?): Forecast {
     val implausible = o.dataProvider == "NETATMO" && !(abs(o.temperature - current.temperature) <= pwsLimit)
     if (!o.isLocal || implausible) {
         c.condition = o.condition ?: c.condition
+        // A distant station still tells how far off the models are around here right now.
+        val shift = o.neighbourShift
+        val base = forecastTemperature(o.observedAt)
+        if (!implausible && shift != null && base != null) {
+            c.temperature += shift
+            c.feelsLike += shift
+            copy.current = c
+            copy.hourly = nudged(Observation("", o.observedAt, base + shift), Observation.neighbourFadeHours)
+            copy.daily = copy.dailyIncluding(c, c.time)
+            return copy.dryIfGaugesSay(o)
+        }
         copy.current = c
         return copy.dryIfGaugesSay(o)
     }
@@ -237,7 +279,7 @@ fun Forecast.forecastTemperature(time: Epoch): Double? = forecastValue(time) { i
  * Nudges temperature, feels-like, dew point, humidity and wind over the next `nudgeHours`
  * toward the observation, so the hourly curve starts where the station is.
  */
-fun Forecast.nudged(observation: Observation): List<HourlyForecast> {
+fun Forecast.nudged(observation: Observation, fadeHours: Double = nudgeHours): List<HourlyForecast> {
     val time = observation.observedAt
     val baseTemp = forecastTemperature(time) ?: return hourly
     val tempGap = observation.temperature - baseTemp
@@ -259,7 +301,7 @@ fun Forecast.nudged(observation: Observation): List<HourlyForecast> {
     return hourly.map { hour ->
         val hoursAhead = (hour.time - time) / 3600
         if (hoursAhead <= -1) return@map hour
-        val share = max(0.0, 1 - max(hoursAhead, 0.0) / nudgeHours)
+        val share = max(0.0, 1 - max(hoursAhead, 0.0) / fadeHours)
         if (share <= 0) return@map hour
         val h = hour.copy()
         h.temperature += tempGap * share

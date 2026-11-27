@@ -118,7 +118,7 @@ public struct NWSObservationProvider: ObservationProvider {
         return nil
     }
 
-    struct Station { let id: String; let name: String; let distanceKm: Double }
+    struct Station { let id: String; let name: String; let distanceKm: Double; var coordinate: Coordinate? = nil }
 
     static func stationsURL(_ data: Data) throws -> URL? {
         struct R: Decodable { struct P: Decodable { let observationStations: String? }; let properties: P }
@@ -137,8 +137,10 @@ public struct NWSObservationProvider: ObservationProvider {
         }
         return try JSONDecoder().decode(R.self, from: data).features.compactMap { f in
             guard let g = f.geometry, g.coordinates.count >= 2 else { return nil }
-            let d = EnvironmentCanadaProvider.distanceKm(c, Coordinate(latitude: g.coordinates[1], longitude: g.coordinates[0]))
-            return d <= maxDistanceKm ? Station(id: f.properties.stationIdentifier, name: f.properties.name, distanceKm: d) : nil
+            let at = Coordinate(latitude: g.coordinates[1], longitude: g.coordinates[0])
+            let d = EnvironmentCanadaProvider.distanceKm(c, at)
+            return d <= maxDistanceKm ? Station(id: f.properties.stationIdentifier, name: f.properties.name, distanceKm: d,
+                                                coordinate: at) : nil
         }.sorted { $0.distanceKm < $1.distanceKm }
     }
 
@@ -168,6 +170,7 @@ public struct NWSObservationProvider: ObservationProvider {
                             conditionText: (p.textDescription?.isEmpty ?? true) ? nil : p.textDescription,
                             distanceKm: station.distanceKm)
         o.dataProvider = "NWS"
+        o.stationCoordinate = station.coordinate
         return o
     }
 }
@@ -258,7 +261,7 @@ public struct BrightSkyProvider: ObservationProvider {
                 let icon: String?
                 let source_id: Int?
             }
-            struct S: Decodable { let id: Int?; let station_name: String?; let distance: Double? }
+            struct S: Decodable { let id: Int?; let station_name: String?; let distance: Double?; let lat: Double?; let lon: Double? }
             let weather: W
             let sources: [S]?
         }
@@ -285,6 +288,7 @@ public struct BrightSkyProvider: ObservationProvider {
                             humidity: w.relative_humidity, windSpeed: w.wind_speed_10, windDirection: w.wind_direction_10,
                             condition: condition, distanceKm: source?.distance.map { $0 / 1000 })
         o.dataProvider = "DWD"
+        if let lat = source?.lat, let lon = source?.lon { o.stationCoordinate = Coordinate(latitude: lat, longitude: lon) }
         return o
     }
 }
@@ -396,6 +400,7 @@ public struct METARProvider: ObservationProvider {
                             condition: WeatherCondition(metarWeather: m.wxString, cover: m.cover),
                             distanceKm: distance)
         o.dataProvider = "METAR"
+        if let lat = m.lat, let lon = m.lon { o.stationCoordinate = Coordinate(latitude: lat, longitude: lon) }
         return o
     }
 }
@@ -465,12 +470,18 @@ public struct WorldObservationProvider: ObservationProvider {
     private let germany: ObservationProvider
     private let europeNational: ObservationProvider
     private let airports: ObservationProvider
+    /// The blend's temperature at a station's own spot and time (nil when unavailable).
+    private let model: @Sendable (Coordinate, Date) async -> Double?
 
     public init(canada: ObservationProvider = CanadaObservationProvider(),
                 us: ObservationProvider = NWSObservationProvider(),
                 germany: ObservationProvider = BrightSkyProvider(),
                 europeNational: ObservationProvider = RelayOfficialProvider(),
-                airports: ObservationProvider = METARProvider()) {
+                airports: ObservationProvider = METARProvider(),
+                modelAtStation: @escaping @Sendable (Coordinate, Date) async -> Double? = { at, time in
+                    await OpenMeteoProvider().blendedTemperature(atStation: at, time: time)
+                }) {
+        self.model = modelAtStation
         self.canada = canada
         self.us = us
         self.germany = germany
@@ -479,6 +490,23 @@ public struct WorldObservationProvider: ObservationProvider {
     }
 
     public func observation(near coordinate: Coordinate) async throws -> Observation? {
+        guard let o = try await nearest(coordinate) else { return nil }
+        return await stationModel(o)
+    }
+
+    /// For a station too far to stand in for the spot, what the blend says at the station itself,
+    /// so `Forecast.applying` can carry part of the models' error there over to the spot.
+    private func stationModel(_ o: Observation) async -> Observation {
+        guard !o.isLocal, (o.distanceKm ?? .infinity) <= Observation.neighbourMaxKm,
+              let at = o.stationCoordinate, o.modelAtStation == nil else { return o }
+        let model = self.model
+        let time = o.observedAt
+        var out = o
+        out.modelAtStation = await Deadline.run(3) { await model(at, time) }
+        return out
+    }
+
+    private func nearest(_ coordinate: Coordinate) async throws -> Observation? {
         if Region.inCanada(coordinate), let o = try? await canada.observation(near: coordinate) {
             return o
         }
