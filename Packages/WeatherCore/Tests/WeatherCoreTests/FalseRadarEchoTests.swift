@@ -126,6 +126,37 @@ final class FalseRadarEchoTests: XCTestCase {
         XCTAssertEqual(f.nowcast(at: now)?.kind, .rain)
     }
 
+    /// 27 Nov, 3:06 am: "Light Rain" from Campbellville (8 km) on the Now card, "Rain starting in about
+    /// 55 min" under it, with the radar over Milton dry.
+    func testNowCardAndNextTwoHoursAgree() {
+        let now = Date()
+        var f = forecast(temperature: 2, humidity: 86)
+        var o = Observation(stationName: "3 Netatmo stations in Milton", observedAt: now, temperature: 2, distanceKm: 3)
+        o.condition = .rain
+        o.conditionText = "Light Rain"
+        o.skyStationName = "CR-27 Campbellville"
+        o.skyDistanceKm = 8
+        f.observation = o
+        f.current.condition = .rain
+        f.minutely[4] = PrecipitationSlot(time: f.minutely[4].time, precipitation: 0.3, rain: 0.3)
+
+        // The radar over the spot is dry: it wins over the station 8 km away.
+        let dry = f.applyingRadar(RadarNow(rainMmPerHour: 0, snowCmPerHour: 0, time: now))
+        XCTAssertEqual(dry.current.condition, .overcast)
+        XCTAssertNil(dry.observation?.conditionText)
+        if case .starting = dry.nowcast(at: now)?.change {} else { XCTFail("rain is still coming later") }
+
+        // Without radar the station's rain stands, and Next 2 hours says it's raining now.
+        let n = f.nowcast(at: now)
+        XCTAssertEqual(n?.kind, .rain)
+        if case .starting = n?.change { XCTFail("the card says rain now; the line mustn't say it starts later") }
+
+        // Drizzle from that station stays: the radar often misses it.
+        var drizzle = f
+        drizzle.current.condition = .drizzle
+        XCTAssertEqual(drizzle.applyingRadar(RadarNow(rainMmPerHour: 0, snowCmPerHour: 0, time: now)).current.condition, .drizzle)
+    }
+
     static func relay(_ rate: Double, from start: Date) -> RelayNowcast {
         let slots = (0..<20).map { i -> String in
             let t = start.timeIntervalSince1970 + Double(i) * 360

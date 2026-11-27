@@ -79,6 +79,12 @@ fun Forecast.nowcastSlots(now: Epoch = nowEpoch()): List<PrecipitationSlot> {
         val snowPart = if (r.isSnowing) max(if (r.isRaining) PrecipitationSlot.wetThreshold else slotAmount, r.snowCmPerHour / 4.0) else 0.0
         slots[0] = PrecipitationSlot(slots[0].time, max(slotAmount, rainPart + snowPart), rainPart, snowPart)
     }
+    // The Now card and this line must agree: card wet now but slot dry -> a light amount now.
+    if (!slots[0].isWet && current.condition.isPrecipitation) {
+        val snow = !current.condition.isRainLike
+        val w = PrecipitationSlot.wetThreshold
+        slots[0] = PrecipitationSlot(slots[0].time, w, if (snow) 0.0 else w, if (snow) w / 0.7 else 0.0)
+    }
     // Same rain-or-snow call as the hour's (models' vote): no "Mixed" for a trace of model snow in rain.
     return slots.map { s ->
         if (!s.isWet || (s.rain <= 0.0 && s.snowfall <= 0.0)) return@map s

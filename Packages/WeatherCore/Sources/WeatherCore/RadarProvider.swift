@@ -208,6 +208,17 @@ public extension Forecast {
         return h.precipitationKind
     }
 
+    /// A station's rain this far away or more loses to a dry radar over the spot itself (27 Nov, 3 am:
+    /// "Light Rain" from Campbellville 8 km away on the Now card, while the radar over Milton was dry
+    /// and Next 2 hours said "Rain starting in about 55 min"). Drizzle stays: radar often misses it.
+    static let radarBeatsStationKm: Double = 3
+
+    var skyStationBeyondRadarReach: Bool {
+        guard let o = observation, current.condition != .drizzle, current.condition != .freezingDrizzle else { return false }
+        let km = o.skyStationName == nil ? o.distanceKm : o.skyDistanceKm
+        return (km ?? 0) >= Self.radarBeatsStationKm
+    }
+
     /// When the radar shows rain or snow falling here now, say so even if the model or a
     /// distant station says cloudy. A dry radar changes nothing: it can miss very light snow.
     func applyingRadar(_ radar: RadarNow?) -> Forecast {
@@ -228,7 +239,7 @@ public extension Forecast {
             // Dry radar overhead, yet "rain" from a station far away or the model: it isn't raining
             // here. Snow stays, as the radar can miss very light snow.
             guard current.temperature > 1, current.condition.isRainLike,
-                  !(observation?.skyIsLocal ?? false) else { return self }
+                  !(observation?.skyIsLocal ?? false) || skyStationBeyondRadarReach else { return self }
             var copy = self
             copy.current.condition = .overcast
             copy.observation?.conditionText = nil

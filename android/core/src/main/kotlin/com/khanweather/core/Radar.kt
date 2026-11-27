@@ -156,6 +156,17 @@ fun Forecast.modelPrecipitationKind(time: Epoch): PrecipitationKind? {
     return h.precipitationKind
 }
 
+/** A station's rain 3 km away or more loses to a dry radar over the spot (drizzle stays: radar misses it). */
+const val radarBeatsStationKm = 3.0
+
+val Forecast.skyStationBeyondRadarReach: Boolean
+    get() {
+        val o = observation ?: return false
+        if (current.condition == WeatherCondition.drizzle || current.condition == WeatherCondition.freezingDrizzle) return false
+        val km = if (o.skyStationName == null) o.distanceKm else o.skyDistanceKm
+        return (km ?: 0.0) >= radarBeatsStationKm
+    }
+
 /** When the radar shows rain or snow falling here now, say so even if the model says cloudy. */
 fun Forecast.applyingRadar(radarNow: RadarNow?): Forecast {
     val radar = radarNow?.typed(current.temperature, modelPrecipitationKind(current.time)) ?: return this
@@ -169,7 +180,8 @@ fun Forecast.applyingRadar(radarNow: RadarNow?): Forecast {
     ) return this
     val condition = radar.condition
     if (condition == null) {
-        if (current.temperature <= 1 || !current.condition.isRainLike || (observation?.skyIsLocal ?: false)) return this
+        if (current.temperature <= 1 || !current.condition.isRainLike ||
+            ((observation?.skyIsLocal ?: false) && !skyStationBeyondRadarReach)) return this
         val copy = deepCopy()
         copy.current.condition = WeatherCondition.overcast
         copy.observation?.conditionText = null
