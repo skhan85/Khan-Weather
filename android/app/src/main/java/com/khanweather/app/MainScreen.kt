@@ -38,7 +38,6 @@ import kotlin.math.PI
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
-import kotlin.math.sqrt
 
 /** Everything the main screen shows, in the iPhone app's order. */
 @Composable
@@ -334,7 +333,7 @@ fun NextTwoHours(nowcast: Nowcast, slots: List<PrecipitationSlot>) {
                 }
                 Row(Modifier.fillMaxWidth().fillMaxHeight(), horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.Bottom) {
                     for (s in slots) {
-                        val h = if (!s.isWet) 3.0 else 14 + 74 * min(sqrt(max(s.precipitation, s.snowfall) / 1.0), 1.0)
+                        val h = if (!s.isWet) 3.0 else 14 + 74 * s.intensity
                         val colour = when {
                             !s.isWet -> Color.White.copy(alpha = 0.25f)
                             s.snowfall > 0 && s.rain < PrecipitationSlot.wetThreshold -> Color.White

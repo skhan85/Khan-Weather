@@ -33,21 +33,31 @@ public struct RadarNow: Equatable, Codable, Sendable {
         return nil
     }
 
-    /// The mosaic's rain and snow layers can both light up for the same echo, and outside Canada
-    /// the snow layer isn't split by temperature at all. Decide the type from the air temperature:
-    /// snow at or below 1°C, rain at 3°C and above, and between the two keep what the radar says.
-    public func typed(byTemperature celsius: Double?) -> RadarNow {
+    /// The mosaic's rain and snow layers both light up for the same echo (each is the echo read as
+    /// rain, or as snow), and outside Canada the snow layer isn't split by temperature at all. So the
+    /// type comes from here: rain at 3°C and above, snow at -2°C and below, and in between whatever
+    /// the models' rain-or-snow vote says for this hour (`ModelBlend.precipitationType`, 97% right
+    /// against ECCC observers), falling back to snow at or below 1°C when the models are split or dry.
+    /// 26 Nov, 9:40 pm in Milton: 0° from a station 8 km away turned a 3.2 mm/h rain echo into
+    /// "Heavy snow" while it was raining (Pearson and Hamilton reported rain at 1-2°).
+    ///
+    /// The rate comes from the matching layer: snow uses the snow layer's cm/h, not the rain
+    /// layer's mm/h (3.2 mm/h of rain is about 1.7 cm/h of snow, not 3.2).
+    public func typed(byTemperature celsius: Double?, models: PrecipitationKind? = nil) -> RadarNow {
         guard let t = celsius, isPrecipitating else { return self }
+        let snow: Bool
+        if t >= 3 { snow = false }
+        else if t <= -2 { snow = true }
+        else if models == .rain { snow = false }
+        else if models == .snow { snow = true }
+        else { snow = t <= 1 }
         var r = self
-        if t >= 3, isSnowing {
-            // Roughly 1 cm of snow per 1 mm of water.
-            r.rainMmPerHour = max(rainMmPerHour, snowCmPerHour)
-            r.snowCmPerHour = 0
-        } else if t <= 1, isRaining {
-            r.snowCmPerHour = max(snowCmPerHour, rainMmPerHour)
+        if snow {
+            r.snowCmPerHour = snowCmPerHour > 0 ? snowCmPerHour : rainMmPerHour
             r.rainMmPerHour = 0
-        } else if isSnowing, isRaining {
-            r.snowCmPerHour = 0   // mixed near freezing: call it rain unless cold enough
+        } else {
+            r.rainMmPerHour = rainMmPerHour > 0 ? rainMmPerHour : snowCmPerHour
+            r.snowCmPerHour = 0
         }
         return r
     }
@@ -191,24 +201,19 @@ public extension Forecast {
     /// Radar rain lighter than this (mm/h) is overruled by dry local rain gauges.
     static let gaugeVetoRate: Double = 1.0
 
-    /// Rain or snow that reaches the ground moistens the air it falls through within minutes, so a
-    /// radar echo over air drier than this is falling apart aloft (virga) or isn't weather at all
-    /// (26 Nov, 9:43 pm in Milton: "moderate rain" from the radar at 73% humidity, nothing falling).
-    /// Below -2° the bar is lower, since snow can fall through air that is dry by the water scale.
-    static func dryAirHumidity(at celsius: Double) -> Double { celsius > -2 ? 80 : 70 }
-
-    /// False when the air here is too dry for the radar's echo to be reaching the ground.
-    var radarEchoCanReachGround: Bool {
-        guard let rh = current.humidity else { return true }
-        return rh >= Self.dryAirHumidity(at: current.temperature)
+    /// The models' rain-or-snow call for the hour holding `time`, when that hour has rain or snow in it.
+    func modelPrecipitationKind(at time: Date) -> PrecipitationKind? {
+        guard let h = hourly.last(where: { $0.time <= time }), time.timeIntervalSince(h.time) < 3600,
+              (h.rain ?? 0) > 0 || (h.snowfall ?? 0) > 0 else { return nil }
+        return h.precipitationKind
     }
 
     /// When the radar shows rain or snow falling here now, say so even if the model or a
     /// distant station says cloudy. A dry radar changes nothing: it can miss very light snow.
     func applyingRadar(_ radar: RadarNow?) -> Forecast {
         let rawRadarRain = radar?.rainMmPerHour ?? 0
-        guard let radar = radar?.typed(byTemperature: current.temperature) else { return self }
-        if radar.isPrecipitating, !radarEchoCanReachGround { return self }
+        guard let radar = radar?.typed(byTemperature: current.temperature,
+                                       models: modelPrecipitationKind(at: current.time)) else { return self }
         // Virga guard: in dry surface air (RH < 80%), weak overhead radar (< 1.0 mm/h)
         // evaporates before reaching the ground; below 88% RH, ignore < 0.5 mm/h clutter.
         if current.temperature >= 3, (radar.rainMmPerHour < 0.5 || (rawRadarRain < 0.5)) {

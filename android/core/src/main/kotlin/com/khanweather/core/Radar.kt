@@ -29,17 +29,27 @@ data class RadarNow(
             else -> null
         }
 
-    /** Snow at or below 1°C, rain at 3°C and above; between the two keep what the radar says. */
-    fun typed(celsius: Double?): RadarNow {
+    /**
+     * The rain and snow layers are the same echo read both ways, so the type comes from here: rain at
+     * 3°C and above, snow at -2°C and below, in between the models' rain-or-snow vote for the hour,
+     * else snow at or below 1°C. Snow takes the snow layer's rate (26 Nov, Milton: a 3.2 mm/h rain echo
+     * at 0° showed as "Heavy snow" while it was raining).
+     */
+    fun typed(celsius: Double?, models: PrecipitationKind? = null): RadarNow {
         if (celsius == null || !isPrecipitating) return this
+        val snow = when {
+            celsius >= 3 -> false
+            celsius <= -2 -> true
+            models == PrecipitationKind.rain -> false
+            models == PrecipitationKind.snow -> true
+            else -> celsius <= 1
+        }
         val r = copy()
-        if (celsius >= 3 && isSnowing) {
-            r.rainMmPerHour = max(rainMmPerHour, snowCmPerHour)
-            r.snowCmPerHour = 0.0
-        } else if (celsius <= 1 && isRaining) {
-            r.snowCmPerHour = max(snowCmPerHour, rainMmPerHour)
+        if (snow) {
+            r.snowCmPerHour = if (snowCmPerHour > 0) snowCmPerHour else rainMmPerHour
             r.rainMmPerHour = 0.0
-        } else if (isSnowing && isRaining) {
+        } else {
+            r.rainMmPerHour = if (rainMmPerHour > 0) rainMmPerHour else snowCmPerHour
             r.snowCmPerHour = 0.0
         }
         return r
@@ -139,24 +149,16 @@ class ECCCRadarProvider(private val loader: HttpLoader = defaultLoader) {
 /** Radar rain lighter than this (mm/h) is overruled by dry local rain gauges. */
 const val gaugeVetoRate = 1.0
 
-/**
- * Rain or snow that reaches the ground moistens the air it falls through within minutes, so a radar
- * echo over air drier than this is falling apart aloft or isn't weather at all (26 Nov, 9:43 pm in
- * Milton: "moderate rain" from the radar at 73% humidity, nothing falling). Lower below -2°.
- */
-fun dryAirHumidity(celsius: Double): Double = if (celsius > -2) 80.0 else 70.0
-
-/** False when the air here is too dry for the radar's echo to be reaching the ground. */
-val Forecast.radarEchoCanReachGround: Boolean
-    get() {
-        val rh = current.humidity ?: return true
-        return rh >= dryAirHumidity(current.temperature)
-    }
+/** The models' rain-or-snow call for the hour holding `time`, when that hour has rain or snow in it. */
+fun Forecast.modelPrecipitationKind(time: Epoch): PrecipitationKind? {
+    val h = hourly.lastOrNull { it.time <= time } ?: return null
+    if (time - h.time >= 3600 || ((h.rain ?: 0.0) <= 0 && (h.snowfall ?: 0.0) <= 0)) return null
+    return h.precipitationKind
+}
 
 /** When the radar shows rain or snow falling here now, say so even if the model says cloudy. */
 fun Forecast.applyingRadar(radarNow: RadarNow?): Forecast {
-    val radar = radarNow?.typed(current.temperature) ?: return this
-    if (radar.isPrecipitating && !radarEchoCanReachGround) return this
+    val radar = radarNow?.typed(current.temperature, modelPrecipitationKind(current.time)) ?: return this
     // Virga guard: in dry surface air (RH < 80%), weak overhead radar (< 1.0 mm/h)
     // evaporates before reaching the ground; below 88% RH, ignore < 0.5 mm/h clutter.
     if (current.temperature >= 3.0 && radar.isPrecipitating && (radarNow?.rainMmPerHour ?: 0.0) < 0.5) return this

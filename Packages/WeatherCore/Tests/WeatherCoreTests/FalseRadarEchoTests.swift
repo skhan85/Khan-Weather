@@ -1,8 +1,9 @@
 import XCTest
 @testable import WeatherCore
 
-/// 26 Nov, 9:40 pm in Milton: radar said heavy snow, then moderate rain, with "Rain and snow for at
-/// least the next 2 hours", while nothing was falling.
+/// 26 Nov, 9:40 pm in Milton: radar said "Heavy snow" at 0° while it was raining (Pearson and Hamilton
+/// reported rain at 1-2°, Hamilton's gauge 4-6 mm an hour). The radar echo was real; the type and the
+/// rate were wrong.
 final class FalseRadarEchoTests: XCTestCase {
     static let milton = Coordinate(latitude: 43.513, longitude: -79.882)
 
@@ -58,19 +59,45 @@ final class FalseRadarEchoTests: XCTestCase {
         return f
     }
 
-    func testEchoOverDryAirIsIgnored() {
+    func testModelsDecideRainOrSnowNearFreezing() {
         let now = Date()
-        let rain = RadarNow(rainMmPerHour: 3, snowCmPerHour: 0, time: now)
-        let dry = forecast(temperature: 2, humidity: 73)
-        XCTAssertEqual(dry.applyingRadar(rain), dry)
-        XCTAssertNil(dry.applyingRadar(rain).observation?.conditionText)
+        // 02:42Z frame over Milton: rain layer 3.2 mm/h, snow layer 1.7 cm/h (the same echo read both ways).
+        let echo = RadarNow(rainMmPerHour: 3.2, snowCmPerHour: 1.7, time: now)
 
-        let humid = forecast(temperature: 2, humidity: 95)
-        XCTAssertEqual(humid.applyingRadar(rain).current.condition, .rain)
+        var f = forecast(temperature: 0, humidity: 87)
+        f.hourly = [HourlyForecast(time: now.addingTimeInterval(-600), temperature: 1.5, condition: .rain)]
+        f.hourly[0].rain = 1.2
+        f.hourly[0].snowfall = 0
+        let shown = f.applyingRadar(echo)
+        XCTAssertEqual(shown.current.condition, .rain)
+        XCTAssertEqual(shown.observation?.conditionText ?? shown.radar?.description, "Moderate rain")
 
-        // Snow can fall through drier air when it's properly cold.
-        let cold = forecast(temperature: -8, humidity: 75)
-        XCTAssertEqual(cold.applyingRadar(RadarNow(rainMmPerHour: 0, snowCmPerHour: 0.6, time: now)).current.condition, .snow)
+        // Models calling snow: snow, at the snow layer's rate, so moderate rather than heavy.
+        f.hourly[0].rain = 0
+        f.hourly[0].snowfall = 1.0
+        XCTAssertEqual(f.applyingRadar(echo).current.condition, .snow)
+        XCTAssertEqual(f.applyingRadar(echo).radar?.snowCmPerHour, 1.7)
+        XCTAssertEqual(echo.typed(byTemperature: 0, models: .snow).description, "Heavy snow")
+        XCTAssertEqual(RadarNow(rainMmPerHour: 1.2, snowCmPerHour: 0.7, time: now).typed(byTemperature: 0, models: .snow).description,
+                       "Moderate snow")
+
+        // No model wet: the old temperature rule.
+        XCTAssertEqual(echo.typed(byTemperature: 0).condition, .snow)
+        XCTAssertEqual(echo.typed(byTemperature: 2).condition, .rain)
+        // Models never overrule clearly warm or cold air.
+        XCTAssertEqual(echo.typed(byTemperature: -3, models: .rain).condition, .snow)
+        XCTAssertEqual(echo.typed(byTemperature: 4, models: .snow).condition, .rain)
+    }
+
+    func testChartIntensityMatchesBands() {
+        let now = Date()
+        // 3.2 mm/h of rain (0.8 mm a slot) is moderate: between the lines, not at "Heavy".
+        let moderate = PrecipitationSlot(time: now, precipitation: 0.8, rain: 0.8).intensity
+        XCTAssertGreaterThan(moderate, 1.0 / 3)
+        XCTAssertLessThan(moderate, 2.0 / 3)
+        XCTAssertEqual(PrecipitationSlot(time: now, precipitation: 4, rain: 4).intensity, 1)
+        XCTAssertGreaterThanOrEqual(PrecipitationSlot(time: now, precipitation: 0.3, snowfall: 0.3).intensity, 2.0 / 3)
+        XCTAssertEqual(PrecipitationSlot(time: now, precipitation: 0).intensity, 0)
     }
 
     static func relay(_ rate: Double, from start: Date) -> RelayNowcast {
@@ -96,10 +123,6 @@ final class FalseRadarEchoTests: XCTestCase {
         let snowing = RadarNow(rainMmPerHour: 0, snowCmPerHour: 1.2, time: now)
         XCTAssertNotNil(f.applyingRadarNowcast(relay, radarNow: snowing).nowcast(at: now))
 
-        // Wet radar, but over air too dry for it to reach the ground.
-        let dryAir = forecast(temperature: 2, humidity: 73)
-        XCTAssertNil(dryAir.applyingRadarNowcast(Self.relay(4, from: dryAir.minutely[0].time),
-                                                 radarNow: RadarNow(rainMmPerHour: 3, snowCmPerHour: 0, time: now)).nowcast(at: now))
     }
 
     // MARK: Home stations on the first load

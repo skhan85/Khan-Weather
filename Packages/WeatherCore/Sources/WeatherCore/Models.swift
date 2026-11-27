@@ -241,6 +241,21 @@ public struct PrecipitationSlot: Equatable, Codable, Sendable {
     /// Below this a slot counts as dry; 0.1 mm per 15 min is about the lightest drizzle a gauge records.
     public static let wetThreshold = 0.1
     public var isWet: Bool { precipitation >= Self.wetThreshold || snowfall >= 0.1 }
+
+    /// How hard it's coming down, 0...1, in thirds that match Environment Canada's bands and the
+    /// Next 2 hours chart's Light / Moderate / Heavy lines: rain light under 2.5 mm/h, heavy from
+    /// 7.6; snow light under 0.5 cm/h, heavy from 1. The top is twice the heavy line's start.
+    /// (The chart used to top out at 4 mm/h, so moderate rain filled it to "Heavy".)
+    public var intensity: Double {
+        func scale(_ rate: Double, _ moderate: Double, _ heavy: Double) -> Double {
+            if rate <= 0 { return 0 }
+            if rate < moderate { return rate / moderate / 3 }
+            if rate < heavy { return 1.0 / 3 + (rate - moderate) / (heavy - moderate) / 3 }
+            return min(1, 2.0 / 3 + (rate - heavy) / heavy / 3)
+        }
+        let rainRate = max(rain, snowfall > 0 ? 0 : precipitation) * 4
+        return max(scale(rainRate, 2.5, 7.6), scale(snowfall * 4, 0.5, 1.0))
+    }
 }
 
 public struct Forecast: Equatable, Codable, Sendable {

@@ -212,7 +212,7 @@ struct NextTwoHoursView: View {
                     HStack(alignment: .bottom, spacing: 5) {
                         ForEach(slots, id: \.time) { s in
                             let h: CGFloat = s.isWet
-                                ? max(14, min(88, 14 + 74 * CGFloat(sqrt(min(max(s.precipitation, s.snowfall) / 1.0, 1.0)))))
+                                ? 14 + 74 * CGFloat(s.intensity)
                                 : 3
                             RoundedRectangle(cornerRadius: 5, style: .continuous)
                                 .fill(color(s))

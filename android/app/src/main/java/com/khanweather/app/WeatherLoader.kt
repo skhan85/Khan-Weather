@@ -116,12 +116,12 @@ object WeatherLoader {
 
     /**
      * `radarNow` is the checked reading over the spot. When it is dry but the relay says it's coming
-     * down right now, the relay is carrying an echo the check threw out (clutter that doesn't move),
-     * so the relay is ignored.
+     * down right now, the relay is carrying an echo the check threw out (one bright pixel), so the
+     * relay is ignored.
      */
     fun Forecast.applyingRadarNowcast(nc: RelayNowcast?, radarNow: RadarNow? = null): Forecast {
         if (nc == null || nc.slots.isEmpty() || minutely.isEmpty()) return this
-        if (radarNow != null && (!radarNow.isPrecipitating || !radarEchoCanReachGround)) {
+        if (radarNow != null && !radarNow.isPrecipitating) {
             val atFrame = nc.slots.filter { kotlin.math.abs(it.epoch - radarNow.time) <= 600.0 }
             if (atFrame.any { maxOf(it.rain_mmh, it.snow_cmh, it.precip_mmh) >= 0.5 }) return this
         }
@@ -137,20 +137,11 @@ object WeatherLoader {
             }
             val matching = nc.slots.filter { it.epoch >= slot.time && it.epoch < slot.time + 900.0 }
             if (matching.isEmpty()) return@map slot
-            val rawRain = matching.maxOf { it.rain_mmh }
-            val rawSnow = matching.maxOf { it.snow_cmh }
-            val rainRate: kotlin.Double
-            val snowRate: kotlin.Double
-            if (temp <= 1.0) {
-                rainRate = 0.0
-                snowRate = maxOf(rawSnow, rawRain)
-            } else if (temp >= 3.0) {
-                rainRate = maxOf(rawRain, rawSnow)
-                snowRate = 0.0
-            } else {
-                rainRate = rawRain
-                snowRate = rawSnow
-            }
+            // Same rain-or-snow call as the Now card: the relay's rain and snow are one echo read both ways.
+            val typed = RadarNow(matching.maxOf { it.rain_mmh }, matching.maxOf { it.snow_cmh }, slot.time)
+                .typed(temp, modelPrecipitationKind(slot.time))
+            val rainRate = typed.rainMmPerHour
+            val snowRate = typed.snowCmPerHour
             val peakRate = maxOf(rainRate, snowRate)
             val minRate = if (snowRate <= 0.0 && rh < 80.0) 1.0 else 0.50
             if (peakRate < minRate) return@map slot

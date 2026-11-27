@@ -20,11 +20,22 @@ class FalseRadarEchoTest {
         points.drop(1).forEach { assertEquals(2.0, distanceKm(milton, it), 0.1) }
     }
 
-    @Test fun echoOverDryAirIsIgnored() {
-        val rain = RadarNow(3.0, 0.0, now)
-        assertEquals(WeatherCondition.overcast, forecast(2.0, 73.0).applyingRadar(rain).current.condition)
-        assertEquals(WeatherCondition.rain, forecast(2.0, 95.0).applyingRadar(rain).current.condition)
-        assertEquals(WeatherCondition.snow, forecast(-8.0, 75.0).applyingRadar(RadarNow(0.0, 0.6, now)).current.condition)
+    @Test fun modelsDecideRainOrSnowNearFreezing() {
+        val echo = RadarNow(3.2, 1.7, now)
+        assertEquals(WeatherCondition.rain, echo.typed(0.0, PrecipitationKind.rain).condition)
+        assertEquals("Moderate rain", echo.typed(0.0, PrecipitationKind.rain).description)
+        assertEquals(1.7, echo.typed(0.0, PrecipitationKind.snow).snowCmPerHour)
+        assertEquals(WeatherCondition.snow, echo.typed(0.0).condition)
+        assertEquals(WeatherCondition.snow, echo.typed(-3.0, PrecipitationKind.rain).condition)
+        assertEquals(WeatherCondition.rain, echo.typed(4.0, PrecipitationKind.snow).condition)
+    }
+
+    @Test fun chartIntensityMatchesBands() {
+        // 3.2 mm/h of rain is moderate: between the Light and Heavy lines, not at the top.
+        val moderate = PrecipitationSlot(now, 0.8, rain = 0.8).intensity
+        assertTrue(moderate > 1.0 / 3 && moderate < 2.0 / 3)
+        assertEquals(1.0, PrecipitationSlot(now, 4.0, rain = 4.0).intensity)
+        assertTrue(PrecipitationSlot(now, 0.3, snowfall = 0.3).intensity >= 2.0 / 3)
     }
 
     private fun stations(ago: Double): String {

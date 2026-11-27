@@ -230,13 +230,12 @@ public extension Forecast {
     }
 
     /// Merges 6-minute radar extrapolation from the relay into 15-minute `minutely` slots.
-    /// `radarNow` is the checked reading over the spot (`ECCCRadarProvider.now`). When it is dry, or the air
-    /// here is too dry for its echo to reach the ground, but the relay's extrapolation says it's coming down
-    /// right now, the relay is carrying the same false echo (clutter doesn't move, so it would be "falling"
-    /// for the whole two hours), and is ignored.
+    /// `radarNow` is the checked reading over the spot (`ECCCRadarProvider.now`). When it is dry but the
+    /// relay's extrapolation says it's coming down right now, the relay is carrying an echo the check threw
+    /// out (one bright pixel), and is ignored.
     func applyingRadarNowcast(_ nc: RelayNowcast?, radarNow: RadarNow? = nil) -> Forecast {
         guard let nc, !nc.slots.isEmpty, !minutely.isEmpty else { return self }
-        if let radarNow, !radarNow.isPrecipitating || !radarEchoCanReachGround {
+        if let radarNow, !radarNow.isPrecipitating {
             let t = radarNow.time.timeIntervalSince1970
             let atFrame = nc.slots.filter { abs($0.epoch - t) <= 600 }
             if atFrame.contains(where: { max($0.rain_mmh, $0.snow_cmh, $0.precip_mmh) >= 0.5 }) { return self }
@@ -256,20 +255,13 @@ public extension Forecast {
             }
             let matching = nc.slots.filter { $0.epoch >= start && $0.epoch < end }
             guard !matching.isEmpty else { return slot }
-            let rawRain = matching.map(\.rain_mmh).max() ?? 0
-            let rawSnow = matching.map(\.snow_cmh).max() ?? 0
-            let rainRate: Double
-            let snowRate: Double
-            if temp <= 1 {
-                rainRate = 0
-                snowRate = max(rawSnow, rawRain)
-            } else if temp >= 3 {
-                rainRate = max(rawRain, rawSnow)
-                snowRate = 0
-            } else {
-                rainRate = rawRain
-                snowRate = rawSnow
-            }
+            // Same rain-or-snow call as the Now card (`RadarNow.typed`): the relay's rain and snow
+            // values are the same echo read both ways, so only one of them is kept.
+            let typed = RadarNow(rainMmPerHour: matching.map(\.rain_mmh).max() ?? 0,
+                                 snowCmPerHour: matching.map(\.snow_cmh).max() ?? 0, time: slot.time)
+                .typed(byTemperature: temp, models: modelPrecipitationKind(at: slot.time))
+            let rainRate = typed.rainMmPerHour
+            let snowRate = typed.snowCmPerHour
             let peakRate = max(rainRate, snowRate)
             let minRate = (snowRate <= 0 && rh < 80) ? 1.0 : 0.50
             guard peakRate >= minRate else { return slot }
