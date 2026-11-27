@@ -219,6 +219,16 @@ public extension Forecast {
         return (km ?? 0) >= Self.radarBeatsStationKm
     }
 
+    /// Drizzle in damp air: radar beams pass over the low cloud it falls from, so a dry radar
+    /// doesn't overrule it (27 Nov, 10:36 am in Milton: drizzling, radar dry, card "Overcast").
+    var drizzleRadarCantSee: Bool {
+        guard current.condition == .drizzle || current.condition == .freezingDrizzle else { return false }
+        return (current.humidity ?? 0) >= Self.drizzleHumidity || observation?.nearbyDrizzleStation != nil
+    }
+
+    /// Air this damp (%) under low cloud can drizzle.
+    static let drizzleHumidity: Double = 88
+
     /// When the radar shows rain or snow falling here now, say so even if the model or a
     /// distant station says cloudy. A dry radar changes nothing: it can miss very light snow.
     func applyingRadar(_ radar: RadarNow?) -> Forecast {
@@ -239,7 +249,8 @@ public extension Forecast {
             // Dry radar overhead, yet "rain" from a station far away or the model: it isn't raining
             // here. Snow stays, as the radar can miss very light snow.
             guard current.temperature > 1, current.condition.isRainLike,
-                  !(observation?.skyIsLocal ?? false) || skyStationBeyondRadarReach else { return self }
+                  !(observation?.skyIsLocal ?? false) || skyStationBeyondRadarReach,
+                  !drizzleRadarCantSee else { return self }
             var copy = self
             copy.current.condition = .overcast
             copy.observation?.conditionText = nil

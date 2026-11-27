@@ -80,10 +80,13 @@ fun Forecast.nowcastSlots(now: Epoch = nowEpoch()): List<PrecipitationSlot> {
         slots[0] = PrecipitationSlot(slots[0].time, max(slotAmount, rainPart + snowPart), rainPart, snowPart)
     }
     // The Now card and this line must agree: card wet now but slot dry -> a light amount now.
+    // When more is due within the hour, the dry gap before it is filled too.
     if (!slots[0].isWet && current.condition.isPrecipitation) {
         val snow = !current.condition.isRainLike
         val w = PrecipitationSlot.wetThreshold
-        slots[0] = PrecipitationSlot(slots[0].time, w, if (snow) 0.0 else w, if (snow) w / 0.7 else 0.0)
+        val nextWet = slots.indexOfFirst { it.isWet }
+        val fill = if (nextWet in 1..drizzleLeadSlots) nextWet else 1
+        for (i in 0 until fill) slots[i] = PrecipitationSlot(slots[i].time, w, if (snow) 0.0 else w, if (snow) w / 0.7 else 0.0)
     }
     // Same rain-or-snow call as the hour's (models' vote): no "Mixed" for a trace of model snow in rain.
     return slots.map { s ->
@@ -106,8 +109,9 @@ fun Forecast.nowcastSlots(now: Epoch = nowEpoch()): List<PrecipitationSlot> {
 fun Forecast.agreeingNowWithNowcast(now: Epoch = nowEpoch()): Forecast {
     val c = current.condition
     if (c.isPrecipitation || c == WeatherCondition.thunderstorm || c == WeatherCondition.thunderstormHail) return this
-    val first = nowcastSlots(now).firstOrNull() ?: return this
-    if (!first.isWet) return this
+    val slots = nowcastSlots(now)
+    val first = slots.firstOrNull() ?: return this
+    if (!first.isWet) return drizzlingRadarCantSee(slots)
     val copy = deepCopy()
     val text: String
     when (first.kind) {
@@ -127,6 +131,38 @@ fun Forecast.agreeingNowWithNowcast(now: Epoch = nowEpoch()): Forecast {
         }
     }
     copy.observation?.conditionText = text
+    return copy
+}
+
+/** Rain this many 15-minute slots away (an hour) counts as "due" for drizzle. */
+const val drizzleLeadSlots = 4
+/** Without a nearby drizzle report, the air must be at least this damp (%). */
+const val damperDrizzleHumidity = 90.0
+
+/**
+ * Drizzle that neither the radar nor the 15-minute data shows (27 Nov, 10:36 am in Milton: drizzling,
+ * card "Overcast", radar dry, "Rain starting in about 40 min"). Either says it is drizzling: an airport
+ * or station within 40 km reports drizzle, with damp air and cloud here; or very damp air under cloud
+ * with rain due within the hour.
+ */
+fun Forecast.drizzlingRadarCantSee(slots: List<PrecipitationSlot>): Forecast {
+    val c = current.condition
+    if (c != WeatherCondition.overcast && c != WeatherCondition.partlyCloudy && c != WeatherCondition.fog) return this
+    if (current.temperature <= -3 || current.temperature >= 15 || radar?.isPrecipitating == true) return this
+    val rh = current.humidity?.toDouble() ?: return this
+    val nearby = observation?.nearbyDrizzleStation
+    val rainSoon = slots.take(drizzleLeadSlots).any { it.isWet && it.kind == PrecipitationKind.rain }
+    val source = if (nearby != null && rh >= drizzleHumidity && c != WeatherCondition.partlyCloudy) {
+        val km = observation?.nearbyDrizzleKm?.let { ", ${WeatherFormat.roughDistance(it)} away" } ?: ""
+        "drizzle reported at $nearby$km (radar can't see drizzle)"
+    } else if (rainSoon && rh >= damperDrizzleHumidity && c != WeatherCondition.partlyCloudy) {
+        "damp air with rain due within the hour (radar can't see drizzle)"
+    } else return this
+    val copy = deepCopy()
+    val freezing = current.temperature <= 0
+    copy.current.condition = if (freezing) WeatherCondition.freezingDrizzle else WeatherCondition.drizzle
+    copy.observation?.conditionText = if (freezing) "Freezing drizzle" else "Drizzle"
+    copy.skySource = source
     return copy
 }
 

@@ -153,6 +153,7 @@ class HyperlocalObservationProvider(
             val merged = local.copy(
                 condition = base?.condition, conditionText = base?.conditionText,
                 skyStationName = base?.stationName, skyDataProvider = base?.dataProvider, skyDistanceKm = base?.distanceKm,
+                nearbyDrizzleStation = base?.nearbyDrizzleStation, nearbyDrizzleKm = base?.nearbyDrizzleKm,
             )
             if (base != null && base.isLocal && base.windSpeed != null) {
 
@@ -305,8 +306,19 @@ class WorldObservationProvider(
     private val europeNational: ObservationProvider = RelayOfficialProvider(),
     private val airports: ObservationProvider = METARProvider(),
 ) : ObservationProvider {
+    companion object { const val airportDeadline = 5.0 }
+
     override suspend fun observation(near: Coordinate): Observation? = coroutineScope {
-        if (Region.inCanada(near)) safely { canada.observation(near) }?.let { return@coroutineScope it }
+        if (Region.inCanada(near)) {
+            // The nearest airport too, only for drizzle (Hamilton's "DZ" is the best ground truth nearby).
+            val metar = async { deadline(airportDeadline) { airports.observation(near) } }
+            val o = safely { canada.observation(near) }
+            if (o != null) {
+                metar.await()?.let { m -> o.noteDrizzle(m.stationName, m.distanceKm, m.condition, m.observedAt) }
+                return@coroutineScope o
+            }
+            metar.cancel()
+        }
         val a = async { safely { us.observation(near) } }
         val b = async { safely { germany.observation(near) } }
         val c = async { safely { europeNational.observation(near) } }

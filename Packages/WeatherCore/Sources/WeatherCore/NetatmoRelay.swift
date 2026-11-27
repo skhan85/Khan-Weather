@@ -199,6 +199,8 @@ public struct HyperlocalObservationProvider: ObservationProvider {
         merged.skyStationName = base?.stationName
         merged.skyDataProvider = base?.dataProvider
         merged.skyDistanceKm = base?.distanceKm
+        merged.nearbyDrizzleStation = base?.nearbyDrizzleStation
+        merged.nearbyDrizzleKm = base?.nearbyDrizzleKm
         if let base, base.isLocal, base.windSpeed != nil {
             merged.windSpeed = base.windSpeed
             merged.windDirection = base.windDirection ?? merged.windDirection

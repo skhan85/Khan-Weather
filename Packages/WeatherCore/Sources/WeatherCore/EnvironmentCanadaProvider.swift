@@ -40,6 +40,22 @@ public struct Observation: Equatable, Codable, Sendable {
     /// Home stations only: each nearby station's reading, nearest first, so a sun-heated one can
     /// be set aside against the forecast (see `Forecast.applying(_:)`).
     public var stationTemperatures: [Double]?
+    /// A station or airport within `drizzleReachKm` reporting drizzle, even when it is too far to
+    /// stand in for the sky here. Drizzle falls from low cloud that covers a wide area at once,
+    /// and radar can't see it (27 Nov in Milton: drizzle all morning, radar dry).
+    public var nearbyDrizzleStation: String?
+    public var nearbyDrizzleKm: Double?
+
+    public static let drizzleReachKm: Double = 40
+
+    /// Notes another report's drizzle when it is close enough to count.
+    public mutating func noteDrizzle(station: String, km: Double?, condition: WeatherCondition?, observedAt: Date? = nil) {
+        guard nearbyDrizzleStation == nil, condition == .drizzle || condition == .freezingDrizzle,
+              let km, km <= Self.drizzleReachKm else { return }
+        if let observedAt, Date().timeIntervalSince(observedAt) > 5400 { return }
+        nearbyDrizzleStation = WeatherFormat.plainStationName(station)
+        nearbyDrizzleKm = km
+    }
 
     /// Local gauges report and none caught a drop in the last hour.
     public var gaugesSayDry: Bool { (rainGauges ?? 0) > 0 && (rainLastHourMm ?? 1) == 0 }
@@ -329,6 +345,8 @@ public extension Forecast {
         // Drop it and keep the forecast's sky for this spot, which the radar over this spot can
         // still turn wet below.
         if !o.skyIsLocal {
+            o.noteDrizzle(station: o.skyStationName ?? o.stationName,
+                          km: o.skyStationName == nil ? o.distanceKm : o.skyDistanceKm, condition: o.condition)
             o.condition = nil
             o.conditionText = nil
         }

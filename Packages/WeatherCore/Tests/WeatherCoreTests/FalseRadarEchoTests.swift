@@ -255,4 +255,56 @@ final class FalseRadarEchoTests: XCTestCase {
         XCTAssertNil(o)
         XCTAssertEqual(calls.count, 1)
     }
+
+    /// 27 Nov, 10:36 am in Milton: drizzling, radar dry, card "Overcast", rain "starting in about 40 min".
+    func testDrizzleTheRadarCantSee() {
+        let now = Date()
+        var f = forecast(temperature: 3, humidity: 92)
+        f.minutely = f.minutely.enumerated().map { i, s in
+            PrecipitationSlot(time: s.time, precipitation: i >= 3 ? 0.3 : 0, rain: i >= 3 ? 0.3 : 0)
+        }
+        let shown = f.agreeingNowWithNowcast(at: now)
+        XCTAssertEqual(shown.current.condition, .drizzle)
+        XCTAssertEqual(shown.observation?.conditionText ?? shown.current.condition.description, "Drizzle")
+        // Next 2 hours agrees: wet from now on, not "stopping in 15 min" then "starting in 45".
+        XCTAssertEqual(shown.nowcast(at: now)?.change, .continuing)
+
+        // Drier air, or rain more than an hour off: left alone.
+        var dry = forecast(temperature: 3, humidity: 84)
+        dry.minutely = f.minutely
+        XCTAssertEqual(dry.agreeingNowWithNowcast(at: now), dry)
+        var later = f
+        later.minutely = f.minutely.enumerated().map { i, s in
+            PrecipitationSlot(time: s.time, precipitation: i >= 6 ? 0.3 : 0, rain: i >= 6 ? 0.3 : 0)
+        }
+        XCTAssertEqual(later.agreeingNowWithNowcast(at: now), later)
+    }
+
+    func testDistantDrizzleReportNeedsDampAir() {
+        let now = Date()
+        var f = forecast(temperature: 3, humidity: 89)
+        var o = Observation(stationName: "Milton", observedAt: now, temperature: 3, distanceKm: 3)
+        o.noteDrizzle(station: "Hamilton Airport", km: 26, condition: .drizzle, observedAt: now)
+        f.observation = o
+        XCTAssertEqual(f.agreeingNowWithNowcast(at: now).current.condition, .drizzle)
+
+        // Same report, drier air here: not enough on its own.
+        f.current.humidity = 80
+        XCTAssertEqual(f.agreeingNowWithNowcast(at: now).current.condition, .overcast)
+
+        // Too far away to count at all.
+        var far = Observation(stationName: "Milton", observedAt: now, temperature: 3, distanceKm: 3)
+        far.noteDrizzle(station: "Kitchener Airport", km: 55, condition: .drizzle, observedAt: now)
+        XCTAssertNil(far.nearbyDrizzleStation)
+    }
+
+    func testDryRadarKeepsDrizzleInDampAir() {
+        let now = Date()
+        var f = forecast(temperature: 4, humidity: 93)
+        f.current.condition = .drizzle
+        let dryRadar = RadarNow(rainMmPerHour: 0, snowCmPerHour: 0, time: now)
+        XCTAssertEqual(f.applyingRadar(dryRadar).current.condition, .drizzle)
+        f.current.humidity = 70
+        XCTAssertEqual(f.applyingRadar(dryRadar).current.condition, .overcast)
+    }
 }
