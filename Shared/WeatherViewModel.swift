@@ -16,6 +16,9 @@ final class WeatherViewModel: ObservableObject {
     @Published private(set) var state: State = .loading
     /// True when location was unavailable and the fallback city is shown.
     @Published private(set) var usingFallbackLocation = false
+    /// True while a refresh is running, so an old forecast on screen says "Updating" rather than
+    /// "Couldn't refresh".
+    @Published private(set) var isRefreshing = false
     /// Town or city name for the forecast location, e.g. "Mississauga".
     @Published private(set) var placeName: String?
 
@@ -99,6 +102,8 @@ final class WeatherViewModel: ObservableObject {
     /// The Open-Meteo forecast is shown as soon as it arrives; the station reading, radar, alerts and
     /// air quality are filled in as each one answers, so one slow service doesn't hold up the screen.
     func refresh(place: SavedPlace? = nil) async {
+        isRefreshing = true
+        defer { isRefreshing = false }
         await load(place: place, allowLocationFollowUp: true)
     }
 
@@ -137,7 +142,9 @@ final class WeatherViewModel: ObservableObject {
             target = place.coordinate
             usingFallbackLocation = false
             freshCoordTask = nil
-        } else if let cached = location.cachedCoordinate {
+        } else if let cached = location.cachedCoordinate ?? location.lastKnownCoordinate {
+            // The last fix (iOS's, or ours from an earlier launch): load for it now and move to the
+            // fresh fix afterwards if the phone has moved more than 1.5 km.
             target = cached
             usingFallbackLocation = false
             onCurrentLocation?(cached)
@@ -177,14 +184,24 @@ final class WeatherViewModel: ObservableObject {
 
         let base: Forecast
         do {
-            if let om = provider as? OpenMeteoProvider {
-                base = try await om.forecast(
-                    for: target,
-                    anchor: { await Deadline.run(1.5) { await observedTask.value?.blendAnchor } },
-                    regionalWeights: { await weightsTask.value }
-                )
-            } else {
-                base = try await provider.forecast(for: target)
+            func fetch() async throws -> Forecast {
+                if let om = provider as? OpenMeteoProvider {
+                    return try await om.forecast(
+                        for: target,
+                        anchor: { await Deadline.run(1.5) { await observedTask.value?.blendAnchor } },
+                        regionalWeights: { await weightsTask.value }
+                    )
+                }
+                return try await provider.forecast(for: target)
+            }
+            do {
+                base = try await fetch()
+            } catch {
+                // Right after launch the network is often not quite up yet; one retry before
+                // leaving the old forecast on screen.
+                try await Task.sleep(nanoseconds: 2_000_000_000)
+                guard gen == generation else { return }
+                base = try await fetch()
             }
         } catch {
             guard gen == generation else { return }

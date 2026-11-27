@@ -242,6 +242,21 @@ public struct PrecipitationSlot: Equatable, Codable, Sendable {
     public static let wetThreshold = 0.1
     public var isWet: Bool { precipitation >= Self.wetThreshold || snowfall >= 0.1 }
 
+    /// Rain, snow, or both, by how much of the water each one is: "mixed" only when each is at
+    /// least 30% (Open-Meteo puts a trace of snow into most hours near 1°, which made the app say
+    /// "Rain and snow" while it rained). Snow counts as water at 0.7 mm per cm, as in ModelBlend.
+    public var kind: PrecipitationKind {
+        PrecipitationSlot.kind(rain: rain, snowfall: snowfall)
+    }
+
+    static func kind(rain: Double, snowfall: Double) -> PrecipitationKind {
+        let snowWater = snowfall * 0.7
+        let total = rain + snowWater
+        guard total > 0 else { return .rain }
+        let share = snowWater / total
+        return share >= 0.7 ? .snow : share <= 0.3 ? .rain : .mixed
+    }
+
     /// How hard it's coming down, 0...1, in thirds that match Environment Canada's bands and the
     /// Next 2 hours chart's Light / Moderate / Heavy lines: rain light under 2.5 mm/h, heavy from
     /// 7.6; snow light under 0.5 cm/h, heavy from 1. The top is twice the heavy line's start.

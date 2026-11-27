@@ -158,9 +158,11 @@ struct NextTwoHoursView: View {
 
     private func color(_ s: PrecipitationSlot) -> Color {
         guard s.isWet else { return .white.opacity(0.3) }
-        if s.snowfall > 0 && s.rain < PrecipitationSlot.wetThreshold { return .white }
-        if s.snowfall > 0 { return Color(red: 0.78, green: 0.72, blue: 1) }
-        return Color(red: 0.45, green: 0.75, blue: 1)
+        switch s.kind {
+        case .snow: return .white
+        case .mixed: return Color(red: 0.78, green: 0.72, blue: 1)
+        case .rain: return Color(red: 0.45, green: 0.75, blue: 1)
+        }
     }
 
     var body: some View {
@@ -426,7 +428,7 @@ struct WeekendView: View {
                         } label: {
                             Text(title)
                                 .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(tab == idx ? Color(red: 1.0, green: 0.85, blue: 0.28) : .white.opacity(0.85))
+                                .foregroundStyle(tab == idx ? Brand.gold : .white.opacity(0.85))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
                                 .background(
@@ -437,7 +439,8 @@ struct WeekendView: View {
                     }
                 }
                 .padding(4)
-                .background(Capsule().fill(.white.opacity(0.08)))
+                .background(Capsule().fill(.ultraThinMaterial))
+                .background(Capsule().fill(.black.opacity(0.22)))
 
                 // Weekend summary card
                 Text(summaryText(for: activeDays))
@@ -445,15 +448,13 @@ struct WeekendView: View {
                     .foregroundStyle(.white.opacity(0.92))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(14)
-                    .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.white.opacity(0.10)))
+                    .weekendGlass(cornerRadius: 16)
 
                 // Weekend day cards
                 if !activeDays.isEmpty {
                     VStack(spacing: 10) {
                         HStack {
-                            Label("Weekend Forecast", systemImage: "calendar")
-                                .font(.headline)
-                                .foregroundStyle(.white)
+                            SkySectionHeader(title: "Weekend forecast", systemImage: "calendar")
                             Spacer()
                         }
                         .padding(.bottom, 2)
@@ -564,25 +565,34 @@ struct WeekendView: View {
                                     }
                                 }
                             }
-                            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.white.opacity(0.08)))
+                            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.white.opacity(0.06)))
                         }
                     }
                     .padding(14)
-                    .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.white.opacity(0.08)))
+                    .weekendGlass(cornerRadius: 18)
                 }
             }
             .padding(16)
         }
-        .background(
-            LinearGradient(
-                colors: [Color(red: 0.08, green: 0.15, blue: 0.28), Color(red: 0.05, green: 0.09, blue: 0.18)],
-                startPoint: .top, endPoint: .bottom
-            ).ignoresSafeArea()
-        )
+        // Same sky and glass as the main screen and the day pages.
+        .skyBackground(forecast.current.condition, isDay: forecast.current.isDay)
         .navigationTitle("Weekend")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             if expandedDayID == nil { expandedDayID = activeDays.first?.date }
+        }
+    }
+}
+
+
+private extension View {
+    /// The main screen's glass panel (`glassRow`) for views outside a List.
+    func weekendGlass(cornerRadius: CGFloat) -> some View {
+        background {
+            ZStack {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous).fill(Color.black.opacity(0.22))
+            }
         }
     }
 }

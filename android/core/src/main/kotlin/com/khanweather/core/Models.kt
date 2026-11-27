@@ -171,6 +171,9 @@ data class PrecipitationSlot(
 ) {
     val isWet: Boolean get() = precipitation >= wetThreshold || snowfall >= 0.1
 
+    /** Rain, snow, or both by water share: mixed only when each is at least 30%. */
+    val kind: PrecipitationKind get() = kindOf(rain, snowfall)
+
     /**
      * How hard it's coming down, 0..1, in thirds matching Environment Canada's bands and the chart's
      * Light / Moderate / Heavy lines: rain heavy from 7.6 mm/h, snow heavy from 1 cm/h.
@@ -189,6 +192,14 @@ data class PrecipitationSlot(
 
     companion object {
         const val wetThreshold = 0.1
+
+        fun kindOf(rain: Double, snowfall: Double): PrecipitationKind {
+            val snowWater = snowfall * 0.7
+            val total = rain + snowWater
+            if (total <= 0) return PrecipitationKind.rain
+            val share = snowWater / total
+            return if (share >= 0.7) PrecipitationKind.snow else if (share <= 0.3) PrecipitationKind.rain else PrecipitationKind.mixed
+        }
     }
 }
 

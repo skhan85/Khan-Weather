@@ -100,6 +100,32 @@ final class FalseRadarEchoTests: XCTestCase {
         XCTAssertEqual(PrecipitationSlot(time: now, precipitation: 0).intensity, 0)
     }
 
+    /// 26 Nov, 11 pm: rain at 1° with a trace of model snow said "Rain and snow for at least the next 2 hours".
+    func testTraceOfSnowInRainIsStillRain() {
+        let now = Date()
+        XCTAssertEqual(PrecipitationSlot(time: now, precipitation: 0.8, rain: 0.8, snowfall: 0.05).kind, .rain)
+        XCTAssertEqual(PrecipitationSlot(time: now, precipitation: 0.5, rain: 0.2, snowfall: 0.4).kind, .mixed)
+        XCTAssertEqual(PrecipitationSlot(time: now, precipitation: 0.3, snowfall: 0.4).kind, .snow)
+        let slots = (0..<8).map {
+            PrecipitationSlot(time: now.addingTimeInterval(Double($0) * 900), precipitation: 0.6, rain: 0.6, snowfall: 0.02)
+        }
+        XCTAssertEqual(Nowcast.kind(of: slots), .rain)
+    }
+
+    /// 26 Nov, 11:03 pm: hourly said rain at 1°, Next 2 hours said "Rain and snow" with purple bars.
+    func testNextTwoHoursFollowsTheHourlyRainOrSnow() {
+        let now = Date()
+        var f = forecast(temperature: 1, humidity: 85)
+        f.hourly = [HourlyForecast(time: f.minutely[0].time, temperature: 1, condition: .rain),
+                    HourlyForecast(time: f.minutely[0].time.addingTimeInterval(3600), temperature: 1, condition: .rain),
+                    HourlyForecast(time: f.minutely[0].time.addingTimeInterval(7200), temperature: 1, condition: .rain)]
+        for i in f.hourly.indices { f.hourly[i].rain = 2; f.hourly[i].snowfall = 0 }
+        f.minutely = f.minutely.map { PrecipitationSlot(time: $0.time, precipitation: 0.5, rain: 0.3, snowfall: 0.3) }
+        let slots = f.nowcastSlots(at: now)
+        XCTAssertTrue(slots.allSatisfy { $0.kind == .rain && $0.snowfall == 0 })
+        XCTAssertEqual(f.nowcast(at: now)?.kind, .rain)
+    }
+
     static func relay(_ rate: Double, from start: Date) -> RelayNowcast {
         let slots = (0..<20).map { i -> String in
             let t = start.timeIntervalSince1970 + Double(i) * 360

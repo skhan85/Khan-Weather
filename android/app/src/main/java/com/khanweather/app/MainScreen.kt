@@ -336,8 +336,8 @@ fun NextTwoHours(nowcast: Nowcast, slots: List<PrecipitationSlot>) {
                         val h = if (!s.isWet) 3.0 else 14 + 74 * s.intensity
                         val colour = when {
                             !s.isWet -> Color.White.copy(alpha = 0.25f)
-                            s.snowfall > 0 && s.rain < PrecipitationSlot.wetThreshold -> Color.White
-                            s.snowfall > 0 -> rgb(0.78, 0.72, 1.0)
+                            s.kind == PrecipitationKind.snow -> Color.White
+                            s.kind == PrecipitationKind.mixed -> rgb(0.78, 0.72, 1.0)
                             else -> rgb(0.45, 0.75, 1.0)
                         }
                         Box(Modifier.weight(1f).height(h.dp).clip(RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp, bottomStart = 2.dp, bottomEnd = 2.dp)).background(colour))
