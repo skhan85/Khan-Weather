@@ -339,6 +339,28 @@ private struct ForecastList: View {
     /// Days, details, air and sources: the right column on iPad.
     @ViewBuilder private var forecastSections: some View {
             Section {
+                NavigationLink {
+                    WeekendView(forecast: forecast)
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "sun.max.fill")
+                            .foregroundStyle(Color(red: 1.0, green: 0.82, blue: 0.28))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Weekend forecast")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.white)
+                            Text("Fri–Sun · Morn / Aft / Eve / Night")
+                                .font(.caption)
+                                .foregroundStyle(.white.opacity(0.68))
+                        }
+                        Spacer()
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+            .glassRow()
+
+            Section {
                 ForEach(Array(days.enumerated()), id: \.element.id) { index, day in
                     NavigationLink {
                         DayDetailView(day: day, hours: forecast.displayHours(on: day), timeZone: forecast.timeZone,

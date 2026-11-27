@@ -40,6 +40,7 @@ sealed class Screen {
     data class Day(val day: DailyForecast, val index: Int) : Screen()
     data class Models(val day: DailyForecast) : Screen()
     data object ModelGrid : Screen()
+    data object Weekend : Screen()
     data object Accuracy : Screen()
     data object Radar : Screen()
     data object Sources : Screen()
@@ -151,6 +152,7 @@ fun App(model: WeatherViewModel, startOnRadar: Boolean = false) {
                         is Screen.Day -> forecast?.let { DayScreen(screen.day, it, model.normals, ::nav) }
                         is Screen.Models -> forecast?.let { ModelComparisonScreen(screen.day, it, ::nav) }
                         Screen.ModelGrid -> forecast?.let { ModelGridScreen(it) }
+                        Screen.Weekend -> forecast?.let { WeekendScreen(it) }
                         Screen.Accuracy -> AccuracyScreen()
                         Screen.Radar -> RadarScreen(forecast?.location ?: Coordinate.fallback)
                         Screen.Sources -> forecast?.let { SourcesScreen(it, model.alerts, selectedId != null) }
@@ -182,6 +184,7 @@ private fun TopBar(screen: Screen, forecast: Forecast?, onBack: () -> Unit, onSe
         is Screen.Day -> TimeText.weekdayMonthDay(screen.day.date, zone)
         is Screen.Models -> "Compare models"
         Screen.ModelGrid -> "10-day models"
+        Screen.Weekend -> "Weekend"
         Screen.Accuracy -> "Forecast accuracy"
         Screen.Radar -> "Radar"
         Screen.Sources -> "Sources"

@@ -114,6 +114,36 @@ fun ForecastList(
             RadarCard(forecast.location) { nav(Screen.Radar) }
         }
 
+        Box(
+
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+
+                .background(Color.White.copy(alpha = 0.10f))
+
+                .clickable { nav(Screen.Weekend) }
+
+                .padding(horizontal = 14.dp, vertical = 12.dp)
+
+        ) {
+
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+
+                Icon(Icons.Filled.WbSunny, null, tint = rgb(1.0, 0.82, 0.28), modifier = Modifier.size(20.dp))
+
+                Column(Modifier.weight(1f)) {
+
+                    Text("Weekend forecast", style = style(14.sp, FontWeight.SemiBold, Color.White))
+
+                    Text("Fri–Sun · Morn / Aft / Eve / Night", style = style(12.sp, color = Color.White.copy(alpha = 0.68f)))
+
+                }
+
+                Icon(Icons.Filled.ChevronRight, null, tint = Color.White.copy(alpha = 0.55f))
+
+            }
+
+        }
+
         Section("${forecast.daily.size}-day forecast", Icons.Filled.CalendarMonth, PaddingValues(horizontal = 16.dp, vertical = 2.dp)) {
             days.forEachIndexed { i, day ->
                 LinkRow({ nav(Screen.Day(day, i)) }) {
