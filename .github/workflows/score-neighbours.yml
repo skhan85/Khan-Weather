@@ -1,0 +1,47 @@
+name: Score neighbour-station correction
+
+# Does correcting "now" by the models' error at stations 8-80 km away beat the model alone?
+# tools/score_neighbours.py, about 90 airports in 35 metro areas worldwide, held out by region.
+# Run by hand, or on a push that changes the scorer. Re-runs reuse the download cache.
+# Linux: GitHub's Mac runners can't reach api.open-meteo.com.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - tools/score_neighbours.py
+      - .github/workflows/score-neighbours.yml
+
+permissions:
+  contents: read
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: tools/verify-cache
+          key: neighbours-cache-${{ github.run_id }}
+          restore-keys: neighbours-cache-
+      - name: Airport observations
+        working-directory: tools
+        run: NB_STAGE=obs python3 score_neighbours.py
+      - name: Score
+        working-directory: tools
+        timeout-minutes: 300
+        run: python3 score_neighbours.py | tee neighbour-report.txt
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: tools/verify-cache
+          key: neighbours-cache-${{ github.run_id }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: neighbour-results
+          path: |
+            tools/neighbour-report.json
+            tools/neighbour-report.txt

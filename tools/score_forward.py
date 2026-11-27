@@ -44,6 +44,21 @@ def wavg(vals, w):
     return sum(v * w.get(m, 0) for m, v in vals.items()) / s if s else None
 
 
+NAMES = {"gem_seamless": "canada", "gem_hrdps_continental": "canadaHighRes", "gfs_seamless": "us",
+         "gfs_hrrr": "usHighRes", "ecmwf_ifs025": "europe", "ecmwf_aifs025_single": "europeAI",
+         "icon_seamless": "germany", "ukmo_seamless": "uk"}
+_REG = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Packages", "WeatherCore",
+                                   "blend-regions.json")))
+NA_EAST = next(r for r in _REG["regions"] if r["id"] == "na_east")["byDay"]
+
+
+def region_weight(m, lead):
+    """Today's app weight (blend-regions.json, Eastern North America) for a logged model; models
+    the log lacks (NBM, ECMWF 9 km) drop out and the rest are renormalised by wavg."""
+    row = NA_EAST[min(int(max(lead, 0) // 24), len(NA_EAST) - 1)]
+    return row.get(NAMES.get(m, m), 0)
+
+
 def main():
     snaps = [json.loads(l) for l in open(sys.argv[1])]
     t0 = min(s["fetched"] for s in snaps)
@@ -71,6 +86,23 @@ def main():
             cands["AppBlend"] = wavg(vals, {m: app_weight(m, lead) for m in vals})
             cands["SummerFit"] = wavg(vals, SUMMER[b])
             cands["Mean"] = sum(vals.values()) / len(vals)
+            region = wavg(vals, {m: region_weight(m, lead) for m in vals})
+            cands["RegionBlend"] = region
+            extra = {k: {r[0]: r[1] for r in v if r[1] is not None} for k, v in s["sources"].items()
+                     if k in ("google", "pirate")}
+            g = extra.get("google", {}).get(h)
+            p = extra.get("pirate", {}).get(h)
+            # Paired rows: only hours where Google (or Pirate) was logged, so the comparison with
+            # and without it is on the same hours.
+            if g is not None and region is not None and lead < 48:
+                cands["G:RegionBlend"] = region
+                cands["G:Google"] = g
+                for w in (0.15, 0.3, 0.5):
+                    cands[f"G:Blend+Google{int(w * 100)}%"] = region * (1 - w) + g * w
+            if p is not None and region is not None:
+                cands["P:RegionBlend"] = region
+                cands["P:Pirate"] = p
+                cands["P:Blend+Pirate15%"] = region * 0.85 + p * 0.15
             for label, ob in O.items():
                 o = ob.get(h)
                 if o is None:

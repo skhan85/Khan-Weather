@@ -5,6 +5,10 @@ name: Score forward log
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - tools/score_forward.py
+      - .github/workflows/score-forward.yml
 
 permissions:
   contents: read
