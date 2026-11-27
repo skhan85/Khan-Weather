@@ -26,7 +26,7 @@ by region, distance band and lead hour.
 
   python3 score_neighbours.py
 """
-import json, math, os, sys
+import json, math, os, sys, time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
@@ -147,15 +147,38 @@ def main():
         k += 1
 
     # model[icao][run] = {time: mean forecast}
+    # Open-Meteo's single-runs archive is slow from GitHub's runners (TLS handshakes time out and
+    # are retried), so downloads stop after NB_FETCH_MINUTES and only airports with forecasts are
+    # scored. Airports are taken round-robin across regions so every region gets some, and the
+    # cache (restored between runs) makes a re-run pick up where this one stopped.
+    t_stop = time.time() + 60 * float(os.environ.get("NB_FETCH_MINUTES", "200"))
+    by_reg = defaultdict(list)
+    for icao, st in stations.items():
+        by_reg[st["region"]].append(icao)
+    order = []
+    while any(by_reg.values()):
+        for r in list(by_reg):
+            if by_reg[r]:
+                order.append(by_reg[r].pop(0))
     model = defaultdict(dict)
-    for n, (icao, st) in enumerate(stations.items()):
+    for n, icao in enumerate(order):
+        st = stations[icao]
+        cached = all(os.path.exists(os.path.join(sr.CACHE, f"sr-{icao}-{run:%Y%m%d%H}-2-{'_'.join(MODELS)}.json"))
+                     for run in runs)
+        if not cached and time.time() > t_stop:
+            continue
+
         def load(run, st=st, icao=icao):
             return run, mean_series(sr.single_run(st["lat"], st["lon"], MODELS, run, icao, 2))
         with ThreadPoolExecutor(3) as pool:
             for run, s in pool.map(load, runs):
                 model[icao][run] = s
-        print(f"  {n + 1}/{len(stations)} {icao}: {sum(1 for s in model[icao].values() if s)} runs",
+        print(f"  {n + 1}/{len(order)} {icao}: {sum(1 for s in model[icao].values() if s)} runs",
               file=sys.stderr, flush=True)
+    for icao in list(stations):
+        if not any(model[icao].values()):
+            del stations[icao]
+    print(f"{len(stations)} airports with forecasts", file=sys.stderr, flush=True)
 
     # cases: one per (target, run, lead) with the target's truth and model value, and its
     # neighbours' error at app-open time.

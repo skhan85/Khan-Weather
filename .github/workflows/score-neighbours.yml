@@ -32,6 +32,8 @@ jobs:
       - name: Score
         working-directory: tools
         timeout-minutes: 300
+        env:
+          NB_FETCH_MINUTES: "200"
         run: python3 score_neighbours.py | tee neighbour-report.txt
       - uses: actions/cache/save@v4
         if: always()
