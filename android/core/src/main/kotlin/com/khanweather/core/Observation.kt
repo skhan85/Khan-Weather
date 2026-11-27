@@ -37,14 +37,35 @@ data class Observation(
     /** A station or airport within `drizzleReachKm` reporting drizzle (radar can't see it). */
     var nearbyDrizzleStation: String? = null,
     var nearbyDrizzleKm: Double? = null,
+    /**
+     * Stations and airports within `drizzleReachKm` reporting rain or drizzle now (not snow, which the
+     * radar sees), nearest first. Two or more under a dry radar is widespread light rain from low cloud.
+     */
+    var nearbyWetStations: List<String>? = null,
 ) {
-    /** Notes another report's drizzle when it is close enough to count. */
+    /** Notes another report's drizzle or rain when it is close enough to count. */
     fun noteDrizzle(station: String, km: Double?, condition: WeatherCondition?, observedAt: Epoch? = null, now: Epoch = nowEpoch()) {
-        if (nearbyDrizzleStation != null || (condition != WeatherCondition.drizzle && condition != WeatherCondition.freezingDrizzle)) return
-        if (km == null || km > drizzleReachKm) return
+        if (condition == null || km == null || km > drizzleReachKm) return
         if (observedAt != null && now - observedAt > 5400) return
-        nearbyDrizzleStation = WeatherFormat.plainStationName(station)
+        val name = WeatherFormat.plainStationName(station)
+        if (condition.isRainLike && (nearbyWetStations ?: emptyList()).none { it == name }) {
+            nearbyWetStations = (nearbyWetStations ?: emptyList()) + name
+        }
+        if (nearbyDrizzleStation != null || (condition != WeatherCondition.drizzle && condition != WeatherCondition.freezingDrizzle)) return
+        nearbyDrizzleStation = name
         nearbyDrizzleKm = km
+    }
+
+    /** Copies another observation's nearby reports into this one. */
+    fun mergeNearbyReports(other: Observation?) {
+        if (other == null) return
+        if (nearbyDrizzleStation == null) {
+            nearbyDrizzleStation = other.nearbyDrizzleStation
+            nearbyDrizzleKm = other.nearbyDrizzleKm
+        }
+        for (name in other.nearbyWetStations ?: emptyList()) {
+            if ((nearbyWetStations ?: emptyList()).none { it == name }) nearbyWetStations = (nearbyWetStations ?: emptyList()) + name
+        }
     }
 
     /** Whether the sky (rain, snow, cloud) was reported within `localRadiusKm`. */

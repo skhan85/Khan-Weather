@@ -128,7 +128,12 @@ class EnvironmentCanadaProvider(
                 observation.distanceKm = distance
                 if (candidates.none { it.stationName == observation.stationName }) candidates.add(observation)
             }
-            return choose(candidates)
+            val chosen = choose(candidates) ?: return null
+            // Every other city-page station within reach that reports drizzle or rain.
+            for (other in candidates) {
+                if (other.stationName != chosen.stationName) chosen.noteDrizzle(other.stationName, other.distanceKm, other.condition, other.observedAt, now)
+            }
+            return chosen
         }
 
         /** Automatic stations report temperature and wind but no sky; take the sky from the nearest that does. */
@@ -410,6 +415,7 @@ class CanadaObservationProvider(
             }
             return local.copy(condition = sky.condition, conditionText = sky.conditionText,
                 skyStationName = sky.stationName, skyDataProvider = sky.dataProvider, skyDistanceKm = sky.distanceKm)
+                .also { it.mergeNearbyReports(sky) }
         }
     }
 }
