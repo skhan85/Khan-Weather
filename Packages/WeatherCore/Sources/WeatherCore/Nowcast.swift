@@ -138,6 +138,32 @@ public extension Forecast {
         }
     }
 
+    /// The Now card follows the first 15 minutes of Next 2 hours when those are wet and the card
+    /// isn't: 27 Nov, 8:54 am in Milton, the card said "Overcast" (the model's sky) under "Rain for
+    /// at least the next 2 hours" while it drizzled. The radar over the spot showed nothing:
+    /// drizzle falls from cloud too low for it to see.
+    func agreeingNowWithNowcast(at now: Date = Date()) -> Forecast {
+        guard !current.condition.isPrecipitation, current.condition != .thunderstorm,
+              current.condition != .thunderstormHail,
+              let first = nowcastSlots(at: now).first, first.isWet else { return self }
+        var copy = self
+        let text: String
+        switch first.kind {
+        case .snow:
+            copy.current.condition = .snow
+            text = first.snowfall * 4 < 0.5 ? "Light snow" : first.snowfall * 4 < 1 ? "Moderate snow" : "Heavy snow"
+        case .mixed:
+            copy.current.condition = current.temperature <= 0 ? .freezingRain : .rain
+            text = "Rain and snow"
+        case .rain:
+            let rate = max(first.rain, first.precipitation) * 4
+            copy.current.condition = rate < 0.5 ? .drizzle : .rain
+            text = rate < 0.5 ? "Drizzle" : rate < 2.5 ? "Light rain" : rate < 7.6 ? "Moderate rain" : "Heavy rain"
+        }
+        copy.observation?.conditionText = text
+        return copy
+    }
+
     /// What precipitation is doing over the next two hours, or nil when it stays dry
     /// (or the 15-minute data is missing or stale).
     func nowcast(at now: Date = Date()) -> Nowcast? {

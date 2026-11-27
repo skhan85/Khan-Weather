@@ -217,7 +217,7 @@ final class WeatherViewModel: ObservableObject {
         guard gen == generation else { return }
         // First paint: show model forecast immediately (always replacing stale cold disk cache).
         if case .loaded = state, !showingStaleDiskCache {} else {
-            state = .loaded(base.calibratingEnsemblePop())
+            state = .loaded(base.calibratingEnsemblePop().agreeingNowWithNowcast())
         }
 
         // Apply station reading as soon as it arrives—without waiting on radar, nowcast, or Google.
@@ -245,18 +245,18 @@ final class WeatherViewModel: ObservableObject {
                 guard gen == self.generation else { return }
                 if let observed {
                     self.lastObservation[spot] = observed
-                    self.state = .loaded(base.applying(observed).calibratingEnsemblePop())
+                    self.state = .loaded(base.applying(observed).calibratingEnsemblePop().agreeingNowWithNowcast())
                 }
                 let googleHourly = await googleTask.value
                 let mosmixHourly = await mosmixTask.value
                 guard gen == self.generation else { return }
                 if googleHourly != nil || mosmixHourly != nil {
-                    self.state = .loaded(base.applyingMosmixHourly(mosmixHourly).applyingGoogleHourly(googleHourly).applying(observed).calibratingEnsemblePop())
+                    self.state = .loaded(base.applyingMosmixHourly(mosmixHourly).applyingGoogleHourly(googleHourly).applying(observed).calibratingEnsemblePop().agreeingNowWithNowcast())
                 }
                 let radar = await radarTask.value ?? nil
                 let radarNowcast = await nowcastTask.value
                 guard gen == self.generation else { return }
-                self.state = .loaded(base.applyingMosmixHourly(mosmixHourly).applyingGoogleHourly(googleHourly).applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast, radarNow: radar).calibratingEnsemblePop())
+                self.state = .loaded(base.applyingMosmixHourly(mosmixHourly).applyingGoogleHourly(googleHourly).applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast, radarNow: radar).calibratingEnsemblePop().agreeingNowWithNowcast())
             }
         }
         guard gen == generation, case .loaded(let shown) = state else { return }
@@ -307,7 +307,7 @@ final class WeatherViewModel: ObservableObject {
             guard let base else { continue }
             let radarNow = await radar ?? nil
             let full = base.applyingMosmixHourly(await mosmixHourly).applyingGoogleHourly(await googleHourly).applying(obs).applyingRadar(radarNow)
-                .applyingRadarNowcast(await nowcast, radarNow: radarNow).calibratingEnsemblePop()
+                .applyingRadarNowcast(await nowcast, radarNow: radarNow).calibratingEnsemblePop().agreeingNowWithNowcast()
             let snap = Snapshot(forecast: full, name: place.name, alerts: await fetchedAlerts ?? [],
                                 airQuality: await air, at: Date())
             // Don't overwrite a fresher entry from a refresh that ran meanwhile.

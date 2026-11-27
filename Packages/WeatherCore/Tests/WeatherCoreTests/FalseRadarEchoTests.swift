@@ -157,6 +157,23 @@ final class FalseRadarEchoTests: XCTestCase {
         XCTAssertEqual(drizzle.applyingRadar(RadarNow(rainMmPerHour: 0, snowCmPerHour: 0, time: now)).current.condition, .drizzle)
     }
 
+    /// 27 Nov, 8:54 am: "Overcast" on the card under "Rain for at least the next 2 hours" while it drizzled.
+    func testCardFollowsWetNextTwoHours() {
+        let now = Date()
+        var f = forecast(temperature: 3, humidity: 89)
+        f.minutely = f.minutely.map { PrecipitationSlot(time: $0.time, precipitation: 0.1, rain: 0.1) }
+        let shown = f.agreeingNowWithNowcast(at: now)
+        XCTAssertEqual(shown.current.condition, .drizzle)
+        XCTAssertEqual(f.nowcast(at: now)?.change, .continuing)
+
+        f.minutely = f.minutely.map { PrecipitationSlot(time: $0.time, precipitation: 0.4, rain: 0.4) }
+        XCTAssertEqual(f.agreeingNowWithNowcast(at: now).current.condition, .rain)
+
+        // Dry Next 2 hours: the card is left alone.
+        f.minutely = f.minutely.map { PrecipitationSlot(time: $0.time, precipitation: 0) }
+        XCTAssertEqual(f.agreeingNowWithNowcast(at: now), f)
+    }
+
     static func relay(_ rate: Double, from start: Date) -> RelayNowcast {
         let slots = (0..<20).map { i -> String in
             let t = start.timeIntervalSince1970 + Double(i) * 360

@@ -200,7 +200,7 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
                 .applying(obs)
                 .applyingRadar(radar)
                 .applyingRadarNowcast(await radarNowcast, radarNow: radar)
-                .calibratingEnsemblePop()
+                .calibratingEnsemblePop().agreeingNowWithNowcast()
             WidgetForecastMemory.remember(forecast)
             return Loaded(forecast: forecast, fresh: true, placeName: await place, alert: alertTitle)
         } catch {

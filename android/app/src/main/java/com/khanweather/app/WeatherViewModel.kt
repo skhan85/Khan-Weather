@@ -134,7 +134,7 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
         }
         if (gen != generation) return@coroutineScope
         if (state !is LoadState.Loaded || showingStaleDiskCache) {
-            state = LoadState.Loaded(with(WeatherLoader) { base.calibratingEnsemblePop() })
+            state = LoadState.Loaded(with(WeatherLoader) { base.calibratingEnsemblePop().agreeingNowWithNowcast() })
         }
         val airTask = async { WeatherLoader.airQuality(target, base.timeZoneIdentifier) }
 
@@ -149,21 +149,21 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
         if (gen != generation) return@coroutineScope
         if (observed != null) {
             ObservationMemory.remember(target, observed)
-            state = LoadState.Loaded(with(WeatherLoader) { base.applying(observed).calibratingEnsemblePop() })
+            state = LoadState.Loaded(with(WeatherLoader) { base.applying(observed).calibratingEnsemblePop().agreeingNowWithNowcast() })
         }
         val googleHourly = googleTask.await()
         val mosmixHourly = mosmixTask.await()
         if (gen != generation) return@coroutineScope
         if (googleHourly != null || mosmixHourly != null) {
             state = LoadState.Loaded(with(WeatherLoader) {
-                base.applyingMosmixHourly(mosmixHourly).applyingGoogleHourly(googleHourly).applying(observed).calibratingEnsemblePop()
+                base.applyingMosmixHourly(mosmixHourly).applyingGoogleHourly(googleHourly).applying(observed).calibratingEnsemblePop().agreeingNowWithNowcast()
             })
         }
         val radar = radarTask.await()
         val radarNowcast = nowcastTask.await()
         if (gen != generation) return@coroutineScope
         val loaded = with(WeatherLoader) {
-            base.applyingMosmixHourly(mosmixHourly).applyingGoogleHourly(googleHourly).applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast, radar).calibratingEnsemblePop()
+            base.applyingMosmixHourly(mosmixHourly).applyingGoogleHourly(googleHourly).applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast, radar).calibratingEnsemblePop().agreeingNowWithNowcast()
         }
         state = LoadState.Loaded(loaded)
         // Keep score of the models for where the user actually is, not saved places.
