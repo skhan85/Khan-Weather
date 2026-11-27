@@ -79,7 +79,7 @@ fun WeekendScreen(forecast: Forecast) {
         if (days.isEmpty()) return "Next weekend is just beyond the current 10-day forecast window."
         val parts = days.map { d ->
             val name = dayName(d.date)
-            val cond = d.condition.label.lowercase()
+            val cond = d.condition.description.lowercase()
             val hi = WeatherFormat.temperature(d.high)
             val pop = (d.precipitationProbability ?: 0.0).roundToInt()
             if (d.condition.isPrecipitation || pop >= 50) "$name looks wet ($cond, high $hi, $pop% chance)"
@@ -226,7 +226,7 @@ fun WeekendScreen(forecast: Forecast) {
                                 }
                             } else {
                                 Text(
-                                    "${day.condition.label} · High ${WeatherFormat.temperature(day.high)}, Low ${WeatherFormat.temperature(day.low)}",
+                                    "${day.condition.description} · High ${WeatherFormat.temperature(day.high)}, Low ${WeatherFormat.temperature(day.low)}",
                                     style = style(12.sp, color = Color.White.copy(alpha = 0.75f)),
                                     modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp)
                                 )

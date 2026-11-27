@@ -178,6 +178,7 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
         async let radarNowcast = RelayExtrasProvider().nowcast(near: coordinate, cold: likelyCold)
         let weightsTask = Task { await Deadline.run(3) { await RelayExtrasProvider().regionalWeights(near: coordinate) } }
         async let googleHourly = Deadline.run(3) { await RelayExtrasProvider().googleHourly(near: coordinate) }
+        async let mosmixHourly = Deadline.run(2.5) { await RelayExtrasProvider().mosmixHourly(near: coordinate) }
         // Only for a real location: the Toronto fallback isn't where the person is.
         if known != nil, let found = await active {
             await WidgetAlertNotifier.notify(found, placeName: await place, setting: notify)
@@ -193,6 +194,7 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
                 regionalWeights: { await weightsTask.value }
             )
             let forecast = base
+                .applyingMosmixHourly(await mosmixHourly)
                 .applyingGoogleHourly(await googleHourly)
                 .applying(obs)
                 .applyingRadar(await radarNow)

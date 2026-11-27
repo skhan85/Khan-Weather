@@ -196,6 +196,7 @@ enum AlertNotifier {
         }
         let weightsTask = Task { await Deadline.run(3) { await RelayExtrasProvider().regionalWeights(near: here) } }
         async let googleHourly = Deadline.run(3) { await RelayExtrasProvider().googleHourly(near: here) }
+        async let mosmixHourly = Deadline.run(2.5) { await RelayExtrasProvider().mosmixHourly(near: here) }
         guard let base = try? await provider.forecast(
             for: here,
             anchor: { nil },
@@ -205,7 +206,7 @@ enum AlertNotifier {
             if !frostEnabled { center.removePendingNotificationRequests(withIdentifiers: [frostAheadID]) }
             return
         }
-        let forecast = base.applyingGoogleHourly(await googleHourly).calibratingEnsemblePop()
+        let forecast = base.applyingMosmixHourly(await mosmixHourly).applyingGoogleHourly(await googleHourly).calibratingEnsemblePop()
         settleScheduled()
         if rainEnabled { await checkRain(forecast, foreground: foreground) }
         else { center.removePendingNotificationRequests(withIdentifiers: [rainAheadID]) }

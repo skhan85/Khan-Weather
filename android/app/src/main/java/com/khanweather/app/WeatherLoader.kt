@@ -386,9 +386,11 @@ object WeatherLoader {
         val ncTask = async { radarNowcast(target, cold = likelyCold) }
         val weightsTask = async { regionalWeights(target) }
         val googleTask = async { googleHourly(target) }
+        val mosmixTask = async { mosmixHourly(target) }
         val base = forecastProvider.forecast(target, regionalWeights = { weightsTask.await() }) { observed?.blendAnchor }
         observed?.let { ObservationMemory.remember(target, it) }
-        base.applyingGoogleHourly(googleTask.await()).applying(observed).applyingRadar(radar).applyingRadarNowcast(ncTask.await()).calibratingEnsemblePop()
+        // Same order as the app's main screen, so widgets and saved places match it.
+        base.applyingMosmixHourly(mosmixTask.await()).applyingGoogleHourly(googleTask.await()).applying(observed).applyingRadar(radar).applyingRadarNowcast(ncTask.await()).calibratingEnsemblePop()
     }
 
     @Serializable
