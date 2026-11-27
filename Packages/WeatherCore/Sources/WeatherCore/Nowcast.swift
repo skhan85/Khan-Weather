@@ -59,8 +59,11 @@ public struct Nowcast: Equatable, Sendable {
     static func kind(of slots: some Sequence<PrecipitationSlot>) -> Kind {
         var rain = 0.0, snow = 0.0
         for s in slots { rain += s.rain; snow += s.snowfall }
-        if snow > 0 && rain >= PrecipitationSlot.wetThreshold { return .mixed }
-        return snow > 0 ? .snow : .rain
+        switch PrecipitationSlot.kind(rain: rain, snowfall: snow) {
+        case .rain: return .rain
+        case .snow: return .snow
+        case .mixed: return .mixed
+        }
     }
 
     /// Minutes from `now` to `date`, rounded to 5 and at least 5.

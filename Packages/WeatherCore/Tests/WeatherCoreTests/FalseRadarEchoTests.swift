@@ -100,6 +100,18 @@ final class FalseRadarEchoTests: XCTestCase {
         XCTAssertEqual(PrecipitationSlot(time: now, precipitation: 0).intensity, 0)
     }
 
+    /// 26 Nov, 11 pm: rain at 1° with a trace of model snow said "Rain and snow for at least the next 2 hours".
+    func testTraceOfSnowInRainIsStillRain() {
+        let now = Date()
+        XCTAssertEqual(PrecipitationSlot(time: now, precipitation: 0.8, rain: 0.8, snowfall: 0.05).kind, .rain)
+        XCTAssertEqual(PrecipitationSlot(time: now, precipitation: 0.5, rain: 0.2, snowfall: 0.4).kind, .mixed)
+        XCTAssertEqual(PrecipitationSlot(time: now, precipitation: 0.3, snowfall: 0.4).kind, .snow)
+        let slots = (0..<8).map {
+            PrecipitationSlot(time: now.addingTimeInterval(Double($0) * 900), precipitation: 0.6, rain: 0.6, snowfall: 0.02)
+        }
+        XCTAssertEqual(Nowcast.kind(of: slots), .rain)
+    }
+
     static func relay(_ rate: Double, from start: Date) -> RelayNowcast {
         let slots = (0..<20).map { i -> String in
             let t = start.timeIntervalSince1970 + Double(i) * 360

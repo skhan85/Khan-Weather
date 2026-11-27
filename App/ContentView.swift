@@ -51,7 +51,8 @@ struct ContentView: View {
                                  placeName: model.placeName,
                                  isSavedPlace: places.selected != nil,
                                  attribution: model.provider.attribution,
-                                 usingFallbackLocation: model.usingFallbackLocation)
+                                 usingFallbackLocation: model.usingFallbackLocation,
+                                 isRefreshing: model.isRefreshing)
                         .id([temperatureUnit, windUnit, precipitationUnit, pressureUnit, distanceUnit, clock,
                              mainTemperature, String(hourlyCount), String(showDetails), String(showAirQuality)].joined(separator: "-"))
                         .refreshable { await reload() }
@@ -162,6 +163,7 @@ private struct ForecastList: View {
     let isSavedPlace: Bool
     let attribution: String
     let usingFallbackLocation: Bool
+    var isRefreshing = false
     @AppStorage(DisplaySettings.hourlyCountKey) private var hourlyCount = 24
     @AppStorage(DisplaySettings.showDetailsKey) private var showDetails = true
     @AppStorage(DisplaySettings.showAirQualityKey) private var showAirQuality = true
@@ -272,7 +274,9 @@ private struct ForecastList: View {
 
             if Date().timeIntervalSince(forecast.fetchedAt) > 45 * 60 {
                 Section {
-                    Label("Couldn't refresh. This is the forecast from \(TimeText.time(forecast.fetchedAt, forecast.timeZone)); pull down to try again.",
+                    Label(isRefreshing
+                          ? "Updating. This is the forecast from \(TimeText.time(forecast.fetchedAt, forecast.timeZone))."
+                          : "Couldn't refresh. This is the forecast from \(TimeText.time(forecast.fetchedAt, forecast.timeZone)); pull down to try again.",
                           systemImage: "clock.arrow.circlepath")
                         .font(.footnote)
                 }

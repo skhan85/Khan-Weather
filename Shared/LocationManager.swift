@@ -20,12 +20,42 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     var cachedCoordinate: Coordinate? {
         let s = manager.authorizationStatus
         guard s == .authorizedWhenInUse || s == .authorizedAlways else { return nil }
-        return manager.location.map(Self.coordinate)
+        let c = manager.location.map(Self.coordinate)
+        remember(c)
+        return c
     }
+
+    /// Where the phone was at the last fix, kept across launches. Right after a cold launch iOS often
+    /// has no `manager.location` yet, and a fresh fix can take from seconds to minutes indoors; the
+    /// app waited for it, showing the old forecast with "Couldn't refresh" meanwhile (26 Nov, 11 pm).
+    /// Loading for the last known spot straight away, then checking the fresh fix, avoids that.
+    static let lastFixKey = "lastLocationFix"
+
+    var lastKnownCoordinate: Coordinate? {
+        let s = manager.authorizationStatus
+        guard s == .authorizedWhenInUse || s == .authorizedAlways,
+              let a = UserDefaults.standard.array(forKey: Self.lastFixKey) as? [Double], a.count == 2 else { return nil }
+        return Coordinate(latitude: a[0], longitude: a[1])
+    }
+
+    private func remember(_ c: Coordinate?) {
+        guard let c else { return }
+        UserDefaults.standard.set([c.latitude, c.longitude], forKey: Self.lastFixKey)
+    }
+
+    /// Longest wait for a fix; after that, the last position iOS knows (or nil).
+    static let fixTimeout: TimeInterval = 10
 
     /// Asks for permission if needed, then returns the current position, or nil if unavailable.
     func currentCoordinate() async -> Coordinate? {
         if pending != nil { return manager.location.map(Self.coordinate) }
+        let deadline = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(Self.fixTimeout * 1_000_000_000))
+            guard let self, !Task.isCancelled, self.pending != nil,
+                  self.manager.authorizationStatus != .notDetermined else { return }
+            self.finish(self.manager.location.map(Self.coordinate))
+        }
+        defer { deadline.cancel() }
         return await withCheckedContinuation { continuation in
             pending = continuation
             switch manager.authorizationStatus {
@@ -37,6 +67,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     }
 
     private func finish(_ coordinate: Coordinate?) {
+        remember(coordinate)
         pending?.resume(returning: coordinate)
         pending = nil
     }

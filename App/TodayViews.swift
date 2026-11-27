@@ -158,9 +158,11 @@ struct NextTwoHoursView: View {
 
     private func color(_ s: PrecipitationSlot) -> Color {
         guard s.isWet else { return .white.opacity(0.3) }
-        if s.snowfall > 0 && s.rain < PrecipitationSlot.wetThreshold { return .white }
-        if s.snowfall > 0 { return Color(red: 0.78, green: 0.72, blue: 1) }
-        return Color(red: 0.45, green: 0.75, blue: 1)
+        switch s.kind {
+        case .snow: return .white
+        case .mixed: return Color(red: 0.78, green: 0.72, blue: 1)
+        case .rain: return Color(red: 0.45, green: 0.75, blue: 1)
+        }
     }
 
     var body: some View {

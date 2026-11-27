@@ -45,8 +45,11 @@ data class Nowcast(val kind: Kind, val change: Change) {
             var rain = 0.0
             var snow = 0.0
             for (s in slots) { rain += s.rain; snow += s.snowfall }
-            if (snow > 0 && rain >= PrecipitationSlot.wetThreshold) return Kind.mixed
-            return if (snow > 0) Kind.snow else Kind.rain
+            return when (PrecipitationSlot.kindOf(rain, snow)) {
+                PrecipitationKind.rain -> Kind.rain
+                PrecipitationKind.snow -> Kind.snow
+                PrecipitationKind.mixed -> Kind.mixed
+            }
         }
 
         /** Minutes from `now` to `date`, rounded to 5 and at least 5. */
