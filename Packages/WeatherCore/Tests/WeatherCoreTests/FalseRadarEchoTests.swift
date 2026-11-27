@@ -112,6 +112,20 @@ final class FalseRadarEchoTests: XCTestCase {
         XCTAssertEqual(Nowcast.kind(of: slots), .rain)
     }
 
+    /// 26 Nov, 11:03 pm: hourly said rain at 1°, Next 2 hours said "Rain and snow" with purple bars.
+    func testNextTwoHoursFollowsTheHourlyRainOrSnow() {
+        let now = Date()
+        var f = forecast(temperature: 1, humidity: 85)
+        f.hourly = [HourlyForecast(time: f.minutely[0].time, temperature: 1, condition: .rain),
+                    HourlyForecast(time: f.minutely[0].time.addingTimeInterval(3600), temperature: 1, condition: .rain),
+                    HourlyForecast(time: f.minutely[0].time.addingTimeInterval(7200), temperature: 1, condition: .rain)]
+        for i in f.hourly.indices { f.hourly[i].rain = 2; f.hourly[i].snowfall = 0 }
+        f.minutely = f.minutely.map { PrecipitationSlot(time: $0.time, precipitation: 0.5, rain: 0.3, snowfall: 0.3) }
+        let slots = f.nowcastSlots(at: now)
+        XCTAssertTrue(slots.allSatisfy { $0.kind == .rain && $0.snowfall == 0 })
+        XCTAssertEqual(f.nowcast(at: now)?.kind, .rain)
+    }
+
     static func relay(_ rate: Double, from start: Date) -> RelayNowcast {
         let slots = (0..<20).map { i -> String in
             let t = start.timeIntervalSince1970 + Double(i) * 360

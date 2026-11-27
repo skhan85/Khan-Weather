@@ -110,7 +110,21 @@ public extension Forecast {
             )
         }
 
-        return slots
+        // Each slot takes the same rain-or-snow call as its hour in the hourly list and on the Now
+        // card (the models' vote, `RadarNow.typed`). Open-Meteo's 15-minute data puts a trace of snow
+        // into most wet slots near 1°, which drew purple "Mixed" bars and "Rain and snow" in plain rain.
+        return slots.map { s in
+            guard s.isWet, s.rain > 0 || s.snowfall > 0, let models = modelPrecipitationKind(at: s.time) else { return s }
+            let temp = hourly.last(where: { $0.time <= s.time }).map(\.temperature) ?? current.temperature
+            let typed = RadarNow(rainMmPerHour: s.rain, snowCmPerHour: s.snowfall, time: s.time)
+                .typed(byTemperature: temp, models: models)
+            guard typed.snowCmPerHour == 0 || typed.rainMmPerHour == 0 else { return s }
+            if typed.snowCmPerHour == 0 {
+                return PrecipitationSlot(time: s.time, precipitation: s.precipitation, rain: max(s.rain, s.precipitation), snowfall: 0)
+            }
+            return PrecipitationSlot(time: s.time, precipitation: s.precipitation, rain: 0,
+                                     snowfall: max(s.snowfall, s.precipitation / 0.7))
+        }
     }
 
     /// What precipitation is doing over the next two hours, or nil when it stays dry

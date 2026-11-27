@@ -123,7 +123,7 @@ fun WeekendScreen(forecast: Forecast) {
     ) {
         // Segmented toggle
         Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.08f)).padding(4.dp)
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = 0.10f)).background(Color.Black.copy(alpha = 0.20f)).padding(4.dp)
         ) {
             listOf(0 to "This weekend", 1 to "Next weekend").forEach { (idx, title) ->
                 val selected = tab == idx
@@ -143,13 +143,13 @@ fun WeekendScreen(forecast: Forecast) {
         }
 
         // Summary card
-        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.10f)).padding(14.dp)) {
+        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color.White.copy(alpha = 0.10f)).background(Color.Black.copy(alpha = 0.20f)).padding(14.dp)) {
             Text(summaryText(activeDays), style = style(14.sp, color = Color.White.copy(alpha = 0.92f)))
         }
 
         if (activeDays.isNotEmpty()) {
             Column(
-                Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color.White.copy(alpha = 0.08f)).padding(14.dp),
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Color.White.copy(alpha = 0.10f)).background(Color.Black.copy(alpha = 0.20f)).padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -162,7 +162,7 @@ fun WeekendScreen(forecast: Forecast) {
                     val totalMm = (day.rainSum ?: 0.0) + (day.snowfallSum ?: 0.0)
                     val pop = (day.precipitationProbability ?: 0.0).roundToInt()
 
-                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color.White.copy(alpha = 0.08f))) {
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Color.White.copy(alpha = 0.06f))) {
                         Row(
                             Modifier.fillMaxWidth().clickable { expandedDate = if (isExpanded) null else day.date }.padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically,

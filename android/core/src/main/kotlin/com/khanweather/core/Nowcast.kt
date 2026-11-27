@@ -79,7 +79,18 @@ fun Forecast.nowcastSlots(now: Epoch = nowEpoch()): List<PrecipitationSlot> {
         val snowPart = if (r.isSnowing) max(if (r.isRaining) PrecipitationSlot.wetThreshold else slotAmount, r.snowCmPerHour / 4.0) else 0.0
         slots[0] = PrecipitationSlot(slots[0].time, max(slotAmount, rainPart + snowPart), rainPart, snowPart)
     }
-    return slots
+    // Same rain-or-snow call as the hour's (models' vote): no "Mixed" for a trace of model snow in rain.
+    return slots.map { s ->
+        if (!s.isWet || (s.rain <= 0.0 && s.snowfall <= 0.0)) return@map s
+        val models = modelPrecipitationKind(s.time) ?: return@map s
+        val temp = hourly.lastOrNull { it.time <= s.time }?.temperature ?: current.temperature
+        val typed = RadarNow(s.rain, s.snowfall, s.time).typed(temp, models)
+        when {
+            typed.snowCmPerHour == 0.0 -> PrecipitationSlot(s.time, s.precipitation, max(s.rain, s.precipitation), 0.0)
+            typed.rainMmPerHour == 0.0 -> PrecipitationSlot(s.time, s.precipitation, 0.0, max(s.snowfall, s.precipitation / 0.7))
+            else -> s
+        }
+    }
 }
 
 /** What precipitation is doing over the next two hours, or null when it stays dry. */
