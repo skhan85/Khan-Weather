@@ -41,7 +41,7 @@ REGIONS_URL = ("https://raw.githubusercontent.com/skhan85/Khan-Weather/main/"
                "Packages/WeatherCore/blend-regions.json")
 UA = {"User-Agent": "KhanWeather-learner/1 (github.com/skhan85/Khan-Weather)"}
 
-ACTIVE_DAYS = 30          # a place not opened for this long stops being learned
+ACTIVE_DAYS = 30          # a place not opened for this long stops being learned, unless pinned
 KEEP_DAYS = 45            # history used
 CHECK_DAYS = 14           # held-out window that must show a gain
 MIN_DAYS = 10             # history needed before anything is switched on
@@ -158,7 +158,7 @@ def lookup(lat, lon, register=True, now=None):
         p = places.get(cell)
         # Write at most every 10 minutes per cell, so a busy relay isn't rewriting the file.
         if not p or now - p.get("last_seen", 0) > 600:
-            places[cell] = {"first_seen": (p or {}).get("first_seen", now), "last_seen": now}
+            places[cell] = dict(p or {}, first_seen=(p or {}).get("first_seen", now), last_seen=now)
             try:
                 save(path("places.json"), places)
             except OSError:
@@ -569,7 +569,9 @@ def run(now=None):
     now = now or time.time()
     hour_start = int(now // 3600) * 3600
     places = load(path("places.json"), {})
-    active = [c for c, p in places.items() if now - p.get("last_seen", 0) <= ACTIVE_DAYS * 86400]
+    # Pinned places (learner.py pin) are learned whether or not anyone opens the app there.
+    active = [c for c, p in places.items()
+              if p.get("pinned") or now - p.get("last_seen", 0) <= ACTIVE_DAYS * 86400]
     log(f"run: {len(active)} active places")
     for cell in sorted(active):
         lat, lon = cell_centre(cell)
@@ -597,5 +599,14 @@ if __name__ == "__main__":
         print(json.dumps(lookup(float(sys.argv[2]), float(sys.argv[3]), register=False), indent=1))
     elif cmd == "add":
         print(json.dumps(lookup(float(sys.argv[2]), float(sys.argv[3]), register=True), indent=1))
+    elif cmd == "pin":
+        lookup(float(sys.argv[2]), float(sys.argv[3]), register=True)
+        places = load(path("places.json"), {})
+        cell = cell_of(float(sys.argv[2]), float(sys.argv[3]))
+        places[cell]["pinned"] = True
+        if len(sys.argv) > 4:
+            places[cell]["name"] = " ".join(sys.argv[4:])
+        save(path("places.json"), places)
+        print(cell, json.dumps(places[cell]))
     else:
-        sys.exit("usage: learner.py run | show LAT LON | add LAT LON")
+        sys.exit("usage: learner.py run | show LAT LON | add LAT LON | pin LAT LON [NAME]")

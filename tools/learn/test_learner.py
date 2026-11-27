@@ -78,6 +78,14 @@ def test_unknown_place_says_learning():
     assert out["status"] == "learning" and out["temperature"]["enabled"] is False
 
 
+def test_pinned_place_keeps_pin_when_app_opens_there():
+    places = {"200,200": {"first_seen": 0, "last_seen": 0, "pinned": True}}
+    L.save(L.path("places.json"), places)
+    L.lookup(20.0, 20.0, register=True, now=10_000_000)
+    p = L.load(L.path("places.json"), {})["200,200"]
+    assert p["pinned"] is True and p["last_seen"] == 10_000_000
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
