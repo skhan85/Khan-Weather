@@ -183,6 +183,7 @@ public struct CanadaObservationProvider: ObservationProvider {
         local.skyStationName = sky.stationName
         local.skyDataProvider = sky.dataProvider
         local.skyDistanceKm = sky.distanceKm
+        local.mergeNearbyReports(from: sky)
         return local
     }
 }

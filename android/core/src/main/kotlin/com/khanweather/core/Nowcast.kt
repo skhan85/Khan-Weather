@@ -134,6 +134,20 @@ fun Forecast.agreeingNowWithNowcast(now: Epoch = nowEpoch()): Forecast {
     return copy
 }
 
+/** Share of the blend's models (at least 3) with measurable rain (0.2 mm) in the hour holding now. */
+val Forecast.modelWetShareNow: Double?
+    get() {
+        val h = hourly.lastOrNull { it.time <= current.time } ?: return null
+        if (current.time - h.time >= 3600) return null
+        val n = h.modelCount ?: return null
+        val w = h.modelsWet ?: return null
+        return if (n >= 3) w.toDouble() / n else null
+    }
+/** Stations or airports within 40 km reporting rain or drizzle that make it "widespread". */
+const val widespreadWetReports = 2
+/** Share of models wet now that, in damp air under cloud, says it's drizzling. */
+const val modelsWetDrizzleShare = 0.5
+
 /** Rain this many 15-minute slots away (an hour) counts as "due" for drizzle. */
 const val drizzleLeadSlots = 4
 /** Without a nearby drizzle report, the air must be at least this damp (%). */
@@ -155,8 +169,14 @@ fun Forecast.drizzlingRadarCantSee(slots: List<PrecipitationSlot>): Forecast {
     val source = if (nearby != null && rh >= drizzleHumidity && c != WeatherCondition.partlyCloudy) {
         val km = observation?.nearbyDrizzleKm?.let { ", ${WeatherFormat.roughDistance(it)} away" } ?: ""
         "drizzle reported at $nearby$km (radar can't see drizzle)"
+    } else if ((observation?.nearbyWetStations?.size ?: 0) >= widespreadWetReports && current.temperature > 1 &&
+        rh >= damperDrizzleHumidity && c != WeatherCondition.partlyCloudy) {
+        "light rain reported at ${observation!!.nearbyWetStations!!.take(2).joinToString(" and ")} (radar can't see it here)"
     } else if (rainSoon && rh >= damperDrizzleHumidity && c != WeatherCondition.partlyCloudy) {
         "damp air with rain due within the hour (radar can't see drizzle)"
+    } else if ((modelWetShareNow ?: 0.0) >= modelsWetDrizzleShare && current.temperature > 1 &&
+        rh >= damperDrizzleHumidity && c != WeatherCondition.partlyCloudy) {
+        "most forecast models have light rain falling now (radar can't see drizzle)"
     } else return this
     val copy = deepCopy()
     val freezing = current.temperature <= 0

@@ -263,7 +263,9 @@ public extension Forecast {
             let rainRate = typed.rainMmPerHour
             let snowRate = typed.snowCmPerHour
             let peakRate = max(rainRate, snowRate)
-            let minRate = (snowRate <= 0 && rh < 80) ? 1.0 : 0.50
+            // Light echoes count in saturated air, where they're drizzle reaching the ground
+            // (`Forecast.dampEchoHumidity`), and not in dry air, where they evaporate on the way.
+            let minRate = (snowRate <= 0 && rh < 80) ? 1.0 : rh >= Forecast.dampEchoHumidity ? 0.2 : 0.50
             guard peakRate >= minRate else { return slot }
             let rain = rainRate >= minRate ? max(slot.rain, max(PrecipitationSlot.wetThreshold, rainRate / 4.0)) : slot.rain
             let snow = snowRate >= minRate ? max(slot.snowfall, max(PrecipitationSlot.wetThreshold, snowRate / 4.0)) : slot.snowfall

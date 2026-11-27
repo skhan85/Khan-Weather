@@ -188,8 +188,14 @@ public extension Forecast {
         if let nearby, rh >= Self.drizzleHumidity, current.condition != .partlyCloudy {
             let km = observation?.nearbyDrizzleKm.map { ", \(WeatherFormat.roughDistance($0)) away" } ?? ""
             source = "drizzle reported at \(nearby)\(km) (radar can't see drizzle)"
+        } else if let wet = observation?.nearbyWetStations, wet.count >= Self.widespreadWetReports,
+                  current.temperature > 1, rh >= Self.damperDrizzleHumidity, current.condition != .partlyCloudy {
+            source = "light rain reported at \(wet.prefix(2).joined(separator: " and ")) (radar can't see it here)"
         } else if rainSoon, rh >= Self.damperDrizzleHumidity, current.condition != .partlyCloudy {
             source = "damp air with rain due within the hour (radar can't see drizzle)"
+        } else if let share = modelWetShareNow, share >= Self.modelsWetDrizzleShare,
+                  current.temperature > 1, rh >= Self.damperDrizzleHumidity, current.condition != .partlyCloudy {
+            source = "most forecast models have light rain falling now (radar can't see drizzle)"
         } else {
             return self
         }
@@ -200,6 +206,18 @@ public extension Forecast {
         copy.skySource = source
         return copy
     }
+
+    /// Share of the blend's models (at least 3) with measurable rain (0.2 mm) in the hour holding now.
+    var modelWetShareNow: Double? {
+        guard let h = hourly.last(where: { $0.time <= current.time }),
+              current.time.timeIntervalSince(h.time) < 3600,
+              let n = h.modelCount, n >= 3, let w = h.modelsWet else { return nil }
+        return Double(w) / Double(n)
+    }
+    /// Stations or airports within 40 km reporting rain or drizzle that make it "widespread".
+    static let widespreadWetReports = 2
+    /// Share of models wet now that, in damp air under cloud, says it's drizzling.
+    static let modelsWetDrizzleShare = 0.5
 
     /// Rain this many 15-minute slots away (an hour) counts as "due" for drizzle.
     static let drizzleLeadSlots = 4

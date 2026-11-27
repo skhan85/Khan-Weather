@@ -143,7 +143,8 @@ object WeatherLoader {
             val rainRate = typed.rainMmPerHour
             val snowRate = typed.snowCmPerHour
             val peakRate = maxOf(rainRate, snowRate)
-            val minRate = if (snowRate <= 0.0 && rh < 80.0) 1.0 else 0.50
+            // Light echoes count in saturated air, where they're drizzle reaching the ground.
+            val minRate = if (snowRate <= 0.0 && rh < 80.0) 1.0 else if (rh >= dampEchoHumidity) 0.2 else 0.50
             if (peakRate < minRate) return@map slot
             val rain = if (rainRate >= minRate) maxOf(slot.rain, maxOf(PrecipitationSlot.wetThreshold, rainRate / 4.0)) else slot.rain
             val snow = if (snowRate >= minRate) maxOf(slot.snowfall, maxOf(PrecipitationSlot.wetThreshold, snowRate / 4.0)) else slot.snowfall
