@@ -6,6 +6,8 @@ the Android port included) and Packages/WeatherCore/Sources/WeatherCore/BlendReg
 (the same numbers as Swift). A test checks the two match.
 
   python3 gen_blend_regions.py region-weights.json [region-report.json]
+  python3 gen_blend_regions.py ../Packages/WeatherCore/blend-regions.json   (re-generate the Swift only,
+      e.g. after merge_short_range.py added short-range weights)
 """
 import json, os, sys
 
@@ -22,11 +24,15 @@ def day(d):
 def region(r, indent):
     boxes = ", ".join("Box(" + ", ".join(f"{x}" for x in b) + ")" for b in r.get("boxes", []))
     days = "".join(f"{indent}        {day(d)},\n" for d in r["byDay"])
+    short = ""
+    if r.get("shortRange"):
+        bands = "".join(f"{indent}        {day(d)},\n" for d in r["shortRange"])
+        short = f",\n{indent}    shortRange: [\n{bands}{indent}    ]"
     return (f'BlendRegion(\n{indent}    id: "{r["id"]}", name: "{r["name"]}",\n'
             f'{indent}    boxes: [{boxes}],\n'
             f'{indent}    useBlend: {"true" if r["useBlend"] else "false"},\n'
             f'{indent}    models: [{", ".join("." + m for m in r["models"])}],\n'
-            f'{indent}    byDay: [\n{days}{indent}    ])')
+            f'{indent}    byDay: [\n{days}{indent}    ]{short})')
 
 
 NAMES = {"ncep_nbm_conus": "usBlend", "ecmwf_ifs": "europeHighRes", "meteofrance_seamless": "france",
@@ -48,9 +54,12 @@ def main():
                 ms = {NAMES[m] for d in rep.get(r["id"], {}).get("days", []) for m in d.get("members", [])}
                 r["models"] = [m for m in ORDER if m in ms] or CORE
         src["global"].setdefault("models", CORE)
-    table = {"regions": [{k: r[k] for k in ("id", "name", "boxes", "useBlend", "models", "byDay")} for r in src["regions"]],
+    keys = ("id", "name", "boxes", "useBlend", "models", "byDay", "shortRange")
+    table = {"regions": [{k: r[k] for k in keys if k in r} for r in src["regions"]],
              "global": {"id": "global", "name": "Elsewhere", "boxes": [],
                         "useBlend": src["global"]["useBlend"], "models": src["global"]["models"], "byDay": src["global"]["byDay"]}}
+    if src["global"].get("shortRange"):
+        table["global"]["shortRange"] = src["global"]["shortRange"]
     with open(os.path.join(ROOT, "blend-regions.json"), "w") as f:
         json.dump(table, f, indent=1)
         f.write("\n")

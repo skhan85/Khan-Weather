@@ -115,6 +115,24 @@ public enum ModelBlend {
         return raw * leadScale
     }
 
+    /// The weight from the region's table at `leadHours`: the short-range bands for the next 12
+    /// hours (straight lines between their centres, then into day 0 at hour 12), the day rows after.
+    static func tablePrior(_ model: WeatherModel, leadHours: Double, region: BlendRegion) -> Double {
+        let sr = region.shortRange
+        let centres = BlendRegion.shortRangeCentres
+        guard sr.count == centres.count, !region.byDay.isEmpty, leadHours < 12 else {
+            return interpolatedPrior(model, leadHours: leadHours, byDay: region.byDay)
+        }
+        let xs = centres + [12]
+        let ys = sr.map { $0[model] ?? 0 } + [region.byDay[0][model] ?? 0]
+        if leadHours <= xs[0] { return ys[0] }
+        for k in 1..<xs.count where leadHours <= xs[k] {
+            let f = (leadHours - xs[k - 1]) / (xs[k] - xs[k - 1])
+            return ys[k - 1] * (1 - f) + ys[k] * f
+        }
+        return ys[ys.count - 1]
+    }
+
     private static func interpolatedPrior(_ model: WeatherModel, leadHours: Double, byDay: [[WeatherModel: Double]]) -> Double {
         let x = min(max((leadHours - 12) / 24, 0), Double(byDay.count - 1))
         let i = Int(x), j = min(i + 1, byDay.count - 1), f = x - Double(i)
@@ -125,7 +143,7 @@ public enum ModelBlend {
                        coordinate: Coordinate? = nil) -> Double {
         let byDay = region.byDay
         guard !byDay.isEmpty else { return 1 }
-        let prior = interpolatedPrior(model, leadHours: leadHours, byDay: byDay)
+        let prior = tablePrior(model, leadHours: leadHours, region: region)
         lock.lock()
         let regMap = coordinate.flatMap { _regional[gridKey($0)] } ?? _regional["default"]
         lock.unlock()

@@ -373,7 +373,18 @@ public struct RelayExtrasProvider: Sendable {
               let decoded = try? JSONDecoder().decode(R.self, from: data) else { return [] }
         return decoded.stations
     }
+    /// The next 90 minutes or so of radar: Environment Canada's extrapolation from the relay, or,
+    /// where that's missing or shows no rain at all (outside its radars, or the relay is down), the
+    /// app's own radar-motion nowcast from RainViewer (`RadarMotion`).
     public func nowcast(near c: Coordinate, cold: Bool = false) async -> RelayNowcast? {
+        let relay = await relayNowcast(near: c, cold: cold)
+        if let relay, relay.slots.contains(where: { max($0.rain_mmh, $0.snow_cmh, $0.precip_mmh) > 0 }) { return relay }
+        if let motion = await RadarMotion.nowcast(near: c),
+           motion.slots.contains(where: { $0.rain_mmh > 0 }) { return motion }
+        return relay
+    }
+
+    func relayNowcast(near c: Coordinate, cold: Bool) async -> RelayNowcast? {
         var parts = URLComponents(url: host.appendingPathComponent("v1/nowcast"), resolvingAgainstBaseURL: false)!
         parts.queryItems = [
             URLQueryItem(name: "lat", value: String(format: "%.4f", c.latitude)),
