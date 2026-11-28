@@ -86,8 +86,10 @@ public struct Observation: Equatable, Codable, Sendable {
     /// How much of the models' error at a station beyond `localRadiusKm` is carried over to the
     /// spot: right now the models are often wrong the same way over a wide area (cloud they
     /// missed, a front running early, a cold pool after a clear night), but a station 30 km away
-    /// is still a different place. Shares fitted at ~90 airports in 35 metro areas on six
-    /// continents, each region held out of its own fit (tools/score_neighbours.py).
+    /// is still a different place. Shares fitted at ~80 airports in metro areas on six
+    /// continents, each region held out of its own fit (tools/score_neighbours.py, Nov 2026):
+    /// error "now" fell from 0.97° to 0.87° on average and in every region; held-out shares
+    /// came out nearly the same everywhere.
     public static func neighbourShare(distanceKm d: Double) -> Double {
         switch d {
         case ..<localRadiusKm: return 0
@@ -97,7 +99,7 @@ public struct Observation: Equatable, Codable, Sendable {
         default: return 0
         }
     }
-    static let neighbourShares: [Double] = [0.5, 0.4, 0.3]
+    static let neighbourShares: [Double] = [0.55, 0.45, 0.35]
     /// A gap bigger than this between a station and the models at the station is more likely a
     /// faulty reading or a very different spot (a mountain top) than shared weather.
     static let neighbourMaxGap: Double = 6
@@ -553,8 +555,9 @@ public extension Forecast {
 
     /// How long a station reading keeps pulling the forecast toward it.
     static let nudgeHours: Double = 6
-    /// How long a distant station's correction (`Observation.neighbourShift`) lasts.
-    static let neighbourFadeHours: Double = 6
+    /// How long a distant station's correction (`Observation.neighbourShift`) lasts. 12 h scored
+    /// best (hours 1-12 error 0.99° vs 1.02° uncorrected); by then it's worth about nothing.
+    static let neighbourFadeHours: Double = 12
 
     /// The hourly forecast shifted by the gap between a reading and the forecast for that time,
     /// fully at the reading and fading to nothing `nudgeHours` later, so the curve starts where

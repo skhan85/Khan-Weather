@@ -170,7 +170,7 @@ final class GlobalProvidersTests: XCTestCase {
         o.modelAtStation = 4          // models 2° too cold at the airport
         let share = Observation.neighbourShare(distanceKm: 25)
         XCTAssertEqual(o.neighbourShift ?? 0, 2 * share, accuracy: 1e-9)
-        let hours = (0..<12).map { HourlyForecast(time: now.addingTimeInterval(Double($0) * 3600), temperature: 3,
+        let hours = (0..<14).map { HourlyForecast(time: now.addingTimeInterval(Double($0) * 3600), temperature: 3,
                                                   condition: .overcast) }
         let f = Forecast(location: nyc, timeZoneIdentifier: "America/New_York",
                          current: CurrentConditions(time: now, temperature: 3, feelsLike: 1, feelsLikeKind: .apparent,
@@ -178,7 +178,7 @@ final class GlobalProvidersTests: XCTestCase {
                          hourly: hours, daily: [], source: "t", fetchedAt: now).applying(o)
         XCTAssertEqual(f.current.temperature, 3 + 2 * share, accuracy: 1e-9)
         XCTAssertEqual(f.hourly[0].temperature, 3 + 2 * share, accuracy: 1e-9)
-        XCTAssertEqual(f.hourly[11].temperature, 3, accuracy: 1e-9, "the correction fades")
+        XCTAssertEqual(f.hourly[13].temperature, 3, accuracy: 1e-9, "the correction fades")
         // Too far, too odd, or a home station: no shift.
         var far = o; far.distanceKm = 60
         XCTAssertNil(far.neighbourShift)

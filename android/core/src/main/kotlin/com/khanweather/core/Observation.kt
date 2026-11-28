@@ -85,9 +85,9 @@ data class Observation(
         /** Farther than this, a station's reading isn't used for the temperature at all. */
         const val neighbourMaxKm = 40.0
         /** Shares fitted at ~90 airports worldwide, held out by region (tools/score_neighbours.py). */
-        val neighbourShares = listOf(0.5, 0.4, 0.3)
+        val neighbourShares = listOf(0.55, 0.45, 0.35)
         const val neighbourMaxGap = 6.0
-        const val neighbourFadeHours = 6.0
+        const val neighbourFadeHours = 12.0
 
         /** How much of the models' error at a station beyond `localRadiusKm` is carried to the spot. */
         fun neighbourShare(d: Double): Double = when {
