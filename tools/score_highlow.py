@@ -14,6 +14,9 @@ continents, against official daily extremes:
   median gap is outside -0.3..1.5° measure a different day and are left out.
 - Forecasts: the app's blend (its own weights for the region and lead day) from Open-Meteo's
   Previous Runs archive, lead days 1 and 2, local calendar days, six months across 2026.
+- The blend's extreme is built as the app builds it (Forecast.applying: warmest blended hour,
+  lifted by the blend of each model's own high, and the low dropped by half that way), before
+  the allowance.
 - Ways tried: no allowance, today's constants, one worldwide constant and one per region, both
   fitted on the other airports and scored on the one left out.
 
@@ -137,7 +140,7 @@ def station(icao):
             v = f"temperature_2m_previous_day{lead}"
             row = table["byDay"][min(lead, len(table["byDay"]) - 1)]
             w = {IDS[n]: x for n, x in row.items() if n in IDS}
-            byday = defaultdict(list)
+            byday = defaultdict(list)          # day -> [(blend, {model: temp})]
             times = sorted({t for m in models for t in f.get((m, v), {})})
             for t in times:
                 vals = {m: f[(m, v)].get(t) for m in models if f.get((m, v), {}).get(t) is not None}
@@ -146,12 +149,24 @@ def station(icao):
                     continue
                 b = sum(vals[m] * ws[m] for m in vals) / sum(ws.values())
                 day = datetime.fromtimestamp(t + offset, timezone.utc).strftime("%Y-%m-%d")
-                byday[day].append(b)
-            for day, temps in byday.items():
-                if len(temps) < 22 or day not in truth:
+                byday[day].append((b, vals))
+            for day, hrs in byday.items():
+                if len(hrs) < 22 or day not in truth:
                     continue
                 tx, tn = truth[day]
-                rows.append((lead, day, tx, tn, max(temps), min(temps)))
+                raw_hi = max(b for b, _ in hrs)
+                raw_lo = min(b for b, _ in hrs)
+                # As the app (Forecast.applying): the blend of each model's own max/min lifts the
+                # high (fully) and drops the low (half) when models peak at different hours.
+                full = [m for m in models if all(m in vals for _, vals in hrs)]
+                ws = {m: w.get(m, 0) for m in full}
+                hi, lo = raw_hi, raw_lo
+                if sum(ws.values()) > 0.5:
+                    mx = sum(max(vals[m] for _, vals in hrs) * ws[m] for m in full) / sum(ws.values())
+                    mn = sum(min(vals[m] for _, vals in hrs) * ws[m] for m in full) / sum(ws.values())
+                    hi = raw_hi + max(0, mx - raw_hi)
+                    lo = raw_lo - 0.5 * max(0, raw_lo - mn)
+                rows.append((lead, day, tx, tn, hi, lo))
     # Sampling check: the station's own warmest/coldest METAR hour on its local day vs GHCN.
     gx, gn = [], []
     if offset is not None:
