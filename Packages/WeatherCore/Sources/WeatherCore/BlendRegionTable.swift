@@ -17,6 +17,11 @@ extension BlendRegion {
                 [.europeAI: 0.42, .europeHighRes: 0.174, .germany: 0.165, .uk: 0.157, .us: 0.084],
                 [.europeAI: 0.443, .europeHighRes: 0.163, .germany: 0.151, .uk: 0.145, .us: 0.098],
                 [.europeAI: 0.44, .germany: 0.184, .europeHighRes: 0.146, .us: 0.117, .uk: 0.113],
+            ],
+            shortRange: [
+                [.usHighRes: 0.377, .uk: 0.34, .canadaHighRes: 0.125, .germany: 0.106, .usBlend: 0.052],
+                [.canadaHighRes: 0.194, .germany: 0.185, .uk: 0.179, .europeAI: 0.175, .usHighRes: 0.119, .usBlend: 0.098, .europeHighRes: 0.05],
+                [.canadaHighRes: 0.194, .germany: 0.185, .uk: 0.179, .europeAI: 0.175, .usHighRes: 0.119, .usBlend: 0.098, .europeHighRes: 0.05],
             ]),
         BlendRegion(
             id: "na_west", name: "Western North America",
@@ -82,6 +87,11 @@ extension BlendRegion {
                 [.europeHighRes: 0.351, .europeAI: 0.199, .us: 0.176, .uk: 0.173, .germany: 0.101],
                 [.europeAI: 0.443, .europeHighRes: 0.163, .germany: 0.151, .uk: 0.145, .us: 0.098],
                 [.europeAI: 0.35, .us: 0.262, .uk: 0.202, .europeHighRes: 0.111, .germany: 0.074],
+            ],
+            shortRange: [
+                [.germany: 0.375, .uk: 0.265, .europeHighRes: 0.204, .europeAI: 0.155],
+                [.germany: 0.311, .uk: 0.26, .europeHighRes: 0.248, .europeAI: 0.182],
+                [.germany: 0.303, .europeAI: 0.26, .europeHighRes: 0.249, .uk: 0.188],
             ]),
     ]
 
