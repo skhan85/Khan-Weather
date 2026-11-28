@@ -183,6 +183,17 @@ jobs:
             xcrun simctl io "$udid" screenshot "shots/${label}-main-us-units.png"
             xcrun simctl terminate "$udid" "$BUNDLE" || true
             sleep 3
+            # "What's it doing now?": the report sheet, then the Now card after a "Drizzle" report.
+            xcrun simctl launch "$udid" "$BUNDLE" -unitsChosen YES -showReportSheet YES
+            sleep 30
+            xcrun simctl io "$udid" screenshot "shots/${label}-report-sheet.png"
+            xcrun simctl terminate "$udid" "$BUNDLE" || true
+            sleep 3
+            xcrun simctl launch "$udid" "$BUNDLE" -unitsChosen YES -demoReport drizzle
+            sleep 30
+            xcrun simctl io "$udid" screenshot "shots/${label}-reported-drizzle.png"
+            xcrun simctl terminate "$udid" "$BUNDLE" || true
+            sleep 3
             xcrun simctl launch "$udid" "$BUNDLE" -unitsChosen YES -designPreview
             sleep 25
             xcrun simctl io "$udid" screenshot "shots/${label}-design-preview.png"

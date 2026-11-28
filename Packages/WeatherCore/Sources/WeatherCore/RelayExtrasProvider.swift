@@ -329,6 +329,8 @@ public extension Forecast {
 public struct RelayExtrasProvider: Sendable {
     public static let defaultHost = URL(string: "https://weather-relay.khanofmilton.ca")!
     private let host: URL
+    /// The same host, for the condition reports in ConditionReports.swift.
+    var reportsHost: URL { host }
 
     public init(host: URL = defaultHost) {
         self.host = host
