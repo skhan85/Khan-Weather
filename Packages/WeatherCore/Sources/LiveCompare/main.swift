@@ -1,10 +1,12 @@
-import XCTest
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+import Foundation
 @testable import WeatherCore
 
 /// Temporary: prints what the app shows for Milton right now, field by field, for a side-by-side check.
-final class LiveCompareTests: XCTestCase {
-    func testPrintMilton() async throws {
-        guard ProcessInfo.processInfo.environment["LIVE_COMPARE"] == "1" else { throw XCTSkip("live only") }
+enum LiveCompare {
+    static func run() async throws {
         let target = Coordinate(latitude: 43.5085, longitude: -79.8850)
         let observed = try? await HyperlocalObservationProvider().observation(near: target)
         let weights = await RelayExtrasProvider().regionalWeights(near: target)
@@ -36,3 +38,5 @@ final class LiveCompareTests: XCTestCase {
         try? out.write(toFile: "live-compare.md", atomically: true, encoding: .utf8)
     }
 }
+
+try await LiveCompare.run()

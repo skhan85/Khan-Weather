@@ -13,6 +13,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
@@ -20,7 +28,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.khanweather.core.Coordinate
 import com.khanweather.core.DistanceUnit
+import com.khanweather.core.RadarFreshness
 import com.khanweather.core.UnitSettings
+import kotlinx.coroutines.delay
 import java.util.Locale
 
 /**
@@ -30,17 +40,39 @@ import java.util.Locale
  */
 @Composable
 fun RadarScreen(center: Coordinate) {
-    RadarWebView(center, card = false, Modifier.fillMaxSize())
+    RadarWebView(center, card = false, Modifier.fillMaxSize(), rememberLatestRadarFrame(center))
+}
+
+/** The newest radar frame for this spot (Environment Canada's, else RainViewer's), or null until known. */
+@Composable
+private fun rememberLatestRadarFrame(center: Coordinate): Long? {
+    var latest by remember(center) { mutableStateOf<Long?>(null) }
+    LaunchedEffect(center) {
+        latest = if (radarCovers(center)) RadarFreshness.latestEcccFrame() else RadarFreshness.latestRainViewerFrame()
+    }
+    return latest
 }
 
 /** The main screen's small looping radar. Tapping it opens the full map. */
 @Composable
 fun RadarCard(center: Coordinate, onOpen: () -> Unit) {
+    val latest = rememberLatestRadarFrame(center)
+    // Re-reads the clock every 30 s so "6 min ago" keeps up while the screen stays open.
+    var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { delay(30_000); nowMs = System.currentTimeMillis() } }
     Column {
         Box(Modifier.fillMaxWidth().height(210.dp).clip(RoundedCornerShape(12.dp))) {
-            RadarWebView(center, card = true, Modifier.matchParentSize())
+            RadarWebView(center, card = true, Modifier.matchParentSize(), latest)
             // Over the map, so a tap opens the full radar instead of panning the little one.
             Box(Modifier.matchParentSize().clickable(onClick = onOpen))
+        }
+        if (latest != null) {
+            val fresh = RadarFreshness.level(latest, nowMs) == RadarFreshness.Level.FRESH
+            Text(
+                (if (fresh) "" else "⚠ ") + RadarFreshness.text(latest, nowMs),
+                style = style(13.sp, FontWeight.SemiBold, color = if (fresh) White82 else Color(0xFFFF9F40)),
+                modifier = Modifier.padding(top = 8.dp),
+            )
         }
         Text(
             if (radarCovers(center)) "Rain and snow, last hour. Tap for the full map with lightning and warnings."
@@ -52,7 +84,7 @@ fun RadarCard(center: Coordinate, onOpen: () -> Unit) {
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-private fun RadarWebView(center: Coordinate, card: Boolean, modifier: Modifier) {
+private fun RadarWebView(center: Coordinate, card: Boolean, modifier: Modifier, latest: Long?) {
     val twelve = Prefs.clock != "twentyFourHour"
     val miles = UnitSettings.current.distance == DistanceUnit.mi
     val fahr = UnitSettings.current.temperature.convert(0.0) > 1.0
@@ -61,7 +93,11 @@ private fun RadarWebView(center: Coordinate, card: Boolean, modifier: Modifier) 
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.userAgentString = settings.userAgentString + " KhanWeather-Android"
-            webViewClient = WebViewClient()
+            webViewClient = object : WebViewClient() {
+                override fun onPageFinished(view: WebView, url: String?) {
+                    (view.tag as? Long)?.let { view.evaluateJavascript("setLatest($it)", null) }
+                }
+            }
             // The map's JavaScript messages and errors go to logcat (tag KhanWeatherRadar).
             webChromeClient = object : android.webkit.WebChromeClient() {
                 override fun onConsoleMessage(m: android.webkit.ConsoleMessage): Boolean {
@@ -80,6 +116,11 @@ private fun RadarWebView(center: Coordinate, card: Boolean, modifier: Modifier) 
             }
             addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> loadIfSized() }
             post { loadIfSized() }
+        }
+    }, update = { view ->
+        if (latest != null && view.tag != latest) {
+            view.tag = latest
+            view.evaluateJavascript("if(window.setLatest)setLatest($latest)", null)
         }
     })
 }
@@ -159,11 +200,17 @@ function fmtTime(d){var h=d.getHours(),m=('0'+d.getMinutes()).slice(-2);
  if(!twelve)return ('0'+h).slice(-2)+':'+m; var ap=h<12?'am':'pm';h=h%12||12;return h+':'+m+' '+ap;}
 // GeoMet publishes a frame every 6 minutes, a few minutes late, and keeps three hours.
 // Three hours shows every second frame so the loop stays short.
-function recent(hours){var six=360e3,latest=Math.floor((Date.now()-540e3)/six)*six,step=hours>1?2*six:six,
- n=hours>1?Math.floor((hours*3600e3-six)/step)+1:10,a=[];
- for(var i=n-1;i>=0;i--)a.push({time:new Date(latest-i*step)});return a;}
+// latestKnown: GeoMet's newest published frame (sent in from the app), so a late radar's loop
+// ends at a frame that exists rather than at blank ones.
+var latestKnown=null;
+function recent(hours){var six=360e3,now=Date.now(),latest=Math.floor((now-540e3)/six)*six,step=hours>1?2*six:six,
+ n=hours>1?Math.floor((hours*3600e3-six)/step)+1:10,a=[],oldest=now-3*3600e3+six;
+ if(latestKnown&&latestKnown<=now+60e3&&now-latestKnown<3*3600e3)latest=latestKnown;
+ for(var i=n-1;i>=0;i--){var t=latest-i*step;if(t>=oldest)a.push({time:new Date(t)});}return a;}
+function setLatest(ms){if(latestKnown===ms)return;latestKnown=ms;if(covered)load();}
 function latestPast(){for(var i=frames.length-1;i>=0;i--)if(!frames[i].forecast)return i;return Math.max(0,frames.length-1);}
-function rel(f){var m=Math.round((f.time-frames[latestPast()].time)/60000);return m==0?'Now':m<0?(-m)+' min ago':'in '+m+' min';}
+// From the clock, so a late radar's newest frame doesn't read "Now".
+function rel(f){var m=Math.round((f.time-Date.now())/60000);return Math.abs(m)<=2?'Now':m<0?(-m)+' min ago':'in '+m+' min';}
 function makeLayer(f){
  if(f.template)return L.tileLayer(f.template,{opacity:0,maxNativeZoom:7,maxZoom:12});
  return L.tileLayer.wms(WMS,{layers:f.layers||'RADAR_1KM_RRAI,RADAR_1KM_RSNO',format:'image/png',transparent:true,version:'1.3.0',

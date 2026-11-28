@@ -351,6 +351,15 @@ struct RadarPreviewCard: View {
                                 .foregroundStyle(Brand.gold)
                         }
                     }
+                    let newest = frames[latestPast].time
+                    let level = RadarFreshness.level(latest: newest)
+                    Label {
+                        Text(RadarFreshness.text(latest: newest))
+                    } icon: {
+                        Image(systemName: level == .fresh ? "dot.radiowaves.left.and.right" : "exclamationmark.triangle.fill")
+                    }
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(level == .fresh ? Color.white.opacity(0.85) : Color.orange)
                     Text(ECCCRadarProvider.covers(center)
                          ? "Rain and snow, last hour\(frames.contains(where: \.isForecast) ? " and next half hour" : ""). Tap for the full map."
                          : "Rain and snow, last 2 hours. Tap for the full map.")
@@ -423,10 +432,9 @@ enum RadarLoop {
     }
 
     /// "40 min ago", "Now", "in 20 min".
+    /// Measured from the clock, so a late radar's newest frame doesn't read "Now".
     static func relative(_ frame: RadarFrame, latest: Date) -> String {
-        let minutes = Int((frame.time.timeIntervalSince(latest) / 60).rounded())
-        if minutes == 0 { return "Now" }
-        return minutes < 0 ? "\(-minutes) min ago" : "in \(minutes) min"
+        RadarFreshness.relative(frame.time)
     }
 }
 
@@ -446,13 +454,10 @@ enum RadarFrames {
     /// GeoMet publishes a frame every 6 minutes, a few minutes after the fact, and keeps three
     /// hours. The last hour is every frame; three hours is every second frame, so the loop
     /// stays a few seconds long and loads quickly.
-    static func recent(hours: Int = 1, now: Date = Date()) -> [RadarFrame] {
-        let six: TimeInterval = 6 * 60
-        let latest = ((now.timeIntervalSince1970 - 9 * 60) / six).rounded(.down) * six
-        let step = hours > 1 ? 2 * six : six
-        // Stay a frame inside GeoMet's window so the oldest one is never already gone.
-        let count = hours > 1 ? Int((Double(hours) * 3600 - six) / step) + 1 : 10
-        return (0..<count).reversed().map { RadarFrame(time: Date(timeIntervalSince1970: latest - Double($0) * step)) }
+    /// `latest` is GeoMet's newest published frame when known, so a late radar's loop ends at
+    /// the frame that exists instead of at blank, not-yet-published ones.
+    static func recent(hours: Int = 1, latest: Date? = nil, now: Date = Date()) -> [RadarFrame] {
+        RadarFreshness.ecccFrameTimes(latest: latest, hours: hours, now: now).map { RadarFrame(time: $0) }
     }
 
     /// What to show before anything loads: Environment Canada's frames where it has radar.
@@ -475,7 +480,8 @@ enum RadarFrames {
 
     static func load(for c: Coordinate, hours: Int = 1) async -> [RadarFrame] {
         if ECCCRadarProvider.covers(c) {
-            let past = recent(hours: hours)
+            let newest = await RadarFreshness.latestECCCFrame()
+            let past = recent(hours: hours, latest: newest)
             let latest = past.last?.time ?? Date()
             return past + extrapolation(after: latest)
         }

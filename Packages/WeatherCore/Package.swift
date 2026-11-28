@@ -15,6 +15,7 @@ let package = Package(
         .target(name: "WeatherCore"),
         // Hourly live-data check of "now" for Milton (see .github/workflows/now-check.yml).
         .executableTarget(name: "NowCheck", dependencies: ["WeatherCore"]),
+        .executableTarget(name: "LiveCompare", dependencies: ["WeatherCore"]),
         .testTarget(name: "WeatherCoreTests", dependencies: ["WeatherCore"]),
     ]
 )
