@@ -144,7 +144,7 @@ val Forecast.modelWetShareNow: Double?
         return if (n >= 3) w.toDouble() / n else null
     }
 /** Stations or airports within 40 km reporting rain or drizzle that make it "widespread". */
-const val widespreadWetReports = 2
+const val widespreadWetReports = 1 // one is enough: Milton 27 Nov 8:50 pm, see Nowcast.swift
 /** Share of models wet now that, in damp air under cloud, says it's drizzling. */
 const val modelsWetDrizzleShare = 0.5
 

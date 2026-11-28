@@ -18,7 +18,7 @@ class LightRainTest {
         val o = Observation("3 Netatmo stations", now, 5.0, distanceKm = 2.0)
         o.noteDrizzle("Hamilton Airport", 26.0, WeatherCondition.rain, now, now)
         val f = forecast(5.0, 92.0).apply { observation = o }
-        assertEquals(WeatherCondition.overcast, f.agreeingNowWithNowcast(now).current.condition)
+        assertEquals(WeatherCondition.drizzle, f.agreeingNowWithNowcast(now).current.condition)
         o.noteDrizzle("Toronto Pearson", 30.0, WeatherCondition.rain, now, now)
         o.noteDrizzle("Toronto Pearson", 30.0, WeatherCondition.rain, now, now)
         assertEquals(2, o.nearbyWetStations?.size)
