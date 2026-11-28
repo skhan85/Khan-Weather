@@ -1,5 +1,10 @@
 package com.khanweather.core
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import java.time.Instant
 import kotlin.math.abs
 import kotlin.math.floor
@@ -54,6 +59,19 @@ object RadarFreshness {
         parseLatest(loader.get(CAPABILITIES_URL, null, 6_000).decodeToString())
     } catch (e: Exception) {
         null
+    }
+
+    /** RainViewer's newest past radar frame (epoch ms), for places outside Environment Canada's radar. */
+    suspend fun latestRainViewerFrame(loader: HttpLoader = defaultLoader): Long? = try {
+        parseRainViewerLatest(loader.get("https://api.rainviewer.com/public/weather-maps.json", null, 6_000).decodeToString())
+    } catch (e: Exception) {
+        null
+    }
+
+    fun parseRainViewerLatest(json: String): Long? {
+        val root = Json.parseToJsonElement(json).jsonObject
+        val past = root["radar"]?.jsonObject?.get("past")?.jsonArray ?: return null
+        return past.mapNotNull { it.jsonObject["time"]?.jsonPrimitive?.longOrNull }.maxOrNull()?.let { it * 1000 }
     }
 
     fun parseLatest(xml: String): Long? {
