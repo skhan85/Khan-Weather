@@ -143,7 +143,8 @@ object WeatherLoader {
             val rainRate = typed.rainMmPerHour
             val snowRate = typed.snowCmPerHour
             val peakRate = maxOf(rainRate, snowRate)
-            val minRate = if (snowRate <= 0.0 && rh < 80.0) 1.0 else 0.50
+            // Light echoes count in saturated air, where they're drizzle reaching the ground.
+            val minRate = if (snowRate <= 0.0 && rh < 80.0) 1.0 else if (rh >= dampEchoHumidity) 0.2 else 0.50
             if (peakRate < minRate) return@map slot
             val rain = if (rainRate >= minRate) maxOf(slot.rain, maxOf(PrecipitationSlot.wetThreshold, rainRate / 4.0)) else slot.rain
             val snow = if (snowRate >= minRate) maxOf(slot.snowfall, maxOf(PrecipitationSlot.wetThreshold, snowRate / 4.0)) else slot.snowfall
@@ -328,7 +329,33 @@ object WeatherLoader {
         return t to w
     }
 
-    suspend fun regionalWeights(target: Coordinate): Map<String, kotlin.Double>? = deadline(3.0) {
+    /** What the relay learned at this place (and tells it the place is in use). Registered with ModelBlend. */
+    suspend fun learned(target: Coordinate): LearnedCorrections? = deadline(3.0) {
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val u = String.format(Locale.US, "https://weather-relay.khanofmilton.ca/v1/learned?lat=%.2f&lon=%.2f",
+                    target.latitude, target.longitude)
+                val conn = (URL(u).openConnection() as HttpURLConnection).apply { connectTimeout = 4000; readTimeout = 4000 }
+                try {
+                    if (conn.responseCode != 200) return@runCatching null
+                    relayJson.decodeFromString(LearnedCorrections.serializer(), conn.inputStream.bufferedReader().readText())
+                        .also { ModelBlend.setLearned(it, target) }
+                } finally {
+                    conn.disconnect()
+                }
+            }.getOrNull()
+        }
+    }
+
+    /** Regional weights and diurnal bias, with what the relay learned here fetched alongside. */
+    suspend fun regionalWeights(target: Coordinate): Map<String, kotlin.Double>? = coroutineScope {
+        val learnedHere = async { learned(target) }
+        val w = regionalWeightsOnly(target)
+        learnedHere.await()
+        w
+    }
+
+    private suspend fun regionalWeightsOnly(target: Coordinate): Map<String, kotlin.Double>? = deadline(3.0) {
         withContext(Dispatchers.IO) {
             runCatching {
                 val u = String.format(
@@ -353,7 +380,13 @@ object WeatherLoader {
     }
 
     fun Forecast.calibratingEnsemblePop(): Forecast {
-        val calHours = hourly.map { h ->
+        // What the relay learned here: how often it really rained when the chance said it might
+        // (1 unless proven on the last 14 days). Applied to hourly and daily alike, before the rest.
+        val learned = ModelBlend.learnedPopFactor(location)
+        fun scaled(p: kotlin.Double?): kotlin.Double? = if (p == null || learned == 1.0) p else minOf(100.0, (p * learned).roundToInt().toDouble())
+        val days0 = if (learned == 1.0) daily else daily.map { it.copy(precipitationProbability = scaled(it.precipitationProbability)) }
+        val calHours = hourly.map { h0 ->
+            val h = if (learned == 1.0) h0 else h0.copy(precipitationProbability = scaled(h0.precipitationProbability))
             val n = h.modelCount; val w = h.modelsWet; val raw = h.precipitationProbability
             val out = if (n != null && n == 3 && w != null && raw != null) {
                 val ens = (w.toDouble() / n.toDouble()) * 100.0
@@ -362,7 +395,7 @@ object WeatherLoader {
             out.apply { promoteLikelyPrecipitation() }
         }
         val calendar = cal
-        val calDays = daily.map { d ->
+        val calDays = days0.map { d ->
             val dayHours = calHours.filter { calendar.isSameDay(it.time, d.date) }
             val ensMax = if (dayHours.size >= 6) dayHours.mapNotNull { it.precipitationProbability }.maxOrNull() else null
             var pop = if (ensMax != null && d.precipitationProbability != null) {

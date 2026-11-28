@@ -52,6 +52,44 @@ public struct Observation: Equatable, Codable, Sendable {
     /// The model blend's temperature at the station's own spot at `observedAt`, fetched only for a
     /// station beyond `localRadiusKm` (see `neighbourShift`).
     public var modelAtStation: Double?
+    /// A station or airport within `drizzleReachKm` reporting drizzle, even when it is too far to
+    /// stand in for the sky here. Drizzle falls from low cloud that covers a wide area at once,
+    /// and radar can't see it (27 Nov in Milton: drizzle all morning, radar dry).
+    public var nearbyDrizzleStation: String?
+    public var nearbyDrizzleKm: Double?
+
+    /// Stations and airports within `drizzleReachKm` reporting rain or drizzle now (not snow, which
+    /// the radar sees), nearest first. Two or more of them under a dry radar is widespread light rain
+    /// from low cloud the radar beam passes over.
+    public var nearbyWetStations: [String]?
+
+    public static let drizzleReachKm: Double = 40
+
+    /// Notes another report's drizzle or rain when it is close enough to count.
+    public mutating func noteDrizzle(station: String, km: Double?, condition: WeatherCondition?, observedAt: Date? = nil,
+                                     now: Date = Date()) {
+        guard let condition, let km, km <= Self.drizzleReachKm else { return }
+        if let observedAt, now.timeIntervalSince(observedAt) > 5400 { return }
+        let name = WeatherFormat.plainStationName(station)
+        if condition.isRainLike, !(nearbyWetStations ?? []).contains(name) {
+            nearbyWetStations = (nearbyWetStations ?? []) + [name]
+        }
+        guard nearbyDrizzleStation == nil, condition == .drizzle || condition == .freezingDrizzle else { return }
+        nearbyDrizzleStation = name
+        nearbyDrizzleKm = km
+    }
+
+    /// Copies another observation's nearby reports into this one.
+    public mutating func mergeNearbyReports(from other: Observation?) {
+        guard let other else { return }
+        if nearbyDrizzleStation == nil {
+            nearbyDrizzleStation = other.nearbyDrizzleStation
+            nearbyDrizzleKm = other.nearbyDrizzleKm
+        }
+        for name in other.nearbyWetStations ?? [] where !(nearbyWetStations ?? []).contains(name) {
+            nearbyWetStations = (nearbyWetStations ?? []) + [name]
+        }
+    }
 
     /// Local gauges report and none caught a drop in the last hour.
     public var gaugesSayDry: Bool { (rainGauges ?? 0) > 0 && (rainLastHourMm ?? 1) == 0 }
@@ -213,7 +251,14 @@ public struct EnvironmentCanadaProvider: ObservationProvider {
                 candidates.append(observation)
             }
         }
-        return choose(from: candidates)
+        guard var chosen = choose(from: candidates) else { return nil }
+        // Every other city-page station within reach that reports drizzle or rain (Hamilton and
+        // Pearson both drizzling is a wide sheet of low cloud, even if neither is close).
+        for other in candidates where other.stationName != chosen.stationName {
+            chosen.noteDrizzle(station: other.stationName, km: other.distanceKm, condition: other.condition,
+                               observedAt: other.observedAt, now: now)
+        }
+        return chosen
     }
 
     /// Automatic stations such as Burlington Lift Bridge report temperature and wind but no sky.
@@ -376,6 +421,8 @@ public extension Forecast {
         // Drop it and keep the forecast's sky for this spot, which the radar over this spot can
         // still turn wet below.
         if !o.skyIsLocal {
+            o.noteDrizzle(station: o.skyStationName ?? o.stationName,
+                          km: o.skyStationName == nil ? o.distanceKm : o.skyDistanceKm, condition: o.condition)
             o.condition = nil
             o.conditionText = nil
         }

@@ -160,6 +160,8 @@ class HyperlocalObservationProvider(
                 officialProvider = if (disagrees) base!!.dataProvider else null,
                 condition = base?.condition, conditionText = base?.conditionText,
                 skyStationName = base?.stationName, skyDataProvider = base?.dataProvider, skyDistanceKm = base?.distanceKm,
+                nearbyDrizzleStation = base?.nearbyDrizzleStation, nearbyDrizzleKm = base?.nearbyDrizzleKm,
+                nearbyWetStations = base?.nearbyWetStations,
             )
             if (base != null && base.isLocal && base.windSpeed != null) {
 
@@ -255,23 +257,44 @@ class METARProvider(private val loader: HttpLoader = defaultLoader) : Observatio
         val c = near.rounded
         val d = 0.4
         val bbox = ECCC.bbox(c.latitude - d, c.longitude - d * 1.5, c.latitude + d, c.longitude + d * 1.5)
-        val list = parseJson(loader.fetch("https://aviationweather.gov/api/data/metar?bbox=$bbox&format=json")).arr ?: return null
+        return parse(loader.fetch("https://aviationweather.gov/api/data/metar?bbox=$bbox&format=json"), near, nowEpoch())
+    }
+
+    companion object {
+    fun parse(data: ByteArray, near: Coordinate, now: Epoch): Observation? {
+        val list = parseJson(data).arr ?: return null
         val best = list.mapNotNull { m ->
             val lat = m["lat"].numOnly ?: return@mapNotNull null
             val lon = m["lon"].numOnly ?: return@mapNotNull null
             m["temp"].numOnly ?: return@mapNotNull null
             val t = m["obsTime"].numOnly ?: return@mapNotNull null
             val dist = distanceKm(near, Coordinate(lat, lon))
-            if (dist > 40 || nowEpoch() - t >= 3 * 3600) return@mapNotNull null
+            if (dist > 40 || now - t >= 3 * 3600) return@mapNotNull null
             Triple(m, dist, t)
         }.minByOrNull { it.second } ?: return null
         val (m, distance, time) = best
         val temp = m["temp"].numOnly!!
         val name = (m["name"].str ?: m["icaoId"].str ?: "Airport").split(",").first()
-        return Observation(name, time, temp, humidity = m["dewp"].numOnly?.let { FeelsLike.relativeHumidity(temp, it) },
+        val o = Observation(name, time, temp, humidity = m["dewp"].numOnly?.let { FeelsLike.relativeHumidity(temp, it) },
             windSpeed = m["wspd"].numOnly?.let { it * 1.852 }, windDirection = m["wdir"].num,
             condition = WeatherCondition.fromMetar(m["wxString"].str, m["cover"].str), distanceKm = distance, dataProvider = "METAR",
             stationCoordinate = Coordinate(m["lat"].numOnly!!, m["lon"].numOnly!!))
+        // The other airports within reach: drizzle or rain at two of them is widespread light rain.
+        val others = list.mapNotNull { x ->
+            if (x["icaoId"].str == m["icaoId"].str) return@mapNotNull null
+            val lat = x["lat"].numOnly ?: return@mapNotNull null
+            val lon = x["lon"].numOnly ?: return@mapNotNull null
+            val t = x["obsTime"].numOnly ?: return@mapNotNull null
+            val dist = distanceKm(near, Coordinate(lat, lon))
+            if (dist > 40 || now - t >= 3 * 3600) return@mapNotNull null
+            Triple(x, dist, t)
+        }.sortedBy { it.second }
+        for ((x, dist, t) in others) {
+            val n = (x["name"].str ?: x["icaoId"].str ?: "Airport").split(",").first()
+            o.noteDrizzle(n, dist, WeatherCondition.fromMetar(x["wxString"].str, x["cover"].str), t, now)
+        }
+        return o
+    }
     }
 }
 
@@ -319,6 +342,8 @@ class WorldObservationProvider(
         OpenMeteoProvider().blendedTemperatureAtStation(at, time)
     },
 ) : ObservationProvider {
+    companion object { const val airportDeadline = 5.0 }
+
     override suspend fun observation(near: Coordinate): Observation? {
         val o = nearest(near) ?: return null
         // For a station too far to stand in for the spot, what the blend says at the station
@@ -330,7 +355,19 @@ class WorldObservationProvider(
     }
 
     private suspend fun nearest(near: Coordinate): Observation? = coroutineScope {
-        if (Region.inCanada(near)) safely { canada.observation(near) }?.let { return@coroutineScope it }
+        if (Region.inCanada(near)) {
+            // The nearest airport too, only for drizzle (Hamilton's "DZ" is the best ground truth nearby).
+            val metar = async { deadline(airportDeadline) { airports.observation(near) } }
+            val o = safely { canada.observation(near) }
+            if (o != null) {
+                metar.await()?.let { m ->
+                    o.noteDrizzle(m.stationName, m.distanceKm, m.condition, m.observedAt)
+                    o.mergeNearbyReports(m)
+                }
+                return@coroutineScope o
+            }
+            metar.cancel()
+        }
         val a = async { safely { us.observation(near) } }
         val b = async { safely { germany.observation(near) } }
         val c = async { safely { europeNational.observation(near) } }
@@ -338,6 +375,10 @@ class WorldObservationProvider(
         val sky = d.await()
         val best = listOfNotNull(a.await(), b.await(), c.await(), sky).minByOrNull { it.distanceKm ?: Double.POSITIVE_INFINITY }
             ?: return@coroutineScope null
+        if (sky != null && sky.stationName != best.stationName) {
+            best.noteDrizzle(sky.stationName, sky.distanceKm, sky.condition, sky.observedAt)
+        }
+        best.mergeNearbyReports(sky)
         if (best.condition == null && sky?.condition != null) {
             best.copy(
                 condition = sky.condition,

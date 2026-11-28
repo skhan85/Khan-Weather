@@ -167,21 +167,37 @@ val Forecast.skyStationBeyondRadarReach: Boolean
         return (km ?: 0.0) >= radarBeatsStationKm
     }
 
+/** In air this damp (%), a light radar echo (0.1-0.5 mm/h) is reaching the ground. */
+const val dampEchoHumidity = 90.0
+
+/** Air this damp (%) under low cloud can drizzle. */
+const val drizzleHumidity = 88.0
+
+/** Drizzle in damp air: radar beams pass over the low cloud it falls from, so a dry radar doesn't overrule it. */
+val Forecast.drizzleRadarCantSee: Boolean
+    get() {
+        if (current.condition != WeatherCondition.drizzle && current.condition != WeatherCondition.freezingDrizzle) return false
+        return (current.humidity?.toDouble() ?: 0.0) >= drizzleHumidity || observation?.nearbyDrizzleStation != null
+    }
+
 /** When the radar shows rain or snow falling here now, say so even if the model says cloudy. */
 fun Forecast.applyingRadar(radarNow: RadarNow?): Forecast {
     val radar = radarNow?.typed(current.temperature, modelPrecipitationKind(current.time)) ?: return this
-    // Virga guard: in dry surface air (RH < 80%), weak overhead radar (< 1.0 mm/h)
-    // evaporates before reaching the ground; below 88% RH, ignore < 0.5 mm/h clutter.
-    if (current.temperature >= 3.0 && radar.isPrecipitating && (radarNow?.rainMmPerHour ?: 0.0) < 0.5) return this
+    // Virga guard: in dry surface air, weak overhead radar (< 1.0 mm/h) evaporates before reaching
+    // the ground, and below 0.5 mm/h it can be clutter. In saturated air (RH >= 90%) nothing evaporates
+    // on the way down: a light echo there is drizzle or light rain, so it counts.
+    val damp = (current.humidity?.toDouble() ?: 0.0) >= dampEchoHumidity
+    if (current.temperature >= 3.0 && !damp && radar.isPrecipitating &&
+        (radar.rainMmPerHour < 0.5 || (radarNow?.rainMmPerHour ?: 0.0) < 0.5)) return this
     val rh = current.humidity?.toDouble()
     if (rh != null && radar.isRaining && !radar.isSnowing && current.temperature > 1.0 &&
         (observation?.rainLastHourMm ?: 0.0) < 0.1 &&
-        ((rh < 90.0 && radar.rainMmPerHour < 1.0) || radar.rainMmPerHour < 0.5)
+        ((rh < 90.0 && radar.rainMmPerHour < 1.0) || (!damp && radar.rainMmPerHour < 0.5))
     ) return this
     val condition = radar.condition
     if (condition == null) {
         if (current.temperature <= 1 || !current.condition.isRainLike ||
-            ((observation?.skyIsLocal ?: false) && !skyStationBeyondRadarReach)) return this
+            ((observation?.skyIsLocal ?: false) && !skyStationBeyondRadarReach) || drizzleRadarCantSee) return this
         val copy = deepCopy()
         copy.current.condition = WeatherCondition.overcast
         copy.observation?.conditionText = null

@@ -43,7 +43,40 @@ data class Observation(
     var stationCoordinate: Coordinate? = null,
     /** The model blend at the station's own spot at `observedAt`, for a station beyond `localRadiusKm`. */
     var modelAtStation: Double? = null,
+    /** A station or airport within `drizzleReachKm` reporting drizzle (radar can't see it). */
+    var nearbyDrizzleStation: String? = null,
+    var nearbyDrizzleKm: Double? = null,
+    /**
+     * Stations and airports within `drizzleReachKm` reporting rain or drizzle now (not snow, which the
+     * radar sees), nearest first. Two or more under a dry radar is widespread light rain from low cloud.
+     */
+    var nearbyWetStations: List<String>? = null,
 ) {
+    /** Notes another report's drizzle or rain when it is close enough to count. */
+    fun noteDrizzle(station: String, km: Double?, condition: WeatherCondition?, observedAt: Epoch? = null, now: Epoch = nowEpoch()) {
+        if (condition == null || km == null || km > drizzleReachKm) return
+        if (observedAt != null && now - observedAt > 5400) return
+        val name = WeatherFormat.plainStationName(station)
+        if (condition.isRainLike && (nearbyWetStations ?: emptyList()).none { it == name }) {
+            nearbyWetStations = (nearbyWetStations ?: emptyList()) + name
+        }
+        if (nearbyDrizzleStation != null || (condition != WeatherCondition.drizzle && condition != WeatherCondition.freezingDrizzle)) return
+        nearbyDrizzleStation = name
+        nearbyDrizzleKm = km
+    }
+
+    /** Copies another observation's nearby reports into this one. */
+    fun mergeNearbyReports(other: Observation?) {
+        if (other == null) return
+        if (nearbyDrizzleStation == null) {
+            nearbyDrizzleStation = other.nearbyDrizzleStation
+            nearbyDrizzleKm = other.nearbyDrizzleKm
+        }
+        for (name in other.nearbyWetStations ?: emptyList()) {
+            if ((nearbyWetStations ?: emptyList()).none { it == name }) nearbyWetStations = (nearbyWetStations ?: emptyList()) + name
+        }
+    }
+
     /** Whether the sky (rain, snow, cloud) was reported within `localRadiusKm`. */
     val skyIsLocal: Boolean
         get() = if (skyStationName == null) isLocal else (skyDistanceKm ?: Double.POSITIVE_INFINITY) <= localRadiusKm
@@ -97,6 +130,7 @@ data class Observation(
             d <= neighbourMaxKm -> neighbourShares[2]
             else -> 0.0
         }
+        const val drizzleReachKm = 40.0
         const val smoothingWindow = 45.0 * 60
         const val smoothingLimit = 1.5
     }
@@ -138,6 +172,7 @@ fun Forecast.applying(observation: Observation?): Forecast {
     val c = current.copy()
     // A sky reported by a station far away says nothing about the sky here.
     if (!o.skyIsLocal) {
+        o.noteDrizzle(o.skyStationName ?: o.stationName, if (o.skyStationName == null) o.distanceKm else o.skyDistanceKm, o.condition)
         o.condition = null
         o.conditionText = null
     }

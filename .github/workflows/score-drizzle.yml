@@ -1,0 +1,43 @@
+name: Score light-rain clues
+
+# How well do nearby reports and the models' rain vote tell drizzle when the radar is dry?
+# (tools/score_drizzle.py). Run by hand, or on a push that changes the scorer.
+# Linux: GitHub's Mac runners can't reach api.open-meteo.com.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - tools/score_drizzle.py
+      - .github/workflows/score-drizzle.yml
+
+permissions:
+  contents: read
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: tools/verify-cache
+          key: drizzle-cache-${{ github.run_id }}
+          restore-keys: drizzle-cache-
+      - name: Score
+        working-directory: tools
+        timeout-minutes: 220
+        run: python3 score_drizzle.py | tee drizzle-report.txt
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: tools/verify-cache
+          key: drizzle-cache-${{ github.run_id }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: drizzle-results
+          path: |
+            tools/drizzle-report.json
+            tools/drizzle-report.txt

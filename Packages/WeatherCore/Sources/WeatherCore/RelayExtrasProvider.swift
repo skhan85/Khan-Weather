@@ -263,7 +263,9 @@ public extension Forecast {
             let rainRate = typed.rainMmPerHour
             let snowRate = typed.snowCmPerHour
             let peakRate = max(rainRate, snowRate)
-            let minRate = (snowRate <= 0 && rh < 80) ? 1.0 : 0.50
+            // Light echoes count in saturated air, where they're drizzle reaching the ground
+            // (`Forecast.dampEchoHumidity`), and not in dry air, where they evaporate on the way.
+            let minRate = (snowRate <= 0 && rh < 80) ? 1.0 : rh >= Forecast.dampEchoHumidity ? 0.2 : 0.50
             guard peakRate >= minRate else { return slot }
             let rain = rainRate >= minRate ? max(slot.rain, max(PrecipitationSlot.wetThreshold, rainRate / 4.0)) : slot.rain
             let snow = snowRate >= minRate ? max(slot.snowfall, max(PrecipitationSlot.wetThreshold, snowRate / 4.0)) : slot.snowfall
@@ -275,9 +277,19 @@ public extension Forecast {
     /// Ensures daily rain chance stays consistent with ensemble model peaks and precipitation totals.
     func calibratingEnsemblePop() -> Forecast {
         var copy = self
+        // What the relay learned here: how often it really rained when the chance said it might
+        // (1 unless proven on the last 14 days). Applied to hourly and daily alike, before the rest.
+        let learned = ModelBlend.learnedPopFactor(for: location)
+        let scaled: (Double?) -> Double? = { p in p.map { min(100, ($0 * learned).rounded()) } }
+        let scaledDaily = learned == 1 ? daily : daily.map { d in
+            var d = d
+            d.precipitationProbability = scaled(d.precipitationProbability)
+            return d
+        }
         copy.hourly = hourly.map { h in
             var out = h
-            if let n = h.modelCount, n == 3, let w = h.modelsWet, let raw = h.precipitationProbability {
+            if learned != 1 { out.precipitationProbability = scaled(out.precipitationProbability) }
+            if let n = h.modelCount, n == 3, let w = h.modelsWet, let raw = out.precipitationProbability {
                 let ens = (Double(w) / Double(n)) * 100.0
                 out.precipitationProbability = (0.6 * raw + 0.4 * ens).rounded()
             }
@@ -286,7 +298,7 @@ public extension Forecast {
         }
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = timeZone
-        copy.daily = daily.map { d in
+        copy.daily = scaledDaily.map { d in
             var out = d
             let dayHours = copy.hourly.filter { cal.isDate($0.time, inSameDayAs: d.date) }
             if dayHours.count >= 6, let ensMax = dayHours.compactMap(\.precipitationProbability).max(),
@@ -370,7 +382,32 @@ public struct RelayExtrasProvider: Sendable {
               (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
         return try? JSONDecoder().decode(RelayNowcast.self, from: data)
     }
+    /// What the relay has learned about the forecast at this place (and tells it the place is in
+    /// use, so it keeps learning it). Registered with `ModelBlend.setLearned`; nil when unreachable.
+    @discardableResult
+    public func learned(near c: Coordinate) async -> LearnedCorrections? {
+        var parts = URLComponents(url: host.appendingPathComponent("v1/learned"), resolvingAgainstBaseURL: false)!
+        parts.queryItems = [
+            URLQueryItem(name: "lat", value: String(format: "%.2f", c.latitude)),
+            URLQueryItem(name: "lon", value: String(format: "%.2f", c.longitude)),
+        ]
+        guard let url = parts.url, let (data, resp) = try? await URLSession.shared.data(for: URLRequest(url: url, timeoutInterval: 6)),
+              (resp as? HTTPURLResponse)?.statusCode == 200,
+              let decoded = try? JSONDecoder().decode(LearnedCorrections.self, from: data) else { return nil }
+        ModelBlend.setLearned(decoded, for: c)
+        return decoded
+    }
+
+    /// The relay's regional weights and diurnal bias for the spot, and what it learned there
+    /// (`learned(near:)`), fetched together so every screen, the widget and notifications get both.
     public func regionalWeights(near c: Coordinate) async -> [String: Double]? {
+        async let learnedHere = learned(near: c)
+        let weights = await regionalWeightsOnly(near: c)
+        _ = await learnedHere
+        return weights
+    }
+
+    private func regionalWeightsOnly(near c: Coordinate) async -> [String: Double]? {
         var parts = URLComponents(url: host.appendingPathComponent("v1/weights"), resolvingAgainstBaseURL: false)!
         parts.queryItems = [
             URLQueryItem(name: "lat", value: String(format: "%.2f", c.latitude)),

@@ -116,9 +116,14 @@ public extension Forecast {
         // "Rain starting in about 55 min" under "Light Rain".
         if !slots[0].isWet, current.condition.isPrecipitation {
             let snow = !current.condition.isRainLike
-            slots[0] = PrecipitationSlot(time: slots[0].time, precipitation: PrecipitationSlot.wetThreshold,
-                                         rain: snow ? 0 : PrecipitationSlot.wetThreshold,
-                                         snowfall: snow ? PrecipitationSlot.wetThreshold / 0.7 : 0)
+            // When more is due within the hour, the dry gap before it is filled too: drizzle now and
+            // rain in 40 minutes reads "Rain for at least the next 2 hours", not "stopping in 15 min".
+            let next = slots.firstIndex(where: \.isWet).flatMap { $0 <= Self.drizzleLeadSlots ? $0 : nil } ?? 1
+            for i in 0..<next {
+                slots[i] = PrecipitationSlot(time: slots[i].time, precipitation: PrecipitationSlot.wetThreshold,
+                                             rain: snow ? 0 : PrecipitationSlot.wetThreshold,
+                                             snowfall: snow ? PrecipitationSlot.wetThreshold / 0.7 : 0)
+            }
         }
 
         // Each slot takes the same rain-or-snow call as its hour in the hourly list and on the Now
@@ -144,8 +149,9 @@ public extension Forecast {
     /// drizzle falls from cloud too low for it to see.
     func agreeingNowWithNowcast(at now: Date = Date()) -> Forecast {
         guard !current.condition.isPrecipitation, current.condition != .thunderstorm,
-              current.condition != .thunderstormHail,
-              let first = nowcastSlots(at: now).first, first.isWet else { return self }
+              current.condition != .thunderstormHail else { return self }
+        let slots = nowcastSlots(at: now)
+        guard let first = slots.first, first.isWet else { return drizzlingRadarCantSee(slots: slots) }
         var copy = self
         let text: String
         switch first.kind {
@@ -163,6 +169,60 @@ public extension Forecast {
         copy.observation?.conditionText = text
         return copy
     }
+
+    /// Drizzle that neither the radar nor the 15-minute data shows. 27 Nov, 10:36 am in Milton:
+    /// drizzling, but the card said "Overcast", "Sky from radar over this spot (dry)", and Next 2
+    /// hours "Rain starting in about 40 min". Drizzle falls from cloud below the radar beam, and
+    /// the models' 15-minute rain is often a little late. Either of these says it is drizzling:
+    /// - an airport or station within 40 km reports drizzle, with damp air and cloud here;
+    /// - very damp air under cloud, with rain due within the hour.
+    func drizzlingRadarCantSee(slots: [PrecipitationSlot]) -> Forecast {
+        guard [.overcast, .partlyCloudy, .fog].contains(current.condition),
+              current.temperature > -3, current.temperature < 15,
+              let rh = current.humidity, radar?.isPrecipitating != true else { return self }
+        let nearby = observation?.nearbyDrizzleStation
+        let rainSoon = slots.prefix(Self.drizzleLeadSlots).contains { $0.isWet && $0.kind == .rain }
+        let source: String
+        // Hamilton and Pearson are 25-35 km from Milton, so their drizzle alone isn't proof: it also
+        // needs damp air and cloud cover here.
+        if let nearby, rh >= Self.drizzleHumidity, current.condition != .partlyCloudy {
+            let km = observation?.nearbyDrizzleKm.map { ", \(WeatherFormat.roughDistance($0)) away" } ?? ""
+            source = "drizzle reported at \(nearby)\(km) (radar can't see drizzle)"
+        } else if let wet = observation?.nearbyWetStations, wet.count >= Self.widespreadWetReports,
+                  current.temperature > 1, rh >= Self.damperDrizzleHumidity, current.condition != .partlyCloudy {
+            source = "light rain reported at \(wet.prefix(2).joined(separator: " and ")) (radar can't see it here)"
+        } else if rainSoon, rh >= Self.damperDrizzleHumidity, current.condition != .partlyCloudy {
+            source = "damp air with rain due within the hour (radar can't see drizzle)"
+        } else if let share = modelWetShareNow, share >= Self.modelsWetDrizzleShare,
+                  current.temperature > 1, rh >= Self.damperDrizzleHumidity, current.condition != .partlyCloudy {
+            source = "most forecast models have light rain falling now (radar can't see drizzle)"
+        } else {
+            return self
+        }
+        var copy = self
+        let freezing = current.temperature <= 0
+        copy.current.condition = freezing ? .freezingDrizzle : .drizzle
+        copy.observation?.conditionText = freezing ? "Freezing drizzle" : "Drizzle"
+        copy.skySource = source
+        return copy
+    }
+
+    /// Share of the blend's models (at least 3) with measurable rain (0.2 mm) in the hour holding now.
+    var modelWetShareNow: Double? {
+        guard let h = hourly.last(where: { $0.time <= current.time }),
+              current.time.timeIntervalSince(h.time) < 3600,
+              let n = h.modelCount, n >= 3, let w = h.modelsWet else { return nil }
+        return Double(w) / Double(n)
+    }
+    /// Stations or airports within 40 km reporting rain or drizzle that make it "widespread".
+    static let widespreadWetReports = 2
+    /// Share of models wet now that, in damp air under cloud, says it's drizzling.
+    static let modelsWetDrizzleShare = 0.5
+
+    /// Rain this many 15-minute slots away (an hour) counts as "due" for drizzle.
+    static let drizzleLeadSlots = 4
+    /// Without a nearby drizzle report, the air must be at least this damp (%).
+    static let damperDrizzleHumidity: Double = 90
 
     /// What precipitation is doing over the next two hours, or nil when it stays dry
     /// (or the 15-minute data is missing or stale).

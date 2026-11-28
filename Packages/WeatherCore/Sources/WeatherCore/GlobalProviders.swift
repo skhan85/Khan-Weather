@@ -401,6 +401,20 @@ public struct METARProvider: ObservationProvider {
                             distanceKm: distance)
         o.dataProvider = "METAR"
         if let lat = m.lat, let lon = m.lon { o.stationCoordinate = Coordinate(latitude: lat, longitude: lon) }
+        // The other airports within reach: drizzle or rain at two of them is widespread light rain
+        // the radar may not see here.
+        let others = list.compactMap { x -> (M, Double, Date)? in
+            guard let lat = x.lat, let lon = x.lon, let t = x.obsTime, x.icaoId != m.icaoId else { return nil }
+            let time = Date(timeIntervalSince1970: t)
+            let d = EnvironmentCanadaProvider.distanceKm(c, Coordinate(latitude: lat, longitude: lon))
+            guard d <= maxDistanceKm, now.timeIntervalSince(time) < maxAge else { return nil }
+            return (x, d, time)
+        }.sorted { $0.1 < $1.1 }
+        for (x, d, time) in others {
+            let name = (x.name ?? x.icaoId ?? "Airport").components(separatedBy: ",").first ?? "Airport"
+            o.noteDrizzle(station: name, km: d, condition: WeatherCondition(metarWeather: x.wxString, cover: x.cover),
+                          observedAt: time, now: now)
+        }
         return o
     }
 }
@@ -464,6 +478,7 @@ public struct RelayOfficialProvider: ObservationProvider {
 
 /// Picks the right national services for the spot, falling back to the nearest airport anywhere.
 public struct WorldObservationProvider: ObservationProvider {
+    static let airportDeadline: Double = 5
     public let attribution = "Observations: national weather services and airports"
     private let canada: ObservationProvider
     private let us: ObservationProvider
@@ -507,8 +522,19 @@ public struct WorldObservationProvider: ObservationProvider {
     }
 
     private func nearest(_ coordinate: Coordinate) async throws -> Observation? {
-        if Region.inCanada(coordinate), let o = try? await canada.observation(near: coordinate) {
-            return o
+        if Region.inCanada(coordinate) {
+            // The nearest airport too, only for drizzle: Milton has no official sky station close
+            // enough, and Hamilton airport's "DZ" is the best ground truth for drizzle nearby.
+            let airports = self.airports
+            async let metar = Deadline.run(Self.airportDeadline) { try? await airports.observation(near: coordinate) }
+            if var o = try? await canada.observation(near: coordinate) {
+                if let m = await metar ?? nil {
+                    o.noteDrizzle(station: m.stationName, km: m.distanceKm, condition: m.condition, observedAt: m.observedAt)
+                    o.mergeNearbyReports(from: m)
+                }
+                return o
+            }
+            _ = await metar
         }
         async let a = try? us.observation(near: coordinate)
         async let b = try? germany.observation(near: coordinate)
@@ -517,6 +543,10 @@ public struct WorldObservationProvider: ObservationProvider {
         let sky = await d ?? nil
         let found = [await a ?? nil, await b ?? nil, await c ?? nil, sky].compactMap { $0 }
         guard var best = found.min(by: { ($0.distanceKm ?? .infinity) < ($1.distanceKm ?? .infinity) }) else { return nil }
+        if let sky, sky.stationName != best.stationName {
+            best.noteDrizzle(station: sky.stationName, km: sky.distanceKm, condition: sky.condition, observedAt: sky.observedAt)
+        }
+        best.mergeNearbyReports(from: sky)
         if best.condition == nil, let sky, sky.condition != nil {
             best.condition = sky.condition
             best.conditionText = sky.conditionText

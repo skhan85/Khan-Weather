@@ -219,27 +219,44 @@ public extension Forecast {
         return (km ?? 0) >= Self.radarBeatsStationKm
     }
 
+    /// Drizzle in damp air: radar beams pass over the low cloud it falls from, so a dry radar
+    /// doesn't overrule it (27 Nov, 10:36 am in Milton: drizzling, radar dry, card "Overcast").
+    var drizzleRadarCantSee: Bool {
+        guard current.condition == .drizzle || current.condition == .freezingDrizzle else { return false }
+        return (current.humidity ?? 0) >= Self.drizzleHumidity || observation?.nearbyDrizzleStation != nil
+    }
+
+    /// In air this damp (%), a light radar echo (0.1-0.5 mm/h) is reaching the ground.
+    static let dampEchoHumidity: Double = 90
+
+    /// Air this damp (%) under low cloud can drizzle.
+    static let drizzleHumidity: Double = 88
+
     /// When the radar shows rain or snow falling here now, say so even if the model or a
     /// distant station says cloudy. A dry radar changes nothing: it can miss very light snow.
     func applyingRadar(_ radar: RadarNow?) -> Forecast {
         let rawRadarRain = radar?.rainMmPerHour ?? 0
         guard let radar = radar?.typed(byTemperature: current.temperature,
                                        models: modelPrecipitationKind(at: current.time)) else { return self }
-        // Virga guard: in dry surface air (RH < 80%), weak overhead radar (< 1.0 mm/h)
-        // evaporates before reaching the ground; below 88% RH, ignore < 0.5 mm/h clutter.
-        if current.temperature >= 3, (radar.rainMmPerHour < 0.5 || (rawRadarRain < 0.5)) {
+        // Virga guard: in dry surface air, weak overhead radar (< 1.0 mm/h) evaporates before
+        // reaching the ground, and below 0.5 mm/h it can be clutter. In saturated air (RH >= 90%)
+        // nothing evaporates on the way down, and a light echo there is drizzle or light rain:
+        // the radar's lightest echoes were the ones the app threw away while it drizzled.
+        let damp = (current.humidity ?? 0) >= Self.dampEchoHumidity
+        if current.temperature >= 3, !damp, (radar.rainMmPerHour < 0.5 || (rawRadarRain < 0.5)) {
             if radar.isPrecipitating { return self }
         }
         if let rh = current.humidity, radar.isRaining, !radar.isSnowing, current.temperature > 1,
            (observation?.rainLastHourMm ?? 0) < 0.1,
-           (rh < 90 && radar.rainMmPerHour < 1.0) || radar.rainMmPerHour < 0.5 {
+           (rh < 90 && radar.rainMmPerHour < 1.0) || (!damp && radar.rainMmPerHour < 0.5) {
             return self
         }
         guard let condition = radar.condition else {
             // Dry radar overhead, yet "rain" from a station far away or the model: it isn't raining
             // here. Snow stays, as the radar can miss very light snow.
             guard current.temperature > 1, current.condition.isRainLike,
-                  !(observation?.skyIsLocal ?? false) || skyStationBeyondRadarReach else { return self }
+                  !(observation?.skyIsLocal ?? false) || skyStationBeyondRadarReach,
+                  !drizzleRadarCantSee else { return self }
             var copy = self
             copy.current.condition = .overcast
             copy.observation?.conditionText = nil
