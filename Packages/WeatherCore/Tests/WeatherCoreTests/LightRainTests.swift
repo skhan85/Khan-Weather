@@ -23,8 +23,8 @@ final class LightRainTests: XCTestCase {
         var o = Observation(stationName: "3 Netatmo stations", observedAt: now, temperature: 5, distanceKm: 2)
         o.noteDrizzle(station: "Hamilton Airport", km: 26, condition: .rain, observedAt: now)
         f.observation = o
-        // One report 26 km away isn't enough on its own.
-        XCTAssertEqual(f.agreeingNowWithNowcast(at: now).current.condition, .overcast)
+        // One report is enough in air this damp (Milton, 27 Nov, 8:50 pm: only Pearson, 30 km).
+        XCTAssertEqual(f.agreeingNowWithNowcast(at: now).current.condition, .drizzle)
 
         f.observation?.noteDrizzle(station: "Toronto Pearson", km: 30, condition: .rain, observedAt: now)
         f.observation?.noteDrizzle(station: "Toronto Pearson", km: 30, condition: .rain, observedAt: now)

@@ -214,8 +214,12 @@ public extension Forecast {
               let n = h.modelCount, n >= 3, let w = h.modelsWet else { return nil }
         return Double(w) / Double(n)
     }
-    /// Stations or airports within 40 km reporting rain or drizzle that make it "widespread".
-    static let widespreadWetReports = 2
+    /// Stations or airports within 40 km reporting rain or drizzle that say it drizzles here, in
+    /// damp air under cloud. One is enough: 27 Nov, 8:50 pm in Milton it drizzled with only Pearson
+    /// (30 km) reporting rain and no model wet. Over a year at 20 cities, one station's rain with
+    /// the models dry meant rain here about half the time (13% without it), much the same from
+    /// 0 to 40 km (tools/score_drizzle.py).
+    static let widespreadWetReports = 1
     /// Share of models wet now that, in damp air under cloud, says it's drizzling.
     static let modelsWetDrizzleShare = 0.5
 
