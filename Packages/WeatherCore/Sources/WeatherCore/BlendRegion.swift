@@ -30,6 +30,11 @@ public struct BlendRegion: Equatable, Sendable {
     public var models: [WeatherModel]
     /// Weights by forecast day, centred at lead hours 12, 36, 60, 84, 108 and 132.
     public var byDay: [[WeatherModel: Double]]
+    /// Weights for the next 12 hours, fitted on each model's newest run as the app really gets
+    /// it (tools/score_short_range.py): lead hours 0-2, 3-5 and 6-11, centred at `shortRangeCentres`.
+    /// Empty where they didn't beat `byDay[0]`; the curve then uses `byDay` alone.
+    public var shortRange: [[WeatherModel: Double]] = []
+    public static let shortRangeCentres: [Double] = [1, 4, 8.5]
 
     /// The region for a spot: the first whose box holds it, else the worldwide weights.
     public static func at(_ coordinate: Coordinate) -> BlendRegion {

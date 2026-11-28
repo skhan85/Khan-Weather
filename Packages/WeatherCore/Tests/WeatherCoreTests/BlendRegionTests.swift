@@ -18,6 +18,13 @@ final class BlendRegionTests: XCTestCase {
                            s.models.count, s.id)
             let boxes = (j["boxes"] as? [[Double]]) ?? []
             XCTAssertEqual(boxes, s.boxes.map { [$0.latMin, $0.latMax, $0.lonMin, $0.lonMax] }, s.id)
+            let bands = (j["shortRange"] as? [[String: Double]]) ?? []
+            XCTAssertEqual(bands.count, s.shortRange.count, s.id)
+            for (jd, sd) in zip(bands, s.shortRange) {
+                XCTAssertEqual(jd.count, sd.count, s.id)
+                for (model, w) in sd { XCTAssertEqual(jd["\(model)"] ?? -1, w, accuracy: 1e-9, "\(s.id) short \(model)") }
+                for m in sd.keys { XCTAssertTrue(s.models.contains(m), "\(s.id) short-range weights \(m) but doesn't ask for it") }
+            }
             let days = try XCTUnwrap(j["byDay"] as? [[String: Double]])
             XCTAssertEqual(days.count, s.byDay.count, s.id)
             for (jd, sd) in zip(days, s.byDay) {
@@ -63,5 +70,20 @@ final class BlendRegionTests: XCTestCase {
             return w.reduce(0) { $0 + values[$1.key]! * $1.value } / w.values.reduce(0, +)
         }()
         XCTAssertEqual(ModelBlend.blend(values, leadHours: 60, region: london)!, expected, accuracy: 1e-9)
+    }
+
+    /// The short-range bands run into day 0 at hour 12 without a jump, and day 0 is unchanged after.
+    func testShortRangeBandsJoinDayZero() {
+        var r = BlendRegion.fallback
+        r.shortRange = [[.germany: 1], [.germany: 0.5, .europe: 0.5], [.europe: 1]]
+        XCTAssertEqual(ModelBlend.tablePrior(.germany, leadHours: 0, region: r), 1)
+        XCTAssertEqual(ModelBlend.tablePrior(.germany, leadHours: 2.5, region: r), 0.75, accuracy: 1e-9)
+        XCTAssertEqual(ModelBlend.tablePrior(.europe, leadHours: 8.5, region: r), 1)
+        let day0 = r.byDay[0][.europe] ?? 0
+        XCTAssertEqual(ModelBlend.tablePrior(.europe, leadHours: 12, region: r), day0, accuracy: 1e-9)
+        XCTAssertEqual(ModelBlend.tablePrior(.europe, leadHours: 10.25, region: r), (1 + day0) / 2, accuracy: 1e-9)
+        var plain = r
+        plain.shortRange = []
+        XCTAssertEqual(ModelBlend.tablePrior(.europe, leadHours: 3, region: plain), day0, accuracy: 1e-9)
     }
 }

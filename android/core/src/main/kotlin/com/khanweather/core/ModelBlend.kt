@@ -132,6 +132,23 @@ object ModelBlend {
         return raw * leadScale
     }
 
+    /** Short-range bands for the next 12 hours (lines between centres, into day 0 at hour 12), then the day rows. */
+    fun tablePrior(model: WeatherModel, leadHours: Double, region: BlendRegion): Double {
+        val sr = region.shortRange
+        val centres = BlendRegion.SHORT_RANGE_CENTRES
+        if (sr.size != centres.size || region.byDay.isEmpty() || leadHours >= 12) {
+            return interpolatedPrior(model, leadHours, region.byDay)
+        }
+        val xs = centres + 12.0
+        val ys = sr.map { it[model] ?: 0.0 } + (region.byDay[0][model] ?: 0.0)
+        if (leadHours <= xs[0]) return ys[0]
+        for (k in 1 until xs.size) if (leadHours <= xs[k]) {
+            val f = (leadHours - xs[k - 1]) / (xs[k] - xs[k - 1])
+            return ys[k - 1] * (1 - f) + ys[k] * f
+        }
+        return ys.last()
+    }
+
     private fun interpolatedPrior(model: WeatherModel, leadHours: Double, byDay: List<Map<WeatherModel, Double>>): Double {
         val x = min(max((leadHours - 12) / 24, 0.0), (byDay.size - 1).toDouble())
         val i = x.toInt()
@@ -144,7 +161,7 @@ object ModelBlend {
                coordinate: Coordinate? = null): Double {
         val byDay = region.byDay
         if (byDay.isEmpty()) return 1.0
-        val prior = interpolatedPrior(model, leadHours, byDay)
+        val prior = tablePrior(model, leadHours, region)
         val regMap = coordinate?.let { regional[gridKey(it)] } ?: regional["default"]
         if (regMap != null) {
             val regTotal = regMap.entries.sumOf { (k, v) -> if (k in synopticModels && k in region.models) v else 0.0 }

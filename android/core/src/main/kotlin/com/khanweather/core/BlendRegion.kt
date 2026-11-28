@@ -19,6 +19,9 @@ data class BlendRegion(
     val models: List<WeatherModel>,
     /** Weights by forecast day, centred at lead hours 12, 36, 60, 84, 108 and 132. */
     val byDay: List<Map<WeatherModel, Double>>,
+    /** Weights for lead hours 0-2, 3-5 and 6-11 (centred at SHORT_RANGE_CENTRES), from each model's
+     *  newest run (tools/score_short_range.py). Empty where they didn't beat byDay[0]. */
+    val shortRange: List<Map<WeatherModel, Double>> = emptyList(),
 ) {
     /** latitude latMin..latMax, longitude lonMin..lonMax (degrees east). */
     data class Box(val latMin: Double, val latMax: Double, val lonMin: Double, val lonMax: Double) {
@@ -26,6 +29,8 @@ data class BlendRegion(
     }
 
     companion object {
+        val SHORT_RANGE_CENTRES = listOf(1.0, 4.0, 8.5)
+
         private fun parse(o: JsonObject): BlendRegion {
             fun model(name: String): WeatherModel =
                 WeatherModel.entries.firstOrNull { it.name == name } ?: error("Unknown model $name in blend-regions.json")
@@ -39,6 +44,7 @@ data class BlendRegion(
                 useBlend = o["useBlend"]!!.jsonPrimitive.boolean,
                 models = o["models"].arr!!.map { model(it.str!!) },
                 byDay = o["byDay"].arr!!.map { day -> day.obj!!.entries.associate { (k, v) -> model(k) to v.numOnly!! } },
+                shortRange = o["shortRange"].arr.orEmpty().map { b -> b.obj!!.entries.associate { (k, v) -> model(k) to v.numOnly!! } },
             )
         }
 
