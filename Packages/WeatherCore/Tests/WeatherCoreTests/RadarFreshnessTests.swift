@@ -20,14 +20,13 @@ final class RadarFreshnessTests: XCTestCase {
         XCTAssertEqual(RadarFreshness.relative(now.addingTimeInterval(12 * 60), now: now), "in 12 min")
     }
 
-    func testParsesGeoMetTimeExtent() {
-        let xml = """
-        <Layer><Name>RADAR_1KM_RRAI</Name><Dimension name="time" units="ISO8601" default="2026-11-28T15:48:00Z" nearestValue="0">2026-11-28T12:54:00Z/2026-11-28T15:48:00Z/PT6M</Dimension></Layer>
-        """
-        XCTAssertEqual(RadarFreshness.parseLatest(xml), ISO8601DateFormatter().date(from: "2026-11-28T15:48:00Z"))
-        let defaultOnly = #"<Dimension name="time" units="ISO8601" default="2026-11-28T15:42:00Z"></Dimension>"#
-        XCTAssertEqual(RadarFreshness.parseLatest(defaultOnly), ISO8601DateFormatter().date(from: "2026-11-28T15:42:00Z"))
-        XCTAssertNil(RadarFreshness.parseLatest("<html>error</html>"))
+    func testNewestFrameFromTheSpotsReading() async {
+        let json = #"{"type":"FeatureCollection","features":[{"properties":{"value":0.0,"time":"2026-11-28T15:54:00Z"}}]}"#
+        let provider = ECCCRadarProvider { req in
+            (Data(json.utf8), HTTPURLResponse(url: req.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        let latest = await RadarFreshness.latestECCCFrame(at: Coordinate(latitude: 43.51, longitude: -79.88), provider: provider)
+        XCTAssertEqual(latest, ISO8601DateFormatter().date(from: "2026-11-28T15:54:00Z"))
     }
 
     func testLoopEndsAtNewestPublishedFrame() {

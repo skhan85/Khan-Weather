@@ -19,6 +19,3 @@ jobs:
       - name: App pipeline
         env: { LIVE_COMPARE: "1" }
         run: swift run --package-path Packages/WeatherCore LiveCompare 2>&1 | tail -60
-      - name: GeoMet radar capabilities
-        run: |
-          curl -s "https://geo.weather.gc.ca/geomet?service=WMS&version=1.3.0&request=GetCapabilities&layer=RADAR_1KM_RRAI" | grep -o '<Dimension name="time"[^<]*</Dimension>' ; date -u

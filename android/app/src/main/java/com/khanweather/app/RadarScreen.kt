@@ -48,7 +48,7 @@ fun RadarScreen(center: Coordinate) {
 private fun rememberLatestRadarFrame(center: Coordinate): Long? {
     var latest by remember(center) { mutableStateOf<Long?>(null) }
     LaunchedEffect(center) {
-        latest = if (radarCovers(center)) RadarFreshness.latestEcccFrame() else RadarFreshness.latestRainViewerFrame()
+        latest = if (radarCovers(center)) RadarFreshness.latestEcccFrame(center) else RadarFreshness.latestRainViewerFrame()
     }
     return latest
 }

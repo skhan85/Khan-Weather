@@ -24,7 +24,7 @@ enum LiveCompare {
         var out = "## App for Milton at \(df.string(from: Date()))\n"
         let c = fc.current
         out += "- now: \(f(c.temperature))° \(c.condition.description), feels \(f(c.feelsLike)) (\(c.feelsLikeKind)), RH \(f(c.humidity)), wind \(f(c.windSpeed)) from \(f(c.windDirection)) gust \(f(c.windGusts)), pressure \(f(c.pressure)), precip \(f(c.precipitation))\n"
-        out += "- obs: \(observed.map { "\($0.stationName) \(f($0.distanceKm)) km \(f($0.temperature))° \($0.conditionText ?? "-") at \(df.string(from: $0.time))" } ?? "none")\n"
+        out += "- obs: \(observed.map { "\($0.stationName) \(f($0.distanceKm)) km \(f($0.temperature))° \($0.conditionText ?? "-") at \(df.string(from: $0.observedAt))" } ?? "none")\n"
         out += "- sky source: \(fc.skySource ?? "forecast"); radar: \(radar.map { "rain \(f($0.rainMmPerHour)) at \(df.string(from: $0.time))" } ?? "none")\n"
         out += "- nowcast: \(fc.nowcast()?.text ?? "none"); relay nowcast frame: \(nc.map { "\($0)".prefix(200) } ?? "none")\n"
         for h in (fc.recentHours ?? []) + fc.hourly.prefix(8) {

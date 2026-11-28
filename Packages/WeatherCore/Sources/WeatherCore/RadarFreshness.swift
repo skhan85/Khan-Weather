@@ -52,38 +52,12 @@ public enum RadarFreshness {
 
     // MARK: Environment Canada's newest frame
 
-    /// GeoMet's capabilities for one radar layer: its time dimension ends at the newest frame.
-    public static let capabilitiesURL = URL(string:
-        "https://geo.weather.gc.ca/geomet?service=WMS&version=1.3.0&request=GetCapabilities&layer=RADAR_1KM_RRAI")!
-
-    /// The newest Environment Canada radar frame, or nil if GeoMet doesn't answer within `timeout`.
-    public static func latestECCCFrame(timeout: TimeInterval = 6,
-                                       loader: @Sendable (URLRequest) async throws -> (Data, URLResponse) = { try await URLSession.shared.data(for: $0) }) async -> Date? {
-        guard let (data, _) = try? await loader(URLRequest(url: capabilitiesURL, timeoutInterval: timeout)),
-              let xml = String(data: data, encoding: .utf8) else { return nil }
-        return parseLatest(xml)
-    }
-
-    /// The end of the layer's time extent, from `<Dimension name="time" ...>start/end/PT6M</Dimension>`
-    /// (or a comma list of times). Falls back to the `default` attribute.
-    static func parseLatest(_ xml: String) -> Date? {
-        guard let open = xml.range(of: "<Dimension name=\"time\"") else { return nil }
-        let rest = xml[open.lowerBound...]
-        guard let tagEnd = rest.firstIndex(of: ">") else { return nil }
-        let tag = rest[..<tagEnd]
-        let body = rest[rest.index(after: tagEnd)...].prefix { $0 != "<" }
-        let iso = ISO8601DateFormatter()
-        func date(_ s: Substring) -> Date? { iso.date(from: s.trimmingCharacters(in: .whitespacesAndNewlines)) }
-        let candidates = body.split(separator: ",").compactMap { item -> Date? in
-            let parts = item.split(separator: "/")
-            return parts.count >= 2 ? date(parts[1]) : date(parts.first ?? "")
-        }
-        if let last = candidates.max() { return last }
-        if let d = tag.range(of: "default=\"") {
-            let v = tag[d.upperBound...].prefix { $0 != "\"" }
-            return date(v)
-        }
-        return nil
+    /// The newest Environment Canada radar frame, from the time GeoMet stamps on the reading at
+    /// this spot (one small request; the full capabilities document can take a minute). Nil if
+    /// GeoMet doesn't answer within `timeout`.
+    public static func latestECCCFrame(at coordinate: Coordinate, timeout: Double = 6,
+                                       provider: ECCCRadarProvider = ECCCRadarProvider()) async -> Date? {
+        await Deadline.run(timeout) { try? await provider.reading("RADAR_1KM_RRAI", at: coordinate)?.time }
     }
 
     /// Environment Canada's loop: the last hour of frames, every 6 minutes, ending at `latest`

@@ -5,7 +5,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
-import java.time.Instant
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.roundToInt
@@ -51,12 +51,15 @@ object RadarFreshness {
         return if (minutes < 0) "${-minutes} min ago" else "in $minutes min"
     }
 
-    const val CAPABILITIES_URL =
-        "https://geo.weather.gc.ca/geomet?service=WMS&version=1.3.0&request=GetCapabilities&layer=RADAR_1KM_RRAI"
-
-    /** Environment Canada's newest radar frame (epoch ms), or null if GeoMet doesn't answer. */
-    suspend fun latestEcccFrame(loader: HttpLoader = defaultLoader): Long? = try {
-        parseLatest(loader.get(CAPABILITIES_URL, null, 6_000).decodeToString())
+    /**
+     * Environment Canada's newest radar frame (epoch ms), from the time GeoMet stamps on the
+     * reading at this spot (one small request), or null if it doesn't answer.
+     */
+    suspend fun latestEcccFrame(c: Coordinate, loader: HttpLoader = defaultLoader): Long? = try {
+        withTimeoutOrNull(6_000) {
+            ECCCRadarProvider.parse(loader.fetch(ECCCRadarProvider.url("RADAR_1KM_RRAI", c), timeoutSeconds = 6))
+                ?.second?.let { (it * 1000).toLong() }
+        }
     } catch (e: Exception) {
         null
     }
@@ -72,24 +75,6 @@ object RadarFreshness {
         val root = Json.parseToJsonElement(json).jsonObject
         val past = root["radar"]?.jsonObject?.get("past")?.jsonArray ?: return null
         return past.mapNotNull { it.jsonObject["time"]?.jsonPrimitive?.longOrNull }.maxOrNull()?.let { it * 1000 }
-    }
-
-    fun parseLatest(xml: String): Long? {
-        val open = xml.indexOf("<Dimension name=\"time\"")
-        if (open < 0) return null
-        val tagEnd = xml.indexOf('>', open)
-        if (tagEnd < 0) return null
-        val tag = xml.substring(open, tagEnd)
-        val body = xml.substring(tagEnd + 1).substringBefore('<')
-        fun parse(s: String): Long? = try { Instant.parse(s.trim()).toEpochMilli() } catch (e: Exception) { null }
-        val candidates = body.split(',').mapNotNull { item ->
-            val parts = item.split('/')
-            if (parts.size >= 2) parse(parts[1]) else parse(parts[0])
-        }
-        candidates.maxOrNull()?.let { return it }
-        val d = tag.indexOf("default=\"")
-        if (d >= 0) return parse(tag.substring(d + 9).substringBefore('"'))
-        return null
     }
 
     /** The last hour (or `hours`) of frame times ending at `latestMs`, else at the usual 9-minute guess. */

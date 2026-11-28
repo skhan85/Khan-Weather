@@ -480,7 +480,7 @@ enum RadarFrames {
 
     static func load(for c: Coordinate, hours: Int = 1) async -> [RadarFrame] {
         if ECCCRadarProvider.covers(c) {
-            let newest = await RadarFreshness.latestECCCFrame()
+            let newest = await RadarFreshness.latestECCCFrame(at: c)
             let past = recent(hours: hours, latest: newest)
             let latest = past.last?.time ?? Date()
             return past + extrapolation(after: latest)

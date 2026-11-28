@@ -20,9 +20,7 @@ class RadarFreshnessTest {
     }
 
     @Test fun parsesGeoMet() {
-        val xml = """<Dimension name="time" units="ISO8601" default="2026-11-28T15:48:00Z" nearestValue="0">2026-11-28T12:54:00Z/2026-11-28T15:48:00Z/PT6M</Dimension>"""
-        assertEquals(java.time.Instant.parse("2026-11-28T15:48:00Z").toEpochMilli(), RadarFreshness.parseLatest(xml))
-        assertNull(RadarFreshness.parseLatest("<html/>"))
+        assertNull(RadarFreshness.parseRainViewerLatest("""{"host":"h","radar":{"past":[]}}"""))
         assertEquals(1_795_880_400_000L, RadarFreshness.parseRainViewerLatest(
             """{"host":"h","radar":{"past":[{"time":1795879800,"path":"/a"},{"time":1795880400,"path":"/b"}],"nowcast":[]}}"""))
     }
