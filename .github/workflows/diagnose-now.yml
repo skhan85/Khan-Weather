@@ -1,0 +1,12 @@
+name: Diagnose light rain now
+on:
+  push:
+    paths: [tools/diagnose_now.py, .github/workflows/diagnose-now.yml]
+  workflow_dispatch:
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tools/diagnose_now.py 43.52 -79.88
