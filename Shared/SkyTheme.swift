@@ -71,7 +71,7 @@ struct Sky: Equatable {
         switch c {
         case .clear: return .clear
         case .mainlyClear, .partlyCloudy: return .partly
-        case .overcast, .fog, .unknown: return .grey
+        case .overcast, .mostlyCloudy, .fog, .unknown: return .grey
         case .drizzle, .rain, .rainShowers, .freezingDrizzle, .freezingRain: return .wet
         case .snow, .snowGrains, .snowShowers: return .snow
         case .thunderstorm, .thunderstormHail: return .storm

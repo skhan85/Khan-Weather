@@ -45,6 +45,12 @@ object WeatherIcons {
                 if (isDay) sun(canvas, 38f, 38f, 16f, fill, stroke) else moon(canvas, 38f, 36f, 19f, fill)
                 cloud(canvas, 58f, 66f, if (condition == mainlyClear) 0.7f else 0.85f, CLOUD, fill)
             }
+            mostlyCloudy -> {
+                // A little sun or moon peeking out behind two clouds.
+                if (isDay) sun(canvas, 34f, 32f, 13f, fill, stroke) else moon(canvas, 34f, 30f, 15f, fill)
+                cloud(canvas, 42f, 48f, 0.72f, CLOUD_BACK, fill)
+                cloud(canvas, 58f, 64f, 0.92f, CLOUD, fill)
+            }
             overcast, unknown -> {
                 cloud(canvas, 40f, 44f, 0.75f, CLOUD_BACK, fill)
                 cloud(canvas, 56f, 60f, 0.95f, CLOUD, fill)

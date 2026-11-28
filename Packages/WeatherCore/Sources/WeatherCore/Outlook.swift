@@ -15,7 +15,7 @@ public enum Outlook {
     }
 
     private static func isCloudOnly(_ c: WeatherCondition) -> Bool {
-        [.mainlyClear, .partlyCloudy, .overcast].contains(c)
+        [.mainlyClear, .partlyCloudy, .mostlyCloudy, .overcast].contains(c)
     }
 
     /// The end of a warm-up (`rising`) or cool-down starting now: the warmest (coldest) hour

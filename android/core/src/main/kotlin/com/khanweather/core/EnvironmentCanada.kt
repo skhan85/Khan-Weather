@@ -72,7 +72,8 @@ object ECCC {
             text.contains("fog") || text.contains("mist") || text.contains("haze") || text.contains("smoke") -> WeatherCondition.fog
             text.contains("mainly sunny") || text.contains("mainly clear") -> WeatherCondition.mainlyClear
             text.contains("sunny") || text.contains("clear") -> WeatherCondition.clear
-            text.contains("partly") || text.contains("mostly cloudy") || text.contains("a few clouds") -> WeatherCondition.partlyCloudy
+            text.contains("mostly cloudy") || text.contains("cloudy periods") -> WeatherCondition.mostlyCloudy
+            text.contains("partly") || text.contains("a few clouds") -> WeatherCondition.partlyCloudy
             text.contains("cloud") || text.contains("overcast") -> WeatherCondition.overcast
             else -> null
         }

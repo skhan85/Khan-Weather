@@ -148,6 +148,10 @@ public extension Forecast {
     /// at least the next 2 hours" while it drizzled. The radar over the spot showed nothing:
     /// drizzle falls from cloud too low for it to see.
     func agreeingNowWithNowcast(at now: Date = Date()) -> Forecast {
+        withSteadySkies().nowFollowingNowcast(at: now)
+    }
+
+    private func nowFollowingNowcast(at now: Date) -> Forecast {
         guard !current.condition.isPrecipitation, current.condition != .thunderstorm,
               current.condition != .thunderstormHail else { return self }
         let slots = nowcastSlots(at: now)
@@ -177,7 +181,7 @@ public extension Forecast {
     /// - an airport or station within 40 km reports drizzle, with damp air and cloud here;
     /// - very damp air under cloud, with rain due within the hour.
     func drizzlingRadarCantSee(slots: [PrecipitationSlot]) -> Forecast {
-        guard [.overcast, .partlyCloudy, .fog].contains(current.condition),
+        guard [.overcast, .mostlyCloudy, .partlyCloudy, .fog].contains(current.condition),
               current.temperature > -3, current.temperature < 15,
               let rh = current.humidity, radar?.isPrecipitating != true else { return self }
         let nearby = observation?.nearbyDrizzleStation

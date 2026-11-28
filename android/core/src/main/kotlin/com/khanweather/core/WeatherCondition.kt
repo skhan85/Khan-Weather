@@ -8,6 +8,8 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class WeatherCondition {
     clear, mainlyClear, partlyCloudy, overcast, fog,
+    /** More cloud than sky: "Mostly Cloudy", a METAR's BKN layer. */
+    mostlyCloudy,
     drizzle, freezingDrizzle, rain, freezingRain,
     snow, snowGrains, rainShowers, snowShowers,
     thunderstorm, thunderstormHail,
@@ -18,6 +20,7 @@ enum class WeatherCondition {
             clear -> "Clear"
             mainlyClear -> "Mainly clear"
             partlyCloudy -> "Partly cloudy"
+            mostlyCloudy -> "Mostly cloudy"
             overcast -> "Overcast"
             fog -> "Fog"
             drizzle -> "Drizzle"
@@ -98,7 +101,8 @@ enum class WeatherCondition {
                 t.contains("shower") -> rainShowers
                 t.contains("rain") -> rain
                 t.contains("fog") || t.contains("mist") || t.contains("haze") -> fog
-                t.contains("overcast") || t == "cloudy" || t.contains("mostly cloudy") -> overcast
+                t.contains("mostly cloudy") || t.contains("considerable cloud") -> mostlyCloudy
+                t.contains("overcast") || t == "cloudy" -> overcast
                 t.contains("partly") || t.contains("cloud") -> partlyCloudy
                 t.contains("clear") || t.contains("sunny") || t.contains("fair") -> clear
                 else -> null
@@ -120,7 +124,8 @@ enum class WeatherCondition {
                 else -> when (cover?.uppercase()) {
                     "SKC", "CLR", "CAVOK", "NSC", "NCD" -> clear
                     "FEW" -> mainlyClear
-                    "SCT", "BKN" -> partlyCloudy
+                    "SCT" -> partlyCloudy
+                    "BKN" -> mostlyCloudy
                     "OVC", "OVX" -> overcast
                     else -> null
                 }

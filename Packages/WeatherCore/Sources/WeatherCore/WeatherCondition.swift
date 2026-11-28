@@ -3,6 +3,9 @@ import Foundation
 /// Provider-neutral sky/precipitation state.
 public enum WeatherCondition: String, Codable, Sendable, CaseIterable {
     case clear, mainlyClear, partlyCloudy, overcast, fog
+    /// More cloud than sky: Environment Canada's and NWS's "Mostly Cloudy", a METAR's BKN layer.
+    /// Added last among the sky states so saved forecasts still decode.
+    case mostlyCloudy
     case drizzle, freezingDrizzle, rain, freezingRain
     case snow, snowGrains, rainShowers, snowShowers
     case thunderstorm, thunderstormHail
@@ -35,6 +38,7 @@ public enum WeatherCondition: String, Codable, Sendable, CaseIterable {
         case .clear: return "Clear"
         case .mainlyClear: return "Mainly clear"
         case .partlyCloudy: return "Partly cloudy"
+        case .mostlyCloudy: return "Mostly cloudy"
         case .overcast: return "Overcast"
         case .fog: return "Fog"
         case .drizzle: return "Drizzle"
@@ -56,6 +60,7 @@ public enum WeatherCondition: String, Codable, Sendable, CaseIterable {
         switch self {
         case .clear: return isDay ? "sun.max.fill" : "moon.stars.fill"
         case .mainlyClear, .partlyCloudy: return isDay ? "cloud.sun.fill" : "cloud.moon.fill"
+        case .mostlyCloudy: return isDay ? "cloud.sun.fill" : "cloud.moon.fill"
         case .overcast: return "cloud.fill"
         case .fog: return "cloud.fog.fill"
         case .drizzle: return "cloud.drizzle.fill"
