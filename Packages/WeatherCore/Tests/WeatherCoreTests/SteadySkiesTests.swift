@@ -23,7 +23,7 @@ final class SteadySkiesTests: XCTestCase {
     }
 
     func testRealChangesAndRainAreKept() {
-        let skies: [WeatherCondition] = [.overcast, .clear, .clear, .rain, .clear, .overcast, .partlyCloudy, .overcast]
+        let skies: [WeatherCondition] = [.overcast, .clear, .clear, .rain, .clear, .overcast, .mostlyCloudy, .overcast]
         XCTAssertEqual(forecast(skies).withSteadySkies().hourly.map(\.condition), skies)
     }
 

@@ -20,7 +20,7 @@ class SteadySkiesTest {
 
     @Test fun realChangesKept() {
         val skies = listOf(WeatherCondition.overcast, WeatherCondition.clear, WeatherCondition.clear, WeatherCondition.rain,
-            WeatherCondition.clear, WeatherCondition.overcast, WeatherCondition.partlyCloudy, WeatherCondition.overcast)
+            WeatherCondition.clear, WeatherCondition.overcast, WeatherCondition.mostlyCloudy, WeatherCondition.overcast)
         assertEquals(skies, forecast(skies).withSteadySkies().hourly.map { it.condition })
     }
 
