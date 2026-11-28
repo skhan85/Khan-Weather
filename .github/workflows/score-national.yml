@@ -1,0 +1,49 @@
+name: Score national sources
+
+# Scores more national models (Open-Meteo Single Runs) and NOAA's station forecasts (IEM MOS
+# archive) against the app's blend at ~70 airports, held out by airport within each region
+# (tools/score_national.py). Run by hand or on a push that changes the scorer.
+# Linux: GitHub's Mac runners can't reach api.open-meteo.com.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - tools/score_national.py
+      - .github/workflows/score-national.yml
+
+permissions:
+  contents: read
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: tools/verify-cache
+          key: national-cache-${{ github.run_id }}
+          restore-keys: |
+            national-cache-
+            regions-cache-
+      - name: Airport observations
+        working-directory: tools
+        run: NAT_STAGE=obs python3 score_national.py
+      - name: Score
+        working-directory: tools
+        timeout-minutes: 310
+        run: python3 score_national.py | tee national-report.txt
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: tools/verify-cache
+          key: national-cache-${{ github.run_id }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: national-results
+          path: |
+            tools/national-report.json
+            tools/national-report.txt

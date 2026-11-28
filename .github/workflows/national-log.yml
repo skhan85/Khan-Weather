@@ -1,0 +1,52 @@
+name: National forecast log
+
+# Snapshots of free national forecasts that keep no public archive (NWS, MET Norway, DWD MOSMIX,
+# Met Office when MET_OFFICE_KEY is set, BoM and KMA via Open-Meteo) next to the blend's own
+# models, at ~50 airports worldwide (tools/log_national.py). Saved to the national-log branch
+# and scored later by tools/score_national_forward.py. GitHub runs schedules irregularly
+# (here often every few hours); that's fine, each snapshot is scored on its own.
+
+on:
+  schedule:
+    - cron: "23 */2 * * *"
+  workflow_dispatch:
+  push:
+    branches-ignore: [main]
+    paths:
+      - tools/log_national.py
+      - .github/workflows/national-log.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: national-log
+  cancel-in-progress: false
+
+jobs:
+  log:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out the log branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git fetch --depth=1 origin national-log; then
+            git worktree add log origin/national-log
+            git -C log switch -c national-log
+          else
+            git worktree add --orphan -b national-log log
+          fi
+      - name: Snapshot
+        env:
+          MET_OFFICE_KEY: ${{ secrets.MET_OFFICE_KEY }}
+        run: python3 tools/log_national.py log
+      - name: Save
+        run: |
+          cd log
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -q -m "National snapshot $(date -u +%Y-%m-%dT%H:%MZ)"
+          for i in 1 2 3; do git push origin national-log && break; git pull --rebase -q origin national-log; done
