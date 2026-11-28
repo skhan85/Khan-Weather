@@ -1,0 +1,50 @@
+name: Score short-range models
+
+# Scores the next 12 hours the way the app sees them (each model's newest run,
+# tools/score_short_range.py) at about 65 airports and fits short-range blend weights per region.
+# Run by hand, or on a push that changes the scorer. Re-runs reuse the download cache.
+# Linux: GitHub's Mac runners can't reach api.open-meteo.com.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - tools/score_short_range.py
+      - tools/score_regions.py
+      - .github/workflows/score-short-range.yml
+
+permissions:
+  contents: read
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: tools/verify-cache
+          key: short-cache-${{ github.run_id }}
+          restore-keys: short-cache-
+      - name: Airport observations
+        working-directory: tools
+        run: SHORT_STAGE=obs python3 score_short_range.py
+      - name: Score
+        working-directory: tools
+        timeout-minutes: 300
+        run: python3 score_short_range.py | tee short-range-report.txt
+      # Saved even when the run is cut short, so the next run picks up where this one stopped.
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: tools/verify-cache
+          key: short-cache-${{ github.run_id }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: short-range-results
+          path: |
+            tools/short-range-weights.json
+            tools/short-range-report.json
+            tools/short-range-report.txt
