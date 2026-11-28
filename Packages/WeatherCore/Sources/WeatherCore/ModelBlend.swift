@@ -246,15 +246,18 @@ public enum ModelBlend {
 
     // MARK: Daily high and low
 
-    /// Added to the warmest blended hour for the day's high. A day's real high usually falls
-    /// between two hours: at six ECCC stations around Milton (Nov 2025-Oct 2026,
-    /// tools/score_extremes.py) the warmest hourly reading was 0.27-0.42° below the recorded high
-    /// at every one of them, and the app's highs ran about 0.5-0.75° low. Only this between-hours
-    /// part is added, since it was the same everywhere; held out per station it cut today's
-    /// high error from 1.02 to about 0.9°.
-    public static let highAllowance: Double = 0.4
+    /// Added to the warmest blended hour for the daily high. The real high falls between hours,
+    /// and the blend (an average) runs below each model's own peak. Scored worldwide against
+    /// official daily highs (NOAA GHCN-Daily, tools/score_highlow.py, 34 airports in North America,
+    /// Europe and Australia/NZ, Jan-Oct 2026): the blend's high needed +0.9 on average (median
+    /// +1.0), about the same in every region. Fitted on the other airports and scored on the one
+    /// left out, +0.9 cut tomorrow's high error from 1.08 to 0.97 (day after: 1.20 to 1.09) and
+    /// helped in all four regions. Was 0.4, fitted at six Ontario stations only.
+    /// The high can sit a degree above the warmest hour shown; that's where real highs land.
+    public static let highAllowance: Double = 0.9
     /// Taken off the coldest blended hour for the low: the coldest hourly reading was 0.37-0.66°
-    /// above the recorded low at the same stations.
+    /// above the recorded low at the same stations. The worldwide check (tools/score_highlow.py)
+    /// agreed: 0.5 scored as well as a fitted constant in every region, so it stays.
     public static let lowAllowance: Double = 0.5
     /// Weight and horizon for blending Google Weather hourly temperatures over the regional NWP blend.
     public static let googleWeight: Double = 0.15

@@ -1,0 +1,48 @@
+name: Ensemble log
+
+# Saves ensemble rain chances at ~70 airports twice a day (tools/log_ensembles.py) to the
+# ensemble-log branch, because Open-Meteo keeps ensemble members for only three days.
+# tools/score_ensembles.py scores them against airport reports once two weeks or so are in.
+# Linux: GitHub's Mac runners can't reach api.open-meteo.com.
+
+on:
+  schedule:
+    - cron: "23 3,15 * * *"
+  workflow_dispatch:
+  push:
+    paths:
+      - tools/log_ensembles.py
+      - .github/workflows/ensemble-log.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ensemble-log
+  cancel-in-progress: false
+
+jobs:
+  log:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check out the log branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git fetch --depth=1 origin ensemble-log; then
+            git worktree add log origin/ensemble-log
+            git -C log switch -c ensemble-log
+          else
+            git worktree add --orphan -b ensemble-log log
+          fi
+      - name: Snapshot
+        run: python3 tools/log_ensembles.py log
+      - name: Save
+        run: |
+          cd log
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -q -m "Ensemble snapshot $(date -u +%Y-%m-%dT%H:%MZ)"
+          for i in 1 2 3; do git push origin ensemble-log && break; git pull --rebase -q origin ensemble-log; done

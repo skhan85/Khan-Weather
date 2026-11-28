@@ -22,7 +22,7 @@ class DisplayConsistencyTest {
         val temps = OpenMeteoProvider.ModelTemperatures()
         for (h in f.hourly) temps.hourly[h.time.toLong()] = OpenMeteoProvider.ModelTemperatures.Hour(h.temperature, null, h.temperature, h.temperature, 6, 0, 0)
         f = f.applying(temps)
-        close(9.4, f.daily[0].high, 0.001)
+        close(9.9, f.daily[0].high, 0.001)
         close(0.5, f.daily[0].low, 0.001)
         close(4.5, f.displayDay(midnight + 15 * 3600)?.low, 0.001)
     }
