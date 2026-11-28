@@ -1,0 +1,47 @@
+name: Score sky blend
+
+# Runs tools/score_sky.py at ~70 airports worldwide (by hand, or on a push that changes it).
+# Re-runs reuse the download cache. Linux: GitHub's Mac runners can't reach api.open-meteo.com.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - tools/score_sky.py
+      - .github/workflows/score-sky.yml
+
+permissions:
+  contents: read
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: tools/verify-cache
+          key: sky-cache-${{ github.run_id }}
+          restore-keys: |
+            sky-cache-
+            regions-cache-
+      - name: Observations
+        working-directory: tools
+        run: SKY_STAGE=obs python3 score_sky.py
+      - name: Score
+        working-directory: tools
+        timeout-minutes: 300
+        run: python3 score_sky.py | tee sky-report.txt
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: tools/verify-cache
+          key: sky-cache-${{ github.run_id }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sky-results
+          path: |
+            tools/sky-report.json
+            tools/sky-report.txt
