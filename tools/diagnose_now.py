@@ -10,7 +10,7 @@ def get(u, t=40):
         return f"ERROR {e}"
 print("== METARs within ~45 km, last 4 h")
 bbox = f"{LAT-0.4},{LON-0.55},{LAT+0.4},{LON+0.55}"
-print(get(f"https://aviationweather.gov/api/data/metar?ids=CYYZ,CYHM,CZBA,CYKZ,CYTZ,CYOO,CYKFprint(get(f"https://aviationweather.gov/api/data/metar?bbox={bbox}&hours=4&format=raw"))hours=3&format=raw"))
+print(get("https://aviationweather.gov/api/data/metar?ids=CYYZ,CYHM,CZBA,CYKZ,CYTZ,CYOO,CYKF&hours=3&format=raw"))
 print("== ECCC city pages near")
 q = urllib.parse.urlencode({"f": "json", "lang": "en", "limit": "10",
      "bbox": f"{LON-0.6},{LAT-0.4},{LON+0.6},{LAT+0.4}"})
