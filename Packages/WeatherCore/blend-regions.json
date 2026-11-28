@@ -71,6 +71,33 @@
      "uk": 0.113,
      "europeHighRes": 0.146
     }
+   ],
+   "shortRange": [
+    {
+     "germany": 0.106,
+     "uk": 0.34,
+     "canadaHighRes": 0.125,
+     "usHighRes": 0.377,
+     "usBlend": 0.052
+    },
+    {
+     "europeAI": 0.175,
+     "germany": 0.185,
+     "uk": 0.179,
+     "canadaHighRes": 0.194,
+     "usHighRes": 0.119,
+     "usBlend": 0.098,
+     "europeHighRes": 0.05
+    },
+    {
+     "europeAI": 0.175,
+     "germany": 0.185,
+     "uk": 0.179,
+     "canadaHighRes": 0.194,
+     "usHighRes": 0.119,
+     "usBlend": 0.098,
+     "europeHighRes": 0.05
+    }
    ]
   },
   {
@@ -402,6 +429,26 @@
      "germany": 0.074,
      "uk": 0.202,
      "europeHighRes": 0.111
+    }
+   ],
+   "shortRange": [
+    {
+     "europeAI": 0.155,
+     "germany": 0.375,
+     "uk": 0.265,
+     "europeHighRes": 0.204
+    },
+    {
+     "europeAI": 0.182,
+     "germany": 0.311,
+     "uk": 0.26,
+     "europeHighRes": 0.248
+    },
+    {
+     "europeAI": 0.26,
+     "germany": 0.303,
+     "uk": 0.188,
+     "europeHighRes": 0.249
     }
    ]
   }

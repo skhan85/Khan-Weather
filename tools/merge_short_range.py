@@ -38,7 +38,7 @@ def main():
         if wins and len(out) == 3:
             r["shortRange"] = out
             used = {m for d in out for m in d}
-            r["models"] = [m for m in ORDER if m in set(r["models"]) | used]
+            r["models"] = r["models"] + [m for m in ORDER if m in used and m not in r["models"]]
         else:
             r.pop("shortRange", None)
     with open(path, "w") as f:

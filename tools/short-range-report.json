@@ -1,0 +1,116 @@
+{
+ "regions": {
+  "na_east": {
+   "bands": [
+    {
+     "held_out_chosen": 0.861,
+     "held_out_app_now": 0.889
+    },
+    {
+     "held_out_chosen": 0.914,
+     "held_out_app_now": 0.906
+    },
+    {
+     "held_out_chosen": 0.974,
+     "held_out_app_now": 0.96
+    }
+   ]
+  },
+  "na_west": {
+   "bands": [
+    {
+     "held_out_chosen": 0.965,
+     "held_out_app_now": 0.952
+    },
+    {
+     "held_out_chosen": 1.064,
+     "held_out_app_now": 1.022
+    },
+    {
+     "held_out_chosen": 1.092,
+     "held_out_app_now": 1.077
+    }
+   ]
+  },
+  "europe": {
+   "bands": [
+    {
+     "held_out_chosen": 0.808,
+     "held_out_app_now": 0.811
+    },
+    {
+     "held_out_chosen": 0.842,
+     "held_out_app_now": 0.838
+    },
+    {
+     "held_out_chosen": 0.829,
+     "held_out_app_now": 0.821
+    }
+   ]
+  },
+  "sw_asia": {
+   "bands": [
+    {
+     "held_out_chosen": 1.158,
+     "held_out_app_now": 1.155
+    },
+    {
+     "held_out_chosen": 1.126,
+     "held_out_app_now": 1.117
+    },
+    {
+     "held_out_chosen": 1.224,
+     "held_out_app_now": 1.217
+    }
+   ]
+  },
+  "east_asia": {
+   "bands": [
+    {
+     "held_out_chosen": 0.976,
+     "held_out_app_now": 0.963
+    },
+    {
+     "held_out_chosen": 1.013,
+     "held_out_app_now": 0.99
+    },
+    {
+     "held_out_chosen": 1.037,
+     "held_out_app_now": 1.016
+    }
+   ]
+  },
+  "oceania": {
+   "bands": [
+    {
+     "held_out_chosen": 1.081,
+     "held_out_app_now": 1.094
+    },
+    {
+     "held_out_chosen": 1.063,
+     "held_out_app_now": 1.075
+    },
+    {
+     "held_out_chosen": 1.046,
+     "held_out_app_now": 1.049
+    }
+   ]
+  },
+  "global": {
+   "bands": [
+    {
+     "held_out_chosen": 1.101,
+     "held_out_app_now": 1.086
+    },
+    {
+     "held_out_chosen": 1.079,
+     "held_out_app_now": 1.056
+    },
+    {
+     "held_out_chosen": 1.261,
+     "held_out_app_now": 1.247
+    }
+   ]
+  }
+ }
+}

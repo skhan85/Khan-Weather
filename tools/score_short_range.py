@@ -123,6 +123,8 @@ def main():
         times.append(datetime(d.year, d.month, d.day, (k * 7) % 24))   # every hour of the day in turn
         d += timedelta(days=EVERY)
         k += 1
+    # SHORT_STRIDE=2 keeps every other opening time (same times, so the download cache still fits).
+    times = times[::int(os.environ.get("SHORT_STRIDE", "1"))]
 
     table = json.load(open(TABLE))
     app_now = {r["id"]: r["byDay"][0] for r in table["regions"]}

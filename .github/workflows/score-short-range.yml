@@ -33,7 +33,8 @@ jobs:
       - name: Score
         working-directory: tools
         timeout-minutes: 300
-        run: python3 score_short_range.py | tee short-range-report.txt
+        # Open-Meteo's run archive answers slowly (~20 min an airport), so every other opening time.
+        run: SHORT_STRIDE=2 python3 score_short_range.py | tee short-range-report.txt
       # Saved even when the run is cut short, so the next run picks up where this one stopped.
       - uses: actions/cache/save@v4
         if: always()
