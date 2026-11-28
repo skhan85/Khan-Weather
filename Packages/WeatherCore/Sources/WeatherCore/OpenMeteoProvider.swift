@@ -82,6 +82,28 @@ public struct OpenMeteoProvider: ForecastProvider {
         return nil
     }
 
+    /// The blend's temperature at a weather station's own spot at `time` (no station re-weighting),
+    /// so a reading there can be compared with what the models said for it. A small request:
+    /// temperature only, 6 hours either side of now.
+    public func blendedTemperature(atStation station: Coordinate, time: Date) async -> Double? {
+        let region = BlendRegion.at(station)
+        var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "latitude", value: String(format: "%.4f", station.latitude)),
+            URLQueryItem(name: "longitude", value: String(format: "%.4f", station.longitude)),
+            URLQueryItem(name: "hourly", value: "temperature_2m"),
+            URLQueryItem(name: "models", value: region.models.map(\.rawValue).joined(separator: ",")),
+            URLQueryItem(name: "timeformat", value: "unixtime"),
+            URLQueryItem(name: "past_hours", value: "6"),
+            URLQueryItem(name: "forecast_hours", value: "6"),
+        ]
+        guard let url = components.url,
+              let (data, response) = try? await loader(URLRequest(url: url, timeoutInterval: 6)),
+              (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true,
+              let temps = try? Self.parseBlend(data, region: region, now: Date(), coordinate: station) else { return nil }
+        return Forecast.blendedTemperature(temps, at: time)
+    }
+
     func blendURL(for coordinate: Coordinate, region: BlendRegion? = nil) -> URL {
         let region = region ?? BlendRegion.at(coordinate)
         let c = coordinate.rounded

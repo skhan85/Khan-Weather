@@ -145,4 +145,46 @@ final class GlobalProvidersTests: XCTestCase {
         let o = try await world.observation(near: nyc)
         XCTAssertEqual(o?.stationName, "Near")
     }
+
+    func testWorldAsksModelAtDistantStationOnly() async throws {
+        let now = Date()
+        var far = Observation(stationName: "Airport", observedAt: now, temperature: 4, distanceKm: 25)
+        far.stationCoordinate = Coordinate(latitude: 40.9, longitude: -73.9)
+        var near = far
+        near.distanceKm = 6
+        let world = { (o: Observation) in
+            WorldObservationProvider(canada: Fixed(result: nil), us: Fixed(result: nil), germany: Fixed(result: nil),
+                                     europeNational: Fixed(result: nil), airports: Fixed(result: o),
+                                     modelAtStation: { _, _ in 2.5 })
+        }
+        let a = try await world(far).observation(near: nyc)
+        XCTAssertEqual(a?.modelAtStation, 2.5)
+        let b = try await world(near).observation(near: nyc)
+        XCTAssertNil(b?.modelAtStation, "a station within 10 km stands in for the spot itself")
+    }
+
+    func testDistantStationShiftsNowByPartOfModelError() {
+        let now = Date(timeIntervalSince1970: 1_795_000_000)
+        var o = Observation(stationName: "Airport", observedAt: now, temperature: 6, distanceKm: 25)
+        o.dataProvider = "METAR"
+        o.modelAtStation = 4          // models 2° too cold at the airport
+        let share = Observation.neighbourShare(distanceKm: 25)
+        XCTAssertEqual(o.neighbourShift ?? 0, 2 * share, accuracy: 1e-9)
+        let hours = (0..<14).map { HourlyForecast(time: now.addingTimeInterval(Double($0) * 3600), temperature: 3,
+                                                  condition: .overcast) }
+        let f = Forecast(location: nyc, timeZoneIdentifier: "America/New_York",
+                         current: CurrentConditions(time: now, temperature: 3, feelsLike: 1, feelsLikeKind: .apparent,
+                                                    condition: .overcast, isDay: true),
+                         hourly: hours, daily: [], source: "t", fetchedAt: now).applying(o)
+        XCTAssertEqual(f.current.temperature, 3 + 2 * share, accuracy: 1e-9)
+        XCTAssertEqual(f.hourly[0].temperature, 3 + 2 * share, accuracy: 1e-9)
+        XCTAssertEqual(f.hourly[13].temperature, 3, accuracy: 1e-9, "the correction fades")
+        // Too far, too odd, or a home station: no shift.
+        var far = o; far.distanceKm = 60
+        XCTAssertNil(far.neighbourShift)
+        var odd = o; odd.modelAtStation = -5
+        XCTAssertNil(odd.neighbourShift)
+        var home = o; home.dataProvider = "NETATMO"
+        XCTAssertNil(home.neighbourShift)
+    }
 }

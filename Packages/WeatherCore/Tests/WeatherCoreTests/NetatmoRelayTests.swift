@@ -159,4 +159,35 @@ final class NetatmoRelayTests: XCTestCase {
         XCTAssertEqual(dry.current.condition, .overcast)
         XCTAssertNil(dry.observation?.conditionText)
     }
+
+    /// A tight warm cluster 4° above a road-weather station: the models break the tie.
+    func testModelsBreakTieBetweenWarmClusterAndRoadStation() {
+        var road = Observation(stationName: "CR-27 Campbellville", observedAt: now, temperature: 1, distanceKm: 8)
+        road.dataProvider = "ON-MTO"
+        var cluster = Observation(stationName: "3 Netatmo stations in Milton", observedAt: now, temperature: 5, distanceKm: 0.5)
+        cluster.dataProvider = "NETATMO"
+        cluster.stationTemperatures = [4.8, 5.0, 5.3]
+        let merged = HyperlocalObservationProvider.merge(official: road, netatmo: cluster)
+        XCTAssertEqual(merged.temperature, 5, "a tight cluster may stand 4° from the road station")
+        XCTAssertEqual(merged.officialTemperature, 1)
+
+        func forecast(modelsLow: Double, modelsHigh: Double) -> Forecast {
+            var h0 = HourlyForecast(time: now.addingTimeInterval(-1800), temperature: 3, condition: .clear, isDay: false)
+            var h1 = HourlyForecast(time: now.addingTimeInterval(1800), temperature: 3, condition: .clear, isDay: false)
+            h0.modelLow = modelsLow; h0.modelHigh = modelsHigh
+            h1.modelLow = modelsLow; h1.modelHigh = modelsHigh
+            return Forecast(location: milton, timeZoneIdentifier: "America/Toronto",
+                            current: CurrentConditions(time: now, temperature: 3, feelsLike: 3, feelsLikeKind: .apparent,
+                                                       condition: .clear, isDay: false),
+                            hourly: [h0, h1], daily: [], source: "t", fetchedAt: now)
+        }
+        // Models 0.5-2.5° (middle 1.5): closer to the road station, which wins.
+        let cold = forecast(modelsLow: 0.5, modelsHigh: 2.5).applying(merged)
+        XCTAssertEqual(cold.current.temperature, 1)
+        XCTAssertEqual(cold.observation?.stationName, "CR-27 Campbellville")
+        // Models 3.5-5.5° (middle 4.5): the home stations win.
+        let mild = forecast(modelsLow: 3.5, modelsHigh: 5.5).applying(merged)
+        XCTAssertEqual(mild.current.temperature, 5)
+        XCTAssertEqual(mild.observation?.dataProvider, "NETATMO")
+    }
 }

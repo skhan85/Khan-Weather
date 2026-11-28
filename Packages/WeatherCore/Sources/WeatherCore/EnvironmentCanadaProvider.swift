@@ -40,6 +40,18 @@ public struct Observation: Equatable, Codable, Sendable {
     /// Home stations only: each nearby station's reading, nearest first, so a sun-heated one can
     /// be set aside against the forecast (see `Forecast.applying(_:)`).
     public var stationTemperatures: [Double]?
+    /// Home stations only: the official station they were allowed to disagree with by more than
+    /// `HyperlocalObservationProvider.tieBreakGap`, kept so the models can break the tie
+    /// (see `Forecast.applying(_:)`).
+    public var officialTemperature: Double?
+    public var officialStationName: String?
+    public var officialDistanceKm: Double?
+    public var officialProvider: String?
+    /// Where the station is, when the service says.
+    public var stationCoordinate: Coordinate?
+    /// The model blend's temperature at the station's own spot at `observedAt`, fetched only for a
+    /// station beyond `localRadiusKm` (see `neighbourShift`).
+    public var modelAtStation: Double?
     /// A station or airport within `drizzleReachKm` reporting drizzle, even when it is too far to
     /// stand in for the sky here. Drizzle falls from low cloud that covers a wide area at once,
     /// and radar can't see it (27 Nov in Milton: drizzle all morning, radar dry).
@@ -105,6 +117,40 @@ public struct Observation: Equatable, Codable, Sendable {
     public static let localRadiusKm: Double = 10
 
     public var isLocal: Bool { (distanceKm ?? 0) <= Self.localRadiusKm }
+
+    /// Farther than this, a station's reading isn't used for the temperature at all.
+    public static let neighbourMaxKm: Double = 40
+
+    /// How much of the models' error at a station beyond `localRadiusKm` is carried over to the
+    /// spot: right now the models are often wrong the same way over a wide area (cloud they
+    /// missed, a front running early, a cold pool after a clear night), but a station 30 km away
+    /// is still a different place. Shares fitted at ~80 airports in metro areas on six
+    /// continents, each region held out of its own fit (tools/score_neighbours.py, Nov 2026):
+    /// error "now" fell from 0.97° to 0.87° on average and in every region; held-out shares
+    /// came out nearly the same everywhere.
+    public static func neighbourShare(distanceKm d: Double) -> Double {
+        switch d {
+        case ..<localRadiusKm: return 0
+        case ..<20: return neighbourShares[0]
+        case ..<35: return neighbourShares[1]
+        case ...neighbourMaxKm: return neighbourShares[2]
+        default: return 0
+        }
+    }
+    static let neighbourShares: [Double] = [0.55, 0.45, 0.35]
+    /// A gap bigger than this between a station and the models at the station is more likely a
+    /// faulty reading or a very different spot (a mountain top) than shared weather.
+    static let neighbourMaxGap: Double = 6
+
+    /// Degrees to shift the spot's "now" by, from a station beyond `localRadiusKm` (nil if none).
+    public var neighbourShift: Double? {
+        guard !isLocal, dataProvider != "NETATMO", temperature.isFinite, let m = modelAtStation,
+              let d = distanceKm else { return nil }
+        let gap = temperature - m
+        let k = Self.neighbourShare(distanceKm: d)
+        guard k > 0, abs(gap) <= Self.neighbourMaxGap else { return nil }
+        return k * gap
+    }
 }
 
 public protocol ObservationProvider: Sendable {
@@ -367,6 +413,7 @@ public extension Forecast {
     /// eases the next few forecast hours toward it (see `nudged(toward:at:)`).
     func applying(_ observation: Observation?) -> Forecast {
         guard var o = observation else { return self }
+        o = tieBroken(o)
         var copy = self
         var c = current
         // A sky reported by a station far away (Pearson, 25 km from Milton) says nothing about
@@ -406,8 +453,19 @@ public extension Forecast {
         let implausible = o.dataProvider == "NETATMO" && !(abs(o.temperature - current.temperature) <= pwsLimit)
         guard o.isLocal, !implausible else {
             // A distant station (a lakeshore pier, an airport across town) can't speak for the
-            // user's temperature or wind, but it does tell us whether it's raining.
+            // user's temperature or wind, but it does tell us whether it's raining, and how far
+            // off the models are around here right now (`neighbourShift`).
             c.condition = o.condition ?? c.condition
+            if !implausible, let shift = o.neighbourShift, let base = forecastTemperature(at: o.observedAt) {
+                c.temperature += shift
+                c.feelsLike += shift
+                copy.current = c
+                copy.hourly = nudged(toward: Observation(stationName: "", observedAt: o.observedAt,
+                                                         temperature: base + shift),
+                                     fadeHours: Self.neighbourFadeHours)
+                copy.daily = copy.dailyIncluding(c, at: c.time)
+                return copy.dryIfGaugesSay(o)
+            }
             copy.current = c
             return copy.dryIfGaugesSay(o)
         }
@@ -437,6 +495,29 @@ public extension Forecast {
         copy.hourly = nudged(toward: o)
         copy.daily = copy.dailyIncluding(c, at: o.observedAt)
         return copy.dryIfGaugesSay(o)
+    }
+
+    /// A tight group of home stations is allowed to stand against a road-weather station up to
+    /// 4.5° away (`HyperlocalObservationProvider.merge`), but home stations as a group run warm on
+    /// clear, still nights. When the two disagree by more than `tieBreakGap`, the side the models
+    /// are closer to wins: the models' middle (the midpoint of their spread, which a station
+    /// reading doesn't re-weight) at the time of the reading is the third opinion.
+    func tieBroken(_ o: Observation) -> Observation {
+        guard o.dataProvider == "NETATMO", let official = o.officialTemperature,
+              abs(o.temperature - official) > HyperlocalObservationProvider.tieBreakGap else { return o }
+        let low = forecastValue(at: o.observedAt) { $0.modelLow }
+        let high = forecastValue(at: o.observedAt) { $0.modelHigh }
+        let models = (low != nil && high != nil) ? (low! + high!) / 2 : forecastTemperature(at: o.observedAt)
+        guard let models, abs(official - models) < abs(o.temperature - models) else { return o }
+        var b = o
+        b.temperature = official
+        b.stationName = o.officialStationName ?? o.stationName
+        b.distanceKm = o.officialDistanceKm
+        b.dataProvider = o.officialProvider
+        b.stationTemperatures = nil
+        b.humidity = nil
+        b.officialTemperature = nil
+        return b
     }
 
     /// Rain from a distant station or the model, when the rain gauges right here are dry, becomes
@@ -521,6 +602,9 @@ public extension Forecast {
 
     /// How long a station reading keeps pulling the forecast toward it.
     static let nudgeHours: Double = 6
+    /// How long a distant station's correction (`Observation.neighbourShift`) lasts. 12 h scored
+    /// best (hours 1-12 error 0.99° vs 1.02° uncorrected); by then it's worth about nothing.
+    static let neighbourFadeHours: Double = 12
 
     /// The hourly forecast shifted by the gap between a reading and the forecast for that time,
     /// fully at the reading and fading to nothing `nudgeHours` later, so the curve starts where
@@ -531,7 +615,7 @@ public extension Forecast {
 
     /// Nudges temperature, feels-like, dew point, humidity, and wind speed over the next
     /// `nudgeHours` toward `observation` so hourly curves stay physically consistent.
-    func nudged(toward observation: Observation) -> [HourlyForecast] {
+    func nudged(toward observation: Observation, fadeHours: Double = Forecast.nudgeHours) -> [HourlyForecast] {
         let time = observation.observedAt
         guard let baseTemp = forecastTemperature(at: time) else { return hourly }
         let tempGap = observation.temperature - baseTemp
@@ -555,7 +639,7 @@ public extension Forecast {
         return hourly.map { hour in
             let hoursAhead = hour.time.timeIntervalSince(time) / 3600
             guard hoursAhead > -1 else { return hour }
-            let share = max(0, 1 - max(hoursAhead, 0) / Self.nudgeHours)
+            let share = max(0, 1 - max(hoursAhead, 0) / fadeHours)
             guard share > 0 else { return hour }
             var h = hour
             h.temperature += tempGap * share

@@ -169,6 +169,8 @@ public struct HyperlocalObservationProvider: ObservationProvider {
 
     /// Further than this from a nearby official station, the Netatmo reading is set aside.
     static let officialLimit: Double = 2
+    /// Past this gap from a road-weather station, the models decide who is right (`Forecast.tieBroken`).
+    public static let tieBreakGap: Double = 3
 
     static func merge(official base: Observation?, netatmo local: Observation) -> Observation {
         var local = local
@@ -194,6 +196,12 @@ public struct HyperlocalObservationProvider: ObservationProvider {
             local.stationName = (v.count == 1 ? "Netatmo station" : "\(v.count) Netatmo stations") + place
         }
         var merged = local
+        if let base, (base.distanceKm ?? 0) <= 10, abs(base.temperature - local.temperature) > tieBreakGap {
+            merged.officialTemperature = base.temperature
+            merged.officialStationName = base.stationName
+            merged.officialDistanceKm = base.distanceKm
+            merged.officialProvider = base.dataProvider
+        }
         merged.condition = base?.condition
         merged.conditionText = base?.conditionText
         merged.skyStationName = base?.stationName
