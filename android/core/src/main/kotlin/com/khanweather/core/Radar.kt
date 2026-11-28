@@ -167,6 +167,16 @@ val Forecast.skyStationBeyondRadarReach: Boolean
         return (km ?: 0.0) >= radarBeatsStationKm
     }
 
+/** How far the station reporting the sky is. */
+val Forecast.stationRainKm: Double?
+    get() {
+        val o = observation ?: return null
+        return if (o.skyStationName == null) o.distanceKm else o.skyDistanceKm
+    }
+
+/** In saturated air, a station this close (km) reporting rain under a dry radar means drizzle here. */
+const val stationRainUnderDryRadarKm = 25.0
+
 /** In air this damp (%), a light radar echo (0.1-0.5 mm/h) is reaching the ground. */
 const val dampEchoHumidity = 90.0
 
@@ -199,6 +209,16 @@ fun Forecast.applyingRadar(radarNow: RadarNow?): Forecast {
         if (current.temperature <= 1 || !current.condition.isRainLike ||
             ((observation?.skyIsLocal ?: false) && !skyStationBeyondRadarReach) || drizzleRadarCantSee) return this
         val copy = deepCopy()
+        // 27 Nov, 7:48 pm in Mississauga: Pearson (9 km) reported light rain, the air was at 92%, the
+        // radar was dry and it drizzled. In saturated air a nearby station's rain is drizzle below the beam.
+        val km = stationRainKm
+        if (km != null && km <= stationRainUnderDryRadarKm && (current.humidity?.toDouble() ?: 0.0) >= dampEchoHumidity) {
+            val name = WeatherFormat.plainStationName(observation?.skyStationName ?: observation?.stationName ?: "")
+            copy.current.condition = WeatherCondition.drizzle
+            copy.observation?.conditionText = "Drizzle"
+            copy.skySource = "light rain reported at $name, ${WeatherFormat.roughDistance(km)} away (radar can't see drizzle)"
+            return copy
+        }
         copy.current.condition = WeatherCondition.overcast
         copy.observation?.conditionText = null
         copy.skySource = "radar over this spot (dry)"

@@ -65,4 +65,22 @@ class LightRainTest {
         assertEquals(2, o.nearbyWetStations?.size)
         assertNotNull(o.nearbyDrizzleStation)
     }
+
+    /** 27 Nov, 7:48 pm in Mississauga: Pearson (9 km) said light rain, 92% here, radar dry, drizzling. */
+    @Test fun nearbyStationRainInSaturatedAirSurvivesADryRadar() {
+        fun f(rh: Double, km: Double) = forecast(4.0, rh).apply {
+            current.condition = WeatherCondition.rain
+            observation = Observation("3 Netatmo stations", now, 4.0, condition = WeatherCondition.rain,
+                conditionText = "Light Rain", distanceKm = 3.0).apply {
+                skyStationName = "Toronto Pearson Int'l Airport"; skyDistanceKm = km
+            }
+        }
+        val dryRadar = RadarNow(0.0, 0.0, now)
+        val shown = f(92.0, 9.0).applyingRadar(dryRadar).agreeingNowWithNowcast(now)
+        assertEquals(WeatherCondition.drizzle, shown.current.condition)
+        assertTrue(shown.skySource?.contains("Toronto Pearson") == true)
+        assertEquals(Nowcast.Kind.rain, shown.nowcast(now)?.kind)
+        assertEquals(WeatherCondition.overcast, f(86.0, 9.0).applyingRadar(dryRadar).current.condition)
+        assertEquals(WeatherCondition.overcast, f(92.0, 30.0).applyingRadar(dryRadar).current.condition)
+    }
 }
