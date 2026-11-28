@@ -45,6 +45,55 @@ final class WeatherViewModel: ObservableObject {
         self.location = location ?? LocationManager()
     }
 
+    /// The forecast on screen before reports were applied, so a new report (or an undo) shows at once.
+    private var unreported: Forecast?
+    /// Reports from the relay (family phones nearby) for the place on screen.
+    private var relayReports: [ConditionReport] = []
+    /// Where the phone was for the current-location forecast; reports are made here.
+    private var reportSpot: Coordinate?
+
+    /// Shows `f` with any fresh "what's it doing now" report on top.
+    private func show(_ f: Forecast) {
+        unreported = f
+        state = .loaded(f.applyingReports(ConditionReportStore.merged(mine: ConditionReportStore.mine(), relay: relayReports)))
+    }
+
+    /// This phone's report that the Now card is showing, if any.
+    var activeOwnReport: ConditionReport? {
+        guard case .loaded(let f) = state, let r = f.activeReport(ConditionReportStore.merged(
+            mine: ConditionReportStore.mine(), relay: relayReports)), r.mine else { return nil }
+        return r
+    }
+
+    /// "It's raining": corrects the Now card on this phone at once, then tells the relay so family
+    /// nearby, the widget and the learner get it.
+    func report(_ kind: ReportKind) {
+        guard case .loaded(let shown) = state else { return }
+        let r = ConditionReport(kind: kind, at: reportSpot ?? shown.location)
+        ConditionReportStore.add(r)
+        if let unreported { show(unreported) }
+        Task {
+            _ = await RelayExtrasProvider().send(r)
+            #if canImport(WidgetKit)
+            WidgetCenter.shared.reloadAllTimelines()
+            #endif
+        }
+    }
+
+    /// Takes back this phone's report here (a mistaken tap, or it has stopped).
+    func undoReport() {
+        guard case .loaded(let shown) = state else { return }
+        let ids = ConditionReportStore.removeMine(near: reportSpot ?? shown.location)
+        relayReports.removeAll { ids.contains($0.id) }
+        if let unreported { show(unreported) }
+        Task {
+            await RelayExtrasProvider().withdraw(ids: ids)
+            #if canImport(WidgetKit)
+            WidgetCenter.shared.reloadAllTimelines()
+            #endif
+        }
+    }
+
     /// The last station reading shown, by spot (rounded to ~1 km), to steady the next one.
     private var lastObservation: [String: Observation] = [:]
 
@@ -116,6 +165,8 @@ final class WeatherViewModel: ObservableObject {
         var showingStaleDiskCache = false
         if lastPlaceID != .some(key) {
             lastPlaceID = .some(key)
+            relayReports = []
+            unreported = nil
             if let snap = cache[key], Date().timeIntervalSince(snap.at) < cacheAge {
                 // Saved forecasts were calibrated before saving; calibrating again would push rain chances up.
                 state = .loaded(snap.forecast)
@@ -168,6 +219,15 @@ final class WeatherViewModel: ObservableObject {
 
         // Everything starts at once. Cap the anchor wait inside OpenMeteoProvider at 1.5s so slow
         // stations never stall the initial forecast, while `observedTask` finishes up to 8s total (home stations get one quick retry).
+        if place == nil {
+            reportSpot = target
+            // CI screenshots: "-demoReport drizzle" acts as if this phone just reported it (not sent).
+            if let demo = UserDefaults.standard.string(forKey: "demoReport").flatMap(ReportKind.init(rawValue:)),
+               ConditionReportStore.mine().isEmpty {
+                ConditionReportStore.add(ConditionReport(kind: demo, time: Date().addingTimeInterval(-240), at: target))
+            }
+        }
+        let reportsTask = Task { await Deadline.run(4) { await RelayExtrasProvider().reports(near: target) } }
         let nameTask = Task { await Self.name(for: place, at: target) }
         let observedTask = Task {
             await Deadline.run(8) { try? await observations.observation(near: target) }?
@@ -217,7 +277,7 @@ final class WeatherViewModel: ObservableObject {
         guard gen == generation else { return }
         // First paint: show model forecast immediately (always replacing stale cold disk cache).
         if case .loaded = state, !showingStaleDiskCache {} else {
-            state = .loaded(base.calibratingEnsemblePop().agreeingNowWithNowcast())
+            show(base.calibratingEnsemblePop().agreeingNowWithNowcast())
         }
 
         // Apply station reading as soon as it arrives—without waiting on radar, nowcast, or Google.
@@ -245,18 +305,20 @@ final class WeatherViewModel: ObservableObject {
                 guard gen == self.generation else { return }
                 if let observed {
                     self.lastObservation[spot] = observed
-                    self.state = .loaded(base.applying(observed).calibratingEnsemblePop().agreeingNowWithNowcast())
+                    self.show(base.applying(observed).calibratingEnsemblePop().agreeingNowWithNowcast())
                 }
                 let googleHourly = await googleTask.value
                 let mosmixHourly = await mosmixTask.value
                 guard gen == self.generation else { return }
                 if googleHourly != nil || mosmixHourly != nil {
-                    self.state = .loaded(base.applyingMosmixHourly(mosmixHourly).applyingGoogleHourly(googleHourly).applying(observed).calibratingEnsemblePop().agreeingNowWithNowcast())
+                    self.show(base.applyingMosmixHourly(mosmixHourly).applyingGoogleHourly(googleHourly).applying(observed).calibratingEnsemblePop().agreeingNowWithNowcast())
                 }
                 let radar = await radarTask.value ?? nil
                 let radarNowcast = await nowcastTask.value
+                let nearbyReports = await reportsTask.value
                 guard gen == self.generation else { return }
-                self.state = .loaded(base.applyingMosmixHourly(mosmixHourly).applyingGoogleHourly(googleHourly).applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast, radarNow: radar).calibratingEnsemblePop().agreeingNowWithNowcast())
+                if let nearbyReports { self.relayReports = nearbyReports }
+                self.show(base.applyingMosmixHourly(mosmixHourly).applyingGoogleHourly(googleHourly).applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast, radarNow: radar).calibratingEnsemblePop().agreeingNowWithNowcast())
             }
         }
         guard gen == generation, case .loaded(let shown) = state else { return }
@@ -288,6 +350,7 @@ final class WeatherViewModel: ObservableObject {
             async let observed = Deadline.run(8) { try? await observations.observation(near: target) }
             async let radar = try? ECCCRadarProvider().now(at: target)
             async let nowcast = RelayExtrasProvider().nowcast(near: target, cold: likelyCold)
+            async let nearbyReports = RelayExtrasProvider().reports(near: target)
             let weightsTask = Task { await Deadline.run(3) { await RelayExtrasProvider().regionalWeights(near: target) } }
             async let googleHourly = Deadline.run(3) { await RelayExtrasProvider().googleHourly(near: target) }
             async let mosmixHourly = Deadline.run(2.5) { await RelayExtrasProvider().mosmixHourly(near: target) }
@@ -308,6 +371,7 @@ final class WeatherViewModel: ObservableObject {
             let radarNow = await radar ?? nil
             let full = base.applyingMosmixHourly(await mosmixHourly).applyingGoogleHourly(await googleHourly).applying(obs).applyingRadar(radarNow)
                 .applyingRadarNowcast(await nowcast, radarNow: radarNow).calibratingEnsemblePop().agreeingNowWithNowcast()
+                .applyingReports(await nearbyReports)
             let snap = Snapshot(forecast: full, name: place.name, alerts: await fetchedAlerts ?? [],
                                 airQuality: await air, at: Date())
             // Don't overwrite a fresher entry from a refresh that ran meanwhile.

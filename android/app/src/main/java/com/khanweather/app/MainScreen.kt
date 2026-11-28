@@ -2,6 +2,7 @@ package com.khanweather.app
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -50,6 +51,11 @@ fun ForecastList(
     isSavedPlace: Boolean,
     usingFallbackLocation: Boolean,
     nav: (Screen) -> Unit,
+    /** This phone's report the Now card is showing. */
+    ownReport: ConditionReport? = null,
+    /** null hides "What's it doing outside?" (saved places, or no real location). */
+    onReport: ((ReportKind) -> Unit)? = null,
+    onUndoReport: () -> Unit = {},
 ) {
     val zone = forecast.timeZoneIdentifier
     val days = forecast.displayDaily()
@@ -94,7 +100,7 @@ fun ForecastList(
         NowCard(forecast, placeName, isSavedPlace, today,
             listOfNotNull(Outlook.text(forecast, hourText = hourText), Outlook.dryWindow(forecast, hourText = hourText)).joinToString("\n").ifEmpty { null },
             WhatToWear.tip(forecast.current, forecast.upcomingHours(count = 13).drop(1), hourText = hourText),
-            vsNormal, vsYesterday)
+            vsNormal, vsYesterday, ownReport, onReport, onUndoReport)
         Spacer(Modifier.height(14.dp))
 
         forecast.nowcast()?.let { n ->
@@ -186,7 +192,15 @@ fun NoteRow(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String)
 fun NowCard(
     forecast: Forecast, placeName: String?, isSavedPlace: Boolean, today: DailyForecast?,
     outlook: String?, wear: String?, vsNormal: Pair<String, Int>?, vsYesterday: Pair<String, Int>?,
+    ownReport: ConditionReport? = null, onReport: ((ReportKind) -> Unit)? = null, onUndoReport: () -> Unit = {},
 ) {
+    // CI screenshots: `--ez showReportSheet true` opens the picker.
+    var picking by remember { mutableStateOf(onReport != null && Prefs.prefs.getBoolean("showReportSheet", false)) }
+    if (picking && onReport != null) {
+        ReportPicker(forecast.current.isDay, ownReport?.kind, onDismiss = { picking = false }) {
+            onReport(it); picking = false
+        }
+    }
     val current = forecast.current
     val observation = forecast.observation
     val feelsFirst = Prefs.feelsLikeFirst
@@ -235,10 +249,65 @@ fun NowCard(
         val caption = when {
             observation != null && observation.isLocal ->
                 "Temperature from ${WeatherFormat.readingSource(observation)}, ${TimeText.time(observation.observedAt, zone)}. Sky from ${forecast.skySource ?: "the forecast"}."
-            observation != null -> "Sky from ${forecast.skySource ?: "the forecast"}. Temperature is the forecast for your spot."
+            observation != null || forecast.skySource != null -> "Sky from ${forecast.skySource ?: "the forecast"}. Temperature is the forecast for your spot."
             else -> "Model estimate (no nearby station)"
         }
         Text(caption, style = style(13.sp, color = Color.White.copy(alpha = 0.88f), shadow = true))
+        if (onReport != null) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Row(
+                    Modifier.clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.22f))
+                        .border(1.dp, Gold.copy(alpha = 0.7f), RoundedCornerShape(50))
+                        .clickable { picking = true }.padding(horizontal = 12.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Filled.PanTool, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(if (ownReport == null) "What's it doing outside?" else "Changed? Report again",
+                        style = style(14.sp, FontWeight.SemiBold, shadow = true))
+                }
+                if (ownReport != null) {
+                    Text("Undo", style = style(14.sp, FontWeight.SemiBold, Gold), modifier = Modifier.clickable { onUndoReport() })
+                }
+            }
+        }
+    }
+}
+
+/** "What's it doing now?": one tap corrects the Now card here, on family phones nearby and in the widgets. */
+@Composable
+fun ReportPicker(isDay: Boolean, current: ReportKind?, onDismiss: () -> Unit, onPick: (ReportKind) -> Unit) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Color(0xFF1C2B44)).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("What's it doing now?", style = style(20.sp, FontWeight.Bold))
+            Text("Tap what you see. The Now card uses it for the next 45 minutes, and family nearby see it too.",
+                style = style(13.sp, color = Color.White.copy(alpha = 0.8f)))
+            val kinds = listOf(ReportKind.clear, ReportKind.partlyCloudy, ReportKind.cloudy, ReportKind.fog,
+                ReportKind.drizzle, ReportKind.rain, ReportKind.heavyRain, ReportKind.thunderstorm,
+                ReportKind.snow, ReportKind.rainAndSnow, ReportKind.freezingRain)
+            for (row in kinds.chunked(3)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    for (k in row) {
+                        Column(
+                            Modifier.weight(1f).clip(RoundedCornerShape(14.dp))
+                                .background(if (k == current) Gold.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.10f))
+                                .border(2.dp, if (k == current) Gold else Color.Transparent, RoundedCornerShape(14.dp))
+                                .clickable { onPick(k) }.padding(vertical = 10.dp, horizontal = 4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            IconBadge(k.condition, isDay, 40.dp, heavy = k == ReportKind.heavyRain, mixed = k == ReportKind.rainAndSnow)
+                            Spacer(Modifier.height(4.dp))
+                            Text(k.label(isDay), style = style(13.sp, FontWeight.SemiBold), maxLines = 2,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        }
+                    }
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
     }
 }
 

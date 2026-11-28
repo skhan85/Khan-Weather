@@ -86,6 +86,29 @@ def test_pinned_place_keeps_pin_when_app_opens_there():
     assert p["pinned"] is True and p["last_seen"] == 10_000_000
 
 
+def test_family_reports_are_served_withdrawn_and_used_as_rain_truth():
+    import reports as R
+    t0 = NOW - 7 * 60                       # top of the hour
+    assert R.handle("POST", "/v1/report", {}, b'{"id":"aaaaaaaa-1","kind":"drizzle","t":%d,"lat":43.513,"lon":-79.882}' % (t0 - 1200), "x", now=t0)[0] == 200
+    assert R.add({"id": "bad id!", "kind": "rain", "lat": 1, "lon": 1})[0] == 400
+    assert R.add({"id": "bbbbbbbb-2", "kind": "hail", "lat": 1, "lon": 1})[0] == 400
+    R.add({"id": "cccccccc-3", "kind": "cloudy", "t": t0 - 600, "lat": 43.45, "lon": -79.68}, now=t0)
+    near = R.nearby(43.51, -79.88, now=t0)["reports"]
+    assert [r["id"] for r in near] == ["aaaaaaaa-1"], near            # Oakville is 17 km away
+    # Learner: the drizzle report makes Milton's hour wet, Oakville's cloudy report makes it dry.
+    assert R.hour_truth(43.5, -79.9, t0)[0] == 1
+    assert R.hour_truth(43.5, -79.7, t0)[0] == 0
+    assert R.hour_truth(45.0, -75.0, t0) is None
+    R.handle("DELETE", "/v1/report", {}, '{"id":"aaaaaaaa-1"}', now=t0)
+    assert R.nearby(43.51, -79.88, now=t0)["reports"] == []
+    assert R.hour_truth(43.5, -79.9, t0) is None
+    assert R.handle("GET", "/v1/reports", {"lat": ["43.5"], "lon": ["-79.9"]}, b"")[0] == 200
+    assert R.handle("GET", "/v1/other", {}, b"") is None
+    for i in range(R.PER_CLIENT_HOUR):
+        R.add({"id": f"dddddddd-{i}", "kind": "rain", "lat": 1, "lon": 1}, client="spam", now=t0)
+    assert R.add({"id": "eeeeeeee-1", "kind": "rain", "lat": 1, "lon": 1}, client="spam", now=t0)[0] == 429
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

@@ -179,6 +179,9 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
         let weightsTask = Task { await Deadline.run(3) { await RelayExtrasProvider().regionalWeights(near: coordinate) } }
         async let googleHourly = Deadline.run(3) { await RelayExtrasProvider().googleHourly(near: coordinate) }
         async let mosmixHourly = Deadline.run(2.5) { await RelayExtrasProvider().mosmixHourly(near: coordinate) }
+        // "What's it doing now" reports, this phone's included: the widget can't read the app's
+        // storage, so it gets them back from the relay.
+        async let reports = Deadline.run(4) { await RelayExtrasProvider().reports(near: coordinate) }
         // Only for a real location: the Toronto fallback isn't where the person is.
         if known != nil, let found = await active {
             await WidgetAlertNotifier.notify(found, placeName: await place, setting: notify)
@@ -201,6 +204,7 @@ struct WeatherTimelineProvider: AppIntentTimelineProvider {
                 .applyingRadar(radar)
                 .applyingRadarNowcast(await radarNowcast, radarNow: radar)
                 .calibratingEnsemblePop().agreeingNowWithNowcast()
+                .applyingReports(await reports ?? [])
             WidgetForecastMemory.remember(forecast)
             return Loaded(forecast: forecast, fresh: true, placeName: await place, alert: alertTitle)
         } catch {

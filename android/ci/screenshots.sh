@@ -47,6 +47,15 @@ sleep 4
 shot android-main-us-2
 $A shell am start -S -n $PKG/.MainActivity --es units canadian
 sleep 5
+# "What's it doing now?": the picker, then the Now card after a "Drizzle" report.
+$A shell am start -S -n $PKG/.MainActivity --ez showReportSheet true
+sleep 30
+shot android-report-picker
+$A shell am start -S -n $PKG/.MainActivity --es demoReport drizzle
+sleep 30
+shot android-reported-drizzle
+$A shell am start -S -n $PKG/.MainActivity --es units canadian
+sleep 5
 # The home-screen widgets, drawn in the app from the same saved forecast.
 $A shell am start -S -n $PKG/.MainActivity --ez widgetPreview true
 sleep 10

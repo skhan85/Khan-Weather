@@ -423,7 +423,9 @@ object WeatherLoader {
         val base = forecastProvider.forecast(target, regionalWeights = { weightsTask.await() }) { observed?.blendAnchor }
         observed?.let { ObservationMemory.remember(target, it) }
         // Same order as the app's main screen, so widgets and saved places match it.
+        val reportsTask = async { deadline(4.0) { Reports.all(target) } }
         base.applyingMosmixHourly(mosmixTask.await()).applyingGoogleHourly(googleTask.await()).applying(observed).applyingRadar(radar).applyingRadarNowcast(ncTask.await(), radar).calibratingEnsemblePop().agreeingNowWithNowcast()
+            .applyingReports(reportsTask.await() ?: Reports.mine())
     }
 
     @Serializable

@@ -52,7 +52,12 @@ struct ContentView: View {
                                  isSavedPlace: places.selected != nil,
                                  attribution: model.provider.attribution,
                                  usingFallbackLocation: model.usingFallbackLocation,
-                                 isRefreshing: model.isRefreshing)
+                                 isRefreshing: model.isRefreshing,
+                                 ownReport: places.selected == nil ? model.activeOwnReport : nil,
+                                 // Reports are for where you're standing, so only on Current location.
+                                 onReport: places.selected == nil && !model.usingFallbackLocation
+                                     ? { model.report($0) } : nil,
+                                 onUndoReport: { model.undoReport() })
                         .id([temperatureUnit, windUnit, precipitationUnit, pressureUnit, distanceUnit, clock,
                              mainTemperature, String(hourlyCount), String(showDetails), String(showAirQuality)].joined(separator: "-"))
                         .refreshable { await reload() }
@@ -164,6 +169,12 @@ private struct ForecastList: View {
     let attribution: String
     let usingFallbackLocation: Bool
     var isRefreshing = false
+    /// This phone's report the Now card is showing.
+    var ownReport: ConditionReport? = nil
+    /// nil hides the "What's it doing?" button (saved places, or no real location).
+    var onReport: ((ReportKind) -> Void)? = nil
+    var onUndoReport: () -> Void = {}
+    @State private var showingReport = false
     @AppStorage(DisplaySettings.hourlyCountKey) private var hourlyCount = 24
     @AppStorage(DisplaySettings.showDetailsKey) private var showDetails = true
     @AppStorage(DisplaySettings.showAirQualityKey) private var showAirQuality = true
@@ -222,6 +233,18 @@ private struct ForecastList: View {
                                         shownTemperature: forecast.current.temperature)
         }
         .fontDesign(.rounded)
+        .onAppear {
+            // CI screenshots: "-showReportSheet YES" opens the sheet.
+            if onReport != nil, UserDefaults.standard.bool(forKey: "showReportSheet") { showingReport = true }
+        }
+        .sheet(isPresented: $showingReport) {
+            ReportSheet(isDay: forecast.current.isDay, current: ownReport?.kind) { kind in
+                onReport?(kind)
+                showingReport = false
+            }
+            .presentationDetents([.medium, .large])
+            .tint(.blue)
+        }
         .task(id: forecast.fetchedAt) {
             let storms = forecast.current.condition.isPrecipitation
                 || forecast.current.condition == .thunderstorm
@@ -305,7 +328,10 @@ private struct ForecastList: View {
                                       vsNormal: vsNormal,
                                       vsYesterday: forecast.changeSinceYesterday().map {
                                           (YesterdayComparison.shortText($0), YesterdayComparison.trend($0))
-                                      })
+                                      },
+                                      ownReport: ownReport,
+                                      onReportTap: onReport == nil ? nil : { showingReport = true },
+                                      onUndoReport: onUndoReport)
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
@@ -492,6 +518,11 @@ struct CurrentConditionsView: View {
     var vsNormal: (text: String, trend: Int)? = nil
     /// "5° colder than yesterday at this time", and +1/-1/0 for the icon.
     var vsYesterday: (text: String, trend: Int)? = nil
+    /// This phone's report the card is showing, for "You said Raining · Undo".
+    var ownReport: ConditionReport? = nil
+    /// nil hides the "What's it doing?" button.
+    var onReportTap: (() -> Void)? = nil
+    var onUndoReport: () -> Void = {}
     @AppStorage(DisplaySettings.mainTemperatureKey) private var mainTemperature = MainTemperature.actual.rawValue
 
     private var feelsFirst: Bool { mainTemperature == MainTemperature.feelsLike.rawValue }
@@ -593,7 +624,7 @@ struct CurrentConditionsView: View {
                 if let observation, observation.isLocal {
                     Text(Self.localCaption(observation, timeZone: timeZone)
                          + " Sky from \(skySource ?? "the forecast").")
-                } else if observation != nil {
+                } else if observation != nil || skySource != nil {
                     Text("Sky from \(skySource ?? "the forecast"). Temperature is the forecast for your spot.")
                 } else {
                     Text("Model estimate (no nearby station)")
@@ -601,6 +632,9 @@ struct CurrentConditionsView: View {
             }
             .font(.footnote)
             .foregroundStyle(.white.opacity(0.88))
+            if let onReportTap {
+                reportRow(onReportTap)
+            }
         }
         .foregroundStyle(.white)
         .fontDesign(.rounded)
@@ -614,6 +648,29 @@ struct CurrentConditionsView: View {
                     .stroke(.white.opacity(0.3), lineWidth: 1))
         }
         .padding(.horizontal, 16)
+    }
+
+    /// "Wrong? Tell us what it's doing", or, after a report, what you said and an undo.
+    @ViewBuilder private func reportRow(_ tap: @escaping () -> Void) -> some View {
+        HStack(spacing: 8) {
+            Button(action: tap) {
+                Label(ownReport == nil ? "What's it doing outside?" : "Changed? Report again",
+                      systemImage: "hand.raised.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(Capsule().fill(.black.opacity(0.22)))
+                    .overlay(Capsule().stroke(Brand.gold.opacity(0.7), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            if ownReport != nil {
+                Button("Undo", action: onUndoReport)
+                    .font(.subheadline.weight(.semibold))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Brand.gold)
+            }
+            Spacer(minLength: 0)
+        }
     }
 
     /// "Temperature from 3 home weather stations about 3 km away, 4:55 am."
@@ -766,5 +823,55 @@ struct ConfidenceMark: View {
         }
         .accessibilityElement()
         .accessibilityLabel(confidence.label)
+    }
+}
+
+/// "What's it doing outside?": one tap corrects the Now card here, on family phones nearby and in
+/// the widget, and gives the learner a ground truth the radar can't (drizzle under the beam).
+struct ReportSheet: View {
+    var isDay: Bool
+    /// What this phone last said, highlighted.
+    var current: ReportKind?
+    var onPick: (ReportKind) -> Void
+
+    private let columns = [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())]
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Tap what you see. The Now card uses it for the next 45 minutes, and family nearby see it too.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    LazyVGrid(columns: columns, spacing: 12) {
+                        ForEach(ReportKind.shown) { kind in
+                            Button { onPick(kind) } label: {
+                                VStack(spacing: 6) {
+                                    Image(systemName: kind.condition.symbolName(isDay: isDay))
+                                        .symbolRenderingMode(.multicolor)
+                                        .font(.system(size: 30))
+                                        .frame(height: 36)
+                                    Text(kind.label(isDay: isDay))
+                                        .font(.footnote.weight(.semibold))
+                                        .multilineTextAlignment(.center)
+                                        .lineLimit(2)
+                                        .minimumScaleFactor(0.8)
+                                }
+                                .frame(maxWidth: .infinity, minHeight: 84)
+                                .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(kind == current ? Color.blue.opacity(0.18) : Color.secondary.opacity(0.1)))
+                                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(kind == current ? Color.blue : .clear, lineWidth: 2))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(kind.label(isDay: isDay))
+                        }
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle("What's it doing now?")
+            .navigationBarTitleDisplayMode(.inline)
+        }
     }
 }

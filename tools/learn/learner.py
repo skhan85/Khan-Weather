@@ -15,7 +15,8 @@ Each hour, for every place opened in the last 30 days:
     Nothing farther: a station 25 km away has its own biases (tools/score_bias.py showed a bias
     learned at one station makes others worse), so a place without local truth learns nothing.
   * Truth for rain: the ECCC radar over the place (three frames in the hour, Canada), plus rain or
-    drizzle reported by a station within 15 km (radar misses drizzle), plus home rain gauges.
+    drizzle reported by a station within 15 km (radar misses drizzle), plus home rain gauges. A
+    family report from the app within 7 km (reports.py) overrides all of these for that hour.
   * Every 3 hours: the forecast for the next 5 days, the same way the app blends it (the region
     weights in blend-regions.json, fetched from the repo), plus Open-Meteo's chance of rain.
 
@@ -302,6 +303,15 @@ def observe(lat, lon, hour_start, now):
         row["wet"], row["wet_src"] = 1, "; ".join(reasons)
     elif dry_evidence:
         row["wet"], row["wet_src"] = 0, "radar dry" if rate is not None else "station dry"
+    # Someone outside said what it was doing (the app's "What's it doing now?" button, reports.py):
+    # that beats a radar beam passing over drizzle, or an echo that never reached the ground.
+    try:
+        import reports
+        said = reports.hour_truth(lat, lon, hour_start)
+    except Exception:
+        said = None
+    if said is not None:
+        row["wet"], row["wet_src"] = said
     return row
 
 
@@ -588,6 +598,12 @@ def run(now=None):
             log(f"  {cell}: failed {e!r}")
         if hour_start % 86400 == 0:
             trim_jsonl(path("obs", key + ".jsonl"), now - KEEP_DAYS * 86400)
+            if cell == sorted(active)[0]:
+                try:
+                    import reports
+                    reports.trim(now)
+                except Exception as e:
+                    log(f"  reports trim failed {e!r}")
             trim_jsonl(path("fc", key + ".jsonl"), now - (KEEP_DAYS + FC_DAYS) * 86400)
 
 

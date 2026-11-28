@@ -42,6 +42,59 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
 
     private val context get() = getApplication<Application>()
 
+    /** The forecast before reports were applied, so a new report (or an undo) shows at once. */
+    private var unreported: Forecast? = null
+    /** Reports from the relay (family phones nearby) for the place on screen. */
+    private var relayReports: List<ConditionReport> = emptyList()
+    /** Where the phone was for the current-location forecast; reports are made here. */
+    private var reportSpot: Coordinate? = null
+    /** Bumped when a report changes, so the Now card's report row redraws. */
+    var reportVersion by mutableStateOf(0); private set
+
+    private fun show(f: Forecast) {
+        unreported = f
+        state = LoadState.Loaded(f.applyingReports(ConditionReport.merged(Reports.mine(), relayReports)))
+    }
+
+    /** This phone's report the Now card is showing, if any. */
+    val activeOwnReport: ConditionReport?
+        get() {
+            val f = (state as? LoadState.Loaded)?.forecast ?: return null
+            return f.activeReport(ConditionReport.merged(Reports.mine(), relayReports))?.takeIf { it.mine }
+        }
+
+    /** "It's raining": corrects the Now card here at once, then tells the relay and the widgets. */
+    fun report(kind: ReportKind) {
+        val shown = (state as? LoadState.Loaded)?.forecast ?: return
+        val spot = reportSpot ?: shown.location
+        val r = ConditionReport(kind = kind, latitude = spot.latitude, longitude = spot.longitude)
+        Reports.add(r)
+        afterReportChange()
+        viewModelScope.launch { Reports.send(r) }
+    }
+
+    /** Takes back this phone's report here. */
+    fun undoReport() {
+        val shown = (state as? LoadState.Loaded)?.forecast ?: return
+        val ids = Reports.removeMine(reportSpot ?: shown.location)
+        relayReports = relayReports.filter { it.id !in ids }
+        afterReportChange()
+        viewModelScope.launch { Reports.withdraw(ids) }
+    }
+
+    private fun afterReportChange() {
+        unreported?.let { show(it) }
+        reportVersion += 1
+        // The widgets show the saved snapshot, so save the corrected one and redraw them.
+        val f = (state as? LoadState.Loaded)?.forecast ?: return
+        if (lastPlaceKey == null) {
+            val snap = Snapshot(f, placeName, alerts, airQuality, nowEpoch(), !usingFallbackLocation)
+            cache[null] = snap
+            SnapshotStore.save(context, null, snap)
+            Widgets.updateAllAsync(context)
+        }
+    }
+
     fun reload(place: SavedPlace?) {
         lastReload = nowEpoch()
         viewModelScope.launch {
@@ -66,6 +119,8 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
         var showingStaleDiskCache = false
         if (lastPlaceKey != key) {
             lastPlaceKey = key
+            relayReports = emptyList()
+            unreported = null
             val memSnap = cache[key]?.takeIf { nowEpoch() - it.savedAt < cacheAge }
             val snap = memSnap ?: SnapshotStore.load(context, key, maxAge = 2 * 3600.0)?.let { disk ->
                 showingStaleDiskCache = true
@@ -101,6 +156,14 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
             null
         }
         val fallbackName = if (usingFallbackLocation) "Toronto" else null
+        if (place == null) {
+            reportSpot = target
+            val demo = Prefs.prefs.getString("demoReport", null)?.let { n -> ReportKind.values().firstOrNull { it.name == n } }
+            if (demo != null && Reports.mine().isEmpty()) {
+                Reports.add(ConditionReport(kind = demo, time = nowEpoch() - 240, latitude = target.latitude, longitude = target.longitude))
+            }
+        }
+        val reportsTask = async { deadline(4.0) { Reports.nearby(target) } }
 
         val knownTemp = ObservationMemory.last(target)?.temperature ?: cache[key]?.forecast?.current?.temperature
         val likelyCold = knownTemp?.let { it <= 4.0 } ?: (kotlin.math.abs(target.latitude) >= 25.0)
@@ -134,7 +197,7 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
         }
         if (gen != generation) return@coroutineScope
         if (state !is LoadState.Loaded || showingStaleDiskCache) {
-            state = LoadState.Loaded(with(WeatherLoader) { base.calibratingEnsemblePop().agreeingNowWithNowcast() })
+            show(with(WeatherLoader) { base.calibratingEnsemblePop().agreeingNowWithNowcast() })
         }
         val airTask = async { WeatherLoader.airQuality(target, base.timeZoneIdentifier) }
 
@@ -149,23 +212,25 @@ class WeatherViewModel(app: Application) : AndroidViewModel(app) {
         if (gen != generation) return@coroutineScope
         if (observed != null) {
             ObservationMemory.remember(target, observed)
-            state = LoadState.Loaded(with(WeatherLoader) { base.applying(observed).calibratingEnsemblePop().agreeingNowWithNowcast() })
+            show(with(WeatherLoader) { base.applying(observed).calibratingEnsemblePop().agreeingNowWithNowcast() })
         }
         val googleHourly = googleTask.await()
         val mosmixHourly = mosmixTask.await()
         if (gen != generation) return@coroutineScope
         if (googleHourly != null || mosmixHourly != null) {
-            state = LoadState.Loaded(with(WeatherLoader) {
+            show(with(WeatherLoader) {
                 base.applyingMosmixHourly(mosmixHourly).applyingGoogleHourly(googleHourly).applying(observed).calibratingEnsemblePop().agreeingNowWithNowcast()
             })
         }
         val radar = radarTask.await()
         val radarNowcast = nowcastTask.await()
+        val nearbyReports = reportsTask.await()
         if (gen != generation) return@coroutineScope
-        val loaded = with(WeatherLoader) {
+        if (nearbyReports != null) relayReports = nearbyReports
+        show(with(WeatherLoader) {
             base.applyingMosmixHourly(mosmixHourly).applyingGoogleHourly(googleHourly).applying(observed).applyingRadar(radar).applyingRadarNowcast(radarNowcast, radar).calibratingEnsemblePop().agreeingNowWithNowcast()
-        }
-        state = LoadState.Loaded(loaded)
+        })
+        val loaded = (state as LoadState.Loaded).forecast
         // Keep score of the models for where the user actually is, not saved places.
         if (place == null && !usingFallbackLocation) launch { runCatching { AccuracyTracker.update(loaded) } }
         // Wait for the rest, then keep a copy.

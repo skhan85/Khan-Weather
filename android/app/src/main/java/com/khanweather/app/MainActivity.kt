@@ -61,6 +61,9 @@ class MainActivity : ComponentActivity() {
         // CI: open straight onto the full radar map.
         val radarScreen = intent?.getBooleanExtra("radarScreen", false) == true
         // CI screenshots: `--es units us` answers the first-launch question.
+        // CI screenshots: open the report picker, or act as if this phone just reported drizzle.
+        Prefs.prefs.edit().putBoolean("showReportSheet", intent?.getBooleanExtra("showReportSheet", false) == true).apply()
+        Prefs.prefs.edit().putString("demoReport", intent?.getStringExtra("demoReport")).apply()
         intent?.getStringExtra("units")?.let { name ->
             UnitPreset.entries.firstOrNull { it.name == name }?.let { Prefs.saveUnits(it.settings); Prefs.unitsChosen = true }
         }
@@ -143,8 +146,16 @@ fun App(model: WeatherViewModel, startOnRadar: Boolean = false) {
                                         Spacer(Modifier.height(10.dp))
                                         OutlinedButton(onClick = { reload() }) { Text("Try again", color = Color.White) }
                                     }
-                                    is LoadState.Loaded -> ForecastList(state.forecast, model.alerts, model.airQuality, model.normals,
-                                        model.placeName, selectedId != null, model.usingFallbackLocation, ::nav)
+                                    is LoadState.Loaded -> {
+                                        @Suppress("UNUSED_VARIABLE") val v = model.reportVersion
+                                        val here = selectedId == null && !model.usingFallbackLocation
+                                        ForecastList(state.forecast, model.alerts, model.airQuality, model.normals,
+                                            model.placeName, selectedId != null, model.usingFallbackLocation, ::nav,
+                                            ownReport = if (here) model.activeOwnReport else null,
+                                            // Reports are for where you're standing, so only on Current location.
+                                            onReport = if (here) { k -> model.report(k) } else null,
+                                            onUndoReport = { model.undoReport() })
+                                    }
                                 }
                             }
                         }
