@@ -84,7 +84,7 @@ final class EnvironmentCanadaProviderTests: XCTestCase {
         XCTAssertEqual(EnvironmentCanadaProvider.condition(fromText: "Light Drizzle"), .drizzle)
         XCTAssertEqual(EnvironmentCanadaProvider.condition(fromText: "Light Freezing Rain"), .freezingRain)
         XCTAssertEqual(EnvironmentCanadaProvider.condition(fromText: "Light Snowshower"), .snowShowers)
-        XCTAssertEqual(EnvironmentCanadaProvider.condition(fromText: "Mostly Cloudy"), .partlyCloudy)
+        XCTAssertEqual(EnvironmentCanadaProvider.condition(fromText: "Mostly Cloudy"), .mostlyCloudy)
         XCTAssertEqual(EnvironmentCanadaProvider.condition(fromText: "Cloudy"), .overcast)
         XCTAssertEqual(EnvironmentCanadaProvider.condition(fromText: "Mainly Sunny"), .mainlyClear)
         XCTAssertEqual(EnvironmentCanadaProvider.condition(fromText: "Thunderstorm with light rain"), .thunderstorm)

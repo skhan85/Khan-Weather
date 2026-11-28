@@ -53,7 +53,7 @@ struct ConditionIcon: View {
     private var accent: Color {
         if mixed && condition.isPrecipitation { return .teal }
         switch condition {
-        case .clear, .mainlyClear, .partlyCloudy: return isDay ? .orange : .indigo
+        case .clear, .mainlyClear, .partlyCloudy, .mostlyCloudy: return isDay ? .orange : .indigo
         case .overcast, .fog, .unknown: return .gray
         case .drizzle, .rain, .rainShowers: return .blue
         case .freezingDrizzle, .freezingRain: return .teal

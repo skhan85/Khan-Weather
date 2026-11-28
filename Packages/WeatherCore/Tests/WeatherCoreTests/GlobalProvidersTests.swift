@@ -14,7 +14,7 @@ final class GlobalProvidersTests: XCTestCase {
 
     func testConditionText() {
         XCTAssertEqual(WeatherCondition(text: "Light Rain and Fog/Mist"), .rain)
-        XCTAssertEqual(WeatherCondition(text: "Mostly Cloudy"), .overcast)
+        XCTAssertEqual(WeatherCondition(text: "Mostly Cloudy"), .mostlyCloudy)
         XCTAssertEqual(WeatherCondition(text: "Partly Cloudy"), .partlyCloudy)
         XCTAssertEqual(WeatherCondition(text: "Clear"), .clear)
         XCTAssertNil(WeatherCondition(text: ""))
@@ -57,7 +57,7 @@ final class GlobalProvidersTests: XCTestCase {
         XCTAssertEqual(o.stationName, "New York City, Central Park")
         XCTAssertEqual(o.temperature, 8.3)
         XCTAssertEqual(o.windSpeed, 14.8)
-        XCTAssertEqual(o.condition, .overcast)
+        XCTAssertEqual(o.condition, .mostlyCloudy)
         XCTAssertEqual(o.dataProvider, "NWS")
         XCTAssertEqual(o.humidity ?? 0, 65, accuracy: 2)
 
@@ -126,7 +126,7 @@ final class GlobalProvidersTests: XCTestCase {
         XCTAssertEqual(o.stationName, "New York/La Guardia Arpt")
         XCTAssertEqual(o.windSpeed ?? 0, 22.2, accuracy: 0.1)
         XCTAssertEqual(o.windDirection, 300)
-        XCTAssertEqual(o.condition, .partlyCloudy)
+        XCTAssertEqual(o.condition, .mostlyCloudy)
         XCTAssertEqual(o.dataProvider, "METAR")
     }
 

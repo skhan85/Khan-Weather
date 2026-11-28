@@ -29,7 +29,7 @@ object Outlook {
     private fun shown(celsius: Double): Int = UnitSettings.current.temperature.convert(celsius).rndInt()
 
     private fun isCloudOnly(c: WeatherCondition) =
-        c == WeatherCondition.mainlyClear || c == WeatherCondition.partlyCloudy || c == WeatherCondition.overcast
+        c == WeatherCondition.mainlyClear || c == WeatherCondition.partlyCloudy || c == WeatherCondition.mostlyCloudy || c == WeatherCondition.overcast
 
     fun turningPoint(now: Int, later: List<HourlyForecast>, rising: Boolean): HourlyForecast? {
         var best: HourlyForecast? = null

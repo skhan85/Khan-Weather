@@ -391,6 +391,14 @@ private struct ForecastList: View {
             .glassRow()
 
             Section {
+                if let week = WeekOutlook.text(days, timeZone: forecast.timeZone) {
+                    Label {
+                        Text(week).font(.subheadline.weight(.semibold))
+                    } icon: {
+                        Image(systemName: "text.line.first.and.arrowtriangle.forward").foregroundStyle(Brand.gold)
+                    }
+                    .padding(.vertical, 2)
+                }
                 ForEach(Array(days.enumerated()), id: \.element.id) { index, day in
                     NavigationLink {
                         DayDetailView(day: day, hours: forecast.displayHours(on: day), timeZone: forecast.timeZone,

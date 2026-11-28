@@ -23,7 +23,7 @@ data class Sky(val top: Color, val bottom: Color, val decoration: Decoration) {
         private fun group(c: WeatherCondition): Group = when (c) {
             WeatherCondition.clear -> Group.clear
             mainlyClear, partlyCloudy -> Group.partly
-            overcast, fog, unknown -> Group.grey
+            overcast, mostlyCloudy, fog, unknown -> Group.grey
             drizzle, rain, rainShowers, freezingDrizzle, freezingRain -> Group.wet
             snow, snowGrains, snowShowers -> Group.snow
             thunderstorm, thunderstormHail -> Group.storm

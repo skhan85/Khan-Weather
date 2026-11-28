@@ -347,7 +347,8 @@ public struct EnvironmentCanadaProvider: ObservationProvider {
         if text.contains("fog") || text.contains("mist") || text.contains("haze") || text.contains("smoke") { return .fog }
         if text.contains("mainly sunny") || text.contains("mainly clear") { return .mainlyClear }
         if text.contains("sunny") || text.contains("clear") { return .clear }
-        if text.contains("partly") || text.contains("mostly cloudy") || text.contains("a few clouds") { return .partlyCloudy }
+        if text.contains("mostly cloudy") || text.contains("cloudy periods") { return .mostlyCloudy }
+        if text.contains("partly") || text.contains("a few clouds") { return .partlyCloudy }
         if text.contains("cloud") || text.contains("overcast") { return .overcast }
         return nil
     }

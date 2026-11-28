@@ -106,7 +106,9 @@ fun Forecast.nowcastSlots(now: Epoch = nowEpoch()): List<PrecipitationSlot> {
  * The Now card follows the first 15 minutes of Next 2 hours when those are wet and the card isn't
  * (27 Nov, 8:54 am: "Overcast" under "Rain for at least the next 2 hours" while it drizzled).
  */
-fun Forecast.agreeingNowWithNowcast(now: Epoch = nowEpoch()): Forecast {
+fun Forecast.agreeingNowWithNowcast(now: Epoch = nowEpoch()): Forecast = withSteadySkies().nowFollowingNowcast(now)
+
+private fun Forecast.nowFollowingNowcast(now: Epoch): Forecast {
     val c = current.condition
     if (c.isPrecipitation || c == WeatherCondition.thunderstorm || c == WeatherCondition.thunderstormHail) return this
     val slots = nowcastSlots(now)
@@ -161,7 +163,7 @@ const val damperDrizzleHumidity = 90.0
  */
 fun Forecast.drizzlingRadarCantSee(slots: List<PrecipitationSlot>): Forecast {
     val c = current.condition
-    if (c != WeatherCondition.overcast && c != WeatherCondition.partlyCloudy && c != WeatherCondition.fog) return this
+    if (c != WeatherCondition.overcast && c != WeatherCondition.mostlyCloudy && c != WeatherCondition.partlyCloudy && c != WeatherCondition.fog) return this
     if (current.temperature <= -3 || current.temperature >= 15 || radar?.isPrecipitating == true) return this
     val rh = current.humidity?.toDouble() ?: return this
     val nearby = observation?.nearbyDrizzleStation

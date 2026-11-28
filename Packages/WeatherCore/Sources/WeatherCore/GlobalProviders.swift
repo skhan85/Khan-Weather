@@ -54,7 +54,8 @@ extension WeatherCondition {
         else if t.contains("shower") { self = .rainShowers }
         else if t.contains("rain") { self = .rain }
         else if t.contains("fog") || t.contains("mist") || t.contains("haze") { self = .fog }
-        else if t.contains("overcast") || t == "cloudy" || t.contains("mostly cloudy") { self = .overcast }
+        else if t.contains("mostly cloudy") || t.contains("considerable cloud") { self = .mostlyCloudy }
+        else if t.contains("overcast") || t == "cloudy" { self = .overcast }
         else if t.contains("partly") || t.contains("cloud") { self = .partlyCloudy }
         else if t.contains("clear") || t.contains("sunny") || t.contains("fair") { self = .clear }
         else { return nil }
@@ -75,7 +76,8 @@ extension WeatherCondition {
             switch cover?.uppercased() {
             case "SKC", "CLR", "CAVOK", "NSC", "NCD": self = .clear
             case "FEW": self = .mainlyClear
-            case "SCT", "BKN": self = .partlyCloudy
+            case "SCT": self = .partlyCloudy
+            case "BKN": self = .mostlyCloudy
             case "OVC", "OVX": self = .overcast
             default: return nil
             }
