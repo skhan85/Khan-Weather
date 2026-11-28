@@ -32,6 +32,7 @@ WET_MM = 0.2        # ModelBlend.wetHourMm
 ENSEMBLES = ["ecmwf_ifs025", "ecmwf_aifs025", "gfs025", "icon_seamless", "gem_global",
              "ukmo_global_ensemble_20km", "google_weathernext2_ensemble", "ncep_aigefs025"]
 PACE = float(os.environ.get("ENS_PACE", "0.25"))   # seconds per Open-Meteo call unit
+DEADLINE_S = float(os.environ.get("ENS_DEADLINE_MIN", "75")) * 60   # then save what's done
 
 _lock = threading.Lock()
 _slot = [0.0]
@@ -162,8 +163,12 @@ def main():
             dead[m] = (d or {}).get("error", "no answer")[:120]
     print("ensembles:", live, "missing:", dead, flush=True)
 
+    started = time.time()
+
     def one(item):
         icao, (la, lo) = item
+        if time.time() - started > DEADLINE_S:
+            return icao, None
         rec = forecast(la, lo, now)
         if "t0" not in rec:
             return icao, None
@@ -172,6 +177,7 @@ def main():
             e, err = ensemble(la, lo, m, rec["t0"])
             if e:
                 rec["ens"][m] = e
+        print(f"  {icao}: {len(rec['ens'])} ensembles", flush=True)
         return icao, rec
 
     out = {}

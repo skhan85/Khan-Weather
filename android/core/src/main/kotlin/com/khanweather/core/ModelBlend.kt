@@ -244,8 +244,9 @@ object ModelBlend {
         return present.values.sumOf { max(0.0, it) } / present.size
     }
 
-    // Daily high and low: the real high and low fall between hours.
-    const val highAllowance = 0.4
+    // Daily high and low: the real high and low fall between hours. High +0.9 scored worldwide
+    // against official daily highs (tools/score_highlow.py; ModelBlend.swift has the numbers).
+    const val highAllowance = 0.9
     const val lowAllowance = 0.5
     const val googleWeight = 0.15
     const val googleHorizonHours = 48.0

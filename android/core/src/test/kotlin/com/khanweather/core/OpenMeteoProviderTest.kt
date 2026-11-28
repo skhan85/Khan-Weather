@@ -323,7 +323,7 @@ class OpenMeteoProviderTest {
             "test", day0,
         ).applying(temps)
 
-        close(8.4, forecast.daily[0].high, 0.001)
+        close(8.9, forecast.daily[0].high, 0.001)
         close(-1.25, forecast.daily[0].low, 0.001)
     }
 

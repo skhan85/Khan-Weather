@@ -244,7 +244,7 @@ def main():
                 for name, c in (("none", 0.0), ("today", now_c), ("world", cw), ("region", cr)):
                     tot[name] += mae(e, c) * len(e)
                     byreg[r][name] += mae(e, c) * len(e)
-                    byreg[r]["needed"] += sum(e)
+                byreg[r]["needed"] += sum(e)
                 n += len(e)
                 byreg_n[r] += len(e)
             print(f"  lead {lead}: n={n}  needed {sum(allv)/len(allv):+.2f} (median {statistics.median(allv):+.2f})  "

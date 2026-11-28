@@ -372,10 +372,10 @@ final class OpenMeteoProviderTests: XCTestCase {
         ).applying(temps)
 
         // Offset troughs/peaks give raw blended min=0.5 (-2 and 3 averaged) and max=5.5 (8 and 3 averaged),
-        // while each model reached low=-2.0 and high=8.0. Full high lift -> 8.0 + 0.4 = 8.4; half low drop -> 0.5 - 1.25 - 0.5 = -1.25.
-        XCTAssertEqual(forecast.daily[0].high, 8.4, accuracy: 0.001)
+        // while each model reached low=-2.0 and high=8.0. Full high lift -> 8.0 + 0.9 = 8.9; half low drop -> 0.5 - 1.25 - 0.5 = -1.25.
+        XCTAssertEqual(forecast.daily[0].high, 8.9, accuracy: 0.001)
         XCTAssertEqual(forecast.daily[0].low, -1.25, accuracy: 0.001)
-        XCTAssertEqual(forecast.daily[1].high, 8.4, accuracy: 0.001)
+        XCTAssertEqual(forecast.daily[1].high, 8.9, accuracy: 0.001)
         XCTAssertEqual(forecast.daily[1].low, -1.25, accuracy: 0.001)
 
         // Applying Google on day 0 (first 24h) updates day 0 (scaling phase offsets by 0.65) and leaves day 6 untouched.
@@ -389,7 +389,7 @@ final class OpenMeteoProviderTests: XCTestCase {
         )
         let withGoogle = forecast.applyingGoogleHourly(gh)
         // Day 6 was beyond 48h and untouched by Google -> keeps exact phase-recovered extremes.
-        XCTAssertEqual(withGoogle.daily[1].high, 8.4, accuracy: 0.001)
+        XCTAssertEqual(withGoogle.daily[1].high, 8.9, accuracy: 0.001)
         XCTAssertEqual(withGoogle.daily[1].low, -1.25, accuracy: 0.001)
         // Day 0 hourly min after 15% Google @ 3.0° becomes 0.85*0.5 + 0.15*3.0 = 0.875; phaseLowDrop scales by 0.85 (1.0625).
         XCTAssertEqual(withGoogle.daily[0].low, 0.875 - 1.0625 - 0.5, accuracy: 0.001)

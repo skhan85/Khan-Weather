@@ -37,7 +37,7 @@ final class DisplayConsistencyTests: XCTestCase {
                                                                     count: 6, wet: 0, freezing: 0)
         }
         f = f.applying(temps)
-        XCTAssertEqual(f.daily[0].high, 9.4, accuracy: 0.001)
+        XCTAssertEqual(f.daily[0].high, 9.9, accuracy: 0.001)
         XCTAssertEqual(f.daily[0].low, 0.5, accuracy: 0.001)
         // Tonight's low on the Now card gets the same allowance (coldest hour tonight is 5.0).
         let threePM = midnight.addingTimeInterval(15 * 3600)
