@@ -150,6 +150,10 @@ fun ForecastList(
         }
 
         Section("${forecast.daily.size}-day forecast", Icons.Filled.CalendarMonth, PaddingValues(horizontal = 16.dp, vertical = 2.dp)) {
+            WeekOutlook.text(days, zone)?.let {
+                Text(it, style = style(14.sp, FontWeight.SemiBold), modifier = Modifier.padding(vertical = 10.dp))
+                RowDivider()
+            }
             days.forEachIndexed { i, day ->
                 LinkRow({ nav(Screen.Day(day, i)) }) {
                     DailyRow(day, i == 0, zone, weekLow, weekHigh, if (i == 0) forecast.current.temperature else null,

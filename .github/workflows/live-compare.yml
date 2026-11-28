@@ -18,4 +18,4 @@ jobs:
           curl -s "https://api.open-meteo.com/v1/forecast?latitude=43.5085&longitude=-79.885&current=temperature_2m,apparent_temperature,relative_humidity_2m,dew_point_2m,surface_pressure,pressure_msl,cloud_cover,visibility,uv_index,wind_speed_10m,wind_direction_10m&models=gem_hrdps_continental&timezone=America/Toronto" ; echo
       - name: App pipeline
         env: { LIVE_COMPARE: "1" }
-        run: swift run --package-path Packages/WeatherCore LiveCompare 2>&1 | tail -60
+        run: swift run --package-path Packages/WeatherCore LiveCompare 2>&1 | grep -v "  - hour" | tail -30
