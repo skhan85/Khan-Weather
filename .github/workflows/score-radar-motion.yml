@@ -1,0 +1,38 @@
+name: Score radar-motion nowcast
+
+# Checks the radar-motion nowcast (tools/radar_motion.py) against what the radar did next, at about
+# 60 cities, against "the radar stays put". RainViewer keeps only two hours of frames, so each run
+# adds that moment's cases to a file kept in the Actions cache and prints the running totals.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - tools/radar_motion.py
+      - .github/workflows/score-radar-motion.yml
+  schedule:
+    - cron: "23 */3 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: tools/radar-motion-cases.jsonl
+          key: radar-motion-${{ github.run_id }}
+          restore-keys: radar-motion-
+      - run: pip install --quiet numpy pillow
+      - name: Score
+        working-directory: tools
+        run: python3 radar_motion.py
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: tools/radar-motion-cases.jsonl
+          key: radar-motion-${{ github.run_id }}
