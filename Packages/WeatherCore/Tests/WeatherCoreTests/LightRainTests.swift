@@ -100,4 +100,30 @@ final class LightRainTests: XCTestCase {
         XCTAssertEqual(o.nearbyWetStations?.count, 2)
         XCTAssertNotNil(o.nearbyDrizzleStation)
     }
+
+    /// 27 Nov, 7:48 pm in Mississauga: Pearson (9 km) said light rain, 92% here, radar dry, drizzling.
+    func testNearbyStationRainInSaturatedAirSurvivesADryRadar() {
+        let now = Date()
+        var f = forecast(temperature: 4, humidity: 92)
+        var o = Observation(stationName: "3 Netatmo stations", observedAt: now, temperature: 4, distanceKm: 3)
+        o.condition = .rain
+        o.conditionText = "Light Rain"
+        o.skyStationName = "Toronto Pearson Int'l Airport"
+        o.skyDistanceKm = 9
+        f.observation = o
+        f.current.condition = .rain
+        let dryRadar = RadarNow(rainMmPerHour: 0, snowCmPerHour: 0, time: now)
+        let shown = f.applyingRadar(dryRadar).agreeingNowWithNowcast(at: now)
+        XCTAssertEqual(shown.current.condition, .drizzle)
+        XCTAssertTrue(shown.skySource?.contains("Toronto Pearson") == true)
+        XCTAssertEqual(shown.nowcast(at: now)?.kind, .rain, "Next 2 hours agrees with the card")
+
+        // Drier air, or a station too far away: the dry radar wins as before.
+        var drier = f
+        drier.current.humidity = 86
+        XCTAssertEqual(drier.applyingRadar(dryRadar).current.condition, .overcast)
+        var far = f
+        far.observation?.skyDistanceKm = 30
+        XCTAssertEqual(far.applyingRadar(dryRadar).current.condition, .overcast)
+    }
 }

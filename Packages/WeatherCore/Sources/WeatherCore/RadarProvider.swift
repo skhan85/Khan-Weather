@@ -226,6 +226,15 @@ public extension Forecast {
         return (current.humidity ?? 0) >= Self.drizzleHumidity || observation?.nearbyDrizzleStation != nil
     }
 
+    /// How far the station reporting rain is, when the sky comes from a station.
+    var stationRainKm: Double? {
+        guard let o = observation else { return nil }
+        return o.skyStationName == nil ? o.distanceKm : o.skyDistanceKm
+    }
+
+    /// In saturated air, a station this close (km) reporting rain under a dry radar means drizzle here.
+    static let stationRainUnderDryRadarKm: Double = 25
+
     /// In air this damp (%), a light radar echo (0.1-0.5 mm/h) is reaching the ground.
     static let dampEchoHumidity: Double = 90
 
@@ -258,6 +267,17 @@ public extension Forecast {
                   !(observation?.skyIsLocal ?? false) || skyStationBeyondRadarReach,
                   !drizzleRadarCantSee else { return self }
             var copy = self
+            // 27 Nov, 7:48 pm in Mississauga: Pearson (9 km) reported light rain, the air was at 92%,
+            // the radar was dry and it drizzled. In saturated air a nearby station's rain is drizzle
+            // falling below the radar beam, not rain from somewhere else.
+            if let km = stationRainKm, km <= Self.stationRainUnderDryRadarKm,
+               (current.humidity ?? 0) >= Self.dampEchoHumidity {
+                let name = WeatherFormat.plainStationName(observation?.skyStationName ?? observation?.stationName ?? "")
+                copy.current.condition = .drizzle
+                copy.observation?.conditionText = "Drizzle"
+                copy.skySource = "light rain reported at \(name), \(WeatherFormat.roughDistance(km)) away (radar can't see drizzle)"
+                return copy
+            }
             copy.current.condition = .overcast
             copy.observation?.conditionText = nil
             copy.skySource = "radar over this spot (dry)"
