@@ -19,7 +19,7 @@ permissions:
 jobs:
   score:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache/restore@v4
@@ -30,6 +30,7 @@ jobs:
       - run: pip install --quiet numpy pillow
       - name: Score
         working-directory: tools
+        timeout-minutes: 50
         run: python3 radar_motion.py
       - uses: actions/cache/save@v4
         if: always()

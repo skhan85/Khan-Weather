@@ -203,7 +203,8 @@ def check():
     if not f60 or not f40:
         print("not enough past frames", times)
         return
-    later = [t for t in times if t > f40]
+    # Check 10, 20, 30, 45, 60 and 90 minutes ahead (fewer frames: RainViewer asks for <100 calls/min).
+    later = sorted({c for c in (frame_at(f40 + m * 60) for m in (10, 20, 30, 45, 60, 90)) if c and c > f40})
     cases = []
     for name, lat, lon in CITIES:
         tx0, ty0, cx, cy = tiles_for(lat, lon)
@@ -236,9 +237,11 @@ def check():
                               "motion": round(mot, 2), "persist": round(per, 2),
                               "speed_kmh": round(math.hypot(vx, vy) * km * 60, 1)})
         print(f"{name}: motion {math.hypot(vx, vy) * km * 60:.0f} km/h", file=sys.stderr, flush=True)
-    with open("radar-motion-cases.jsonl", "a") as f:
-        for c in cases:
-            f.write(json.dumps(c) + "\n")
+        # Saved city by city, so a run cut short still adds what it scored.
+        with open("radar-motion-cases.jsonl", "a") as f:
+            for c in cases:
+                f.write(json.dumps(c) + "\n")
+        cases = []
     summarise()
 
 
