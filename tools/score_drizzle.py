@@ -234,6 +234,41 @@ def main():
                         by_cluster[cname]["C .50"].add((share or 0) >= 0.5, o["wet"], o["drizzle"])
                         by_cluster[cname]["B >=2"].add(nb_wet >= 2, o["wet"], o["drizzle"])
 
+    # How far a station's rain reaches: one neighbour reporting rain, damp cloudy air (RH >= 90%,
+    # above 1 °C) here. Precision = share of those hours wet here, by distance to that neighbour.
+    # "no model vote" = the same, in hours when fewer than half the models had rain (the app's
+    # model-vote rule wouldn't fire, as in Mississauga on 27 Nov).
+    BUCKETS = [(0, 10), (10, 15), (15, 20), (20, 25), (25, 30), (30, 40)]
+    dist = defaultdict(lambda: [0, 0, 0, 0])
+    for cname, ids in CLUSTERS.items():
+        for icao in ids:
+            if icao not in obs:
+                continue
+            for n in ids:
+                if n == icao or n not in obs:
+                    continue
+                d = km(pos[icao], pos[n])
+                bk = next((b for b in BUCKETS if b[0] <= d < b[1]), None)
+                if bk is None:
+                    continue
+                for hour, o in obs[icao].items():
+                    if not (1 < o["t"] < 15) or not o["cloudy"] or o["rh"] < 90:
+                        continue
+                    x = obs[n].get(hour)
+                    if not x or not x["wet"]:
+                        continue
+                    mp = models[icao].get(hour, {})
+                    share = (sum(v >= WET_MM for v in mp.values()) / len(mp)) if len(mp) >= 3 else 0
+                    c = dist[bk]
+                    c[0] += 1; c[1] += o["wet"]
+                    if share < 0.5:
+                        c[2] += 1; c[3] += o["wet"]
+    print("\nOne neighbour reports rain, RH >= 90% cloudy >1 °C here: wet here, by distance")
+    print(f"  {'km':8} {'hours':>7} {'precision':>9} | no model vote: {'hours':>7} {'precision':>9}")
+    for bk in BUCKETS:
+        c = dist[bk]
+        print(f"  {bk[0]:>2}-{bk[1]:<5} {c[0]:7d} {c[1] / max(c[0], 1):9.0%} |                {c[2]:7d} {c[3] / max(c[2], 1):9.0%}")
+
     report = {}
     for rh in RH_LEVELS:
         n, w, dz = base[rh]
