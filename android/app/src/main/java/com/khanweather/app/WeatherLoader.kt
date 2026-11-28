@@ -93,7 +93,71 @@ object WeatherLoader {
     @Serializable
     data class RelayNowcast(val slots: List<RelayNowcastSlot> = emptyList())
 
-    suspend fun radarNowcast(target: Coordinate, cold: Boolean = false): RelayNowcast? = deadline(6.0) {
+    /**
+     * The next 90 minutes or so of radar: Environment Canada's extrapolation from the relay, or,
+     * where that's missing or shows no rain at all, the app's own radar-motion nowcast from
+     * RainViewer frames (core RadarMotion, same as the iPhone app).
+     */
+    suspend fun radarNowcast(target: Coordinate, cold: Boolean = false): RelayNowcast? {
+        val relay = relayNowcast(target, cold)
+        if (relay != null && relay.slots.any { maxOf(it.rain_mmh, it.snow_cmh, it.precip_mmh) > 0 }) return relay
+        val motion = deadline(10.0) { motionNowcast(target) }
+        if (motion != null && motion.slots.any { it.rain_mmh > 0 }) return motion
+        return relay
+    }
+
+    private fun httpBytes(u: String): ByteArray? {
+        val conn = (URL(u).openConnection() as HttpURLConnection).apply { connectTimeout = 5000; readTimeout = 5000 }
+        return try {
+            if (conn.responseCode != 200) null else conn.inputStream.readBytes()
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    @Serializable
+    private data class RvFrame(val time: kotlin.Double, val path: String)
+    @Serializable
+    private data class RvRadar(val past: List<RvFrame> = emptyList())
+    @Serializable
+    private data class RvIndex(val host: String, val radar: RvRadar)
+
+    private suspend fun motionNowcast(target: Coordinate): RelayNowcast? = withContext(Dispatchers.IO) {
+        runCatching {
+            val idx = relayJson.decodeFromString(RvIndex.serializer(),
+                String(httpBytes("https://api.rainviewer.com/public/weather-maps.json") ?: return@runCatching null))
+            val (oldT, newT) = RadarMotion.framePair(idx.radar.past.map { it.time }) ?: return@runCatching null
+            if (nowEpoch() - newT > 1500) return@runCatching null
+            val path = idx.radar.past.associate { it.time to it.path }
+            val t = RadarMotion.tiles(target)
+            val n = 1 shl RadarMotion.ZOOM
+            fun grid(p: String): RadarMotion.Grid? {
+                val tiles = mutableListOf<IntArray>()
+                for (j in 0..1) for (i in 0..1) {
+                    val x = ((t.tx + i) % n + n) % n
+                    val y = t.ty + j
+                    val px = IntArray(RadarMotion.TILE * RadarMotion.TILE)
+                    if (y in 0 until n) {
+                        val bytes = httpBytes("${idx.host}$p/${RadarMotion.TILE}/${RadarMotion.ZOOM}/$x/$y/2/0_0.png") ?: return null
+                        val opts = android.graphics.BitmapFactory.Options().apply { inPremultiplied = false }
+                        val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
+                        if (bmp.width != RadarMotion.TILE || bmp.height != RadarMotion.TILE) return null
+                        bmp.getPixels(px, 0, RadarMotion.TILE, 0, 0, RadarMotion.TILE, RadarMotion.TILE)
+                    }
+                    tiles += px
+                }
+                return RadarMotion.grid(tiles)
+            }
+            val old = grid(path.getValue(oldT)) ?: return@runCatching null
+            val new = grid(path.getValue(newT)) ?: return@runCatching null
+            // No echo anywhere in the tiles: likely no radar there, so "dry" would mean nothing.
+            if (new.dbz.all { it.isNaN() }) return@runCatching null
+            val slots = RadarMotion.nowcast(old, new, newT, (newT - oldT) / 60, t.x, t.y, RadarMotion.pixelKm(target))
+            RelayNowcast(slots.map { RelayNowcastSlot(it.epoch, it.rainMmh, it.rainMmh, it.snowCmh) })
+        }.getOrNull()
+    }
+
+    private suspend fun relayNowcast(target: Coordinate, cold: Boolean = false): RelayNowcast? = deadline(6.0) {
         withContext(Dispatchers.IO) {
             runCatching {
                 val u = String.format(
