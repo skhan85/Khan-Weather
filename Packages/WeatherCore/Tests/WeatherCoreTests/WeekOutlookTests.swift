@@ -29,11 +29,11 @@ final class WeekOutlookTests: XCTestCase {
     func testDryWeekWithHardFrost() {
         let week = days([(2, -3, .clear, nil), (1, -8, .clear, nil), (3, -2, .partlyCloudy, nil)])
         XCTAssertEqual(WeekOutlook.text(week, timeZone: tz, now: now),
-                       "Dry for the next 3 days, highs peaking at 3° Monday. Hard frost tomorrow night, down to -8°.")
+                       "Dry for the next 2 days, highs peaking at 3° Monday. Hard frost tomorrow night, down to -8°.")
     }
 
     func testManyWetDays() {
         let week = days([(7, 3, .rain, nil), (7, 3, .rain, nil), (7, 3, .rain, nil), (7, 3, .rain, nil), (7, 3, .rain, nil), (7, 3, .rain, nil), (8, 2, .overcast, nil)])
-        XCTAssertEqual(WeekOutlook.text(week, timeZone: tz, now: now), "Rain on 6 of the next 7 days, highs peaking at 8° Friday.")
+        XCTAssertEqual(WeekOutlook.text(week, timeZone: tz, now: now), "Rain on 5 of the next 6 days, highs peaking at 8° Friday.")
     }
 }

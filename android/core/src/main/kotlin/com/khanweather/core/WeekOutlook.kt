@@ -29,7 +29,8 @@ object WeekOutlook {
         val snow = mutableListOf<String>()
         val mixed = mutableListOf<String>()
         for (d in week) {
-            if (!d.condition.isWetOrStorm) continue
+            // Today is left to the Now card: its headline can be this morning's drizzle, long over.
+            if (!d.condition.isWetOrStorm || cal.isSameDay(d.date, now)) continue
             when (d.precipitationKind) {
                 PrecipitationKind.rain -> rain += name(d)
                 PrecipitationKind.snow -> snow += name(d)
@@ -39,10 +40,10 @@ object WeekOutlook {
         val wet = rain.size + snow.size + mixed.size
         val parts = mutableListOf<String>()
         when {
-            wet == 0 -> parts += "Dry for the next ${week.size} days"
+            wet == 0 -> parts += "Dry for the next ${week.size - 1} days"
             wet > 3 -> {
                 val noun = if (snow.isEmpty() && mixed.isEmpty()) "Rain" else if (rain.isEmpty() && mixed.isEmpty()) "Snow" else "Rain or snow"
-                parts += "$noun on $wet of the next ${week.size} days"
+                parts += "$noun on $wet of the next ${week.size - 1} days"
             }
             else -> {
                 if (rain.isNotEmpty()) parts += "Rain ${list(rain)}"

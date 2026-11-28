@@ -33,8 +33,10 @@ public enum WeekOutlook {
         }
 
         // Wet days, by what falls. A day's headline already ignores low chances and trace amounts.
+        // Today is left to the Now card and its outlook line: its headline can be this morning's
+        // drizzle, long over.
         var rain: [String] = [], snow: [String] = [], mixed: [String] = []
-        for d in week where d.condition.isWetOrStorm {
+        for d in week where d.condition.isWetOrStorm && !calendar.isDate(d.date, inSameDayAs: now) {
             switch d.precipitationKind {
             case .rain: rain.append(name(d))
             case .snow: snow.append(name(d))
@@ -44,10 +46,10 @@ public enum WeekOutlook {
         let wetCount = rain.count + snow.count + mixed.count
         var parts: [String] = []
         if wetCount == 0 {
-            parts.append("Dry for the next \(week.count) days")
+            parts.append("Dry for the next \(week.count - 1) days")
         } else if wetCount > 3 {
             let noun = snow.isEmpty && mixed.isEmpty ? "Rain" : rain.isEmpty && mixed.isEmpty ? "Snow" : "Rain or snow"
-            parts.append("\(noun) on \(wetCount) of the next \(week.count) days")
+            parts.append("\(noun) on \(wetCount) of the next \(week.count - 1) days")
         } else {
             if !rain.isEmpty { parts.append("Rain \(list(rain))") }
             if !snow.isEmpty { parts.append("snow \(list(snow))") }
@@ -56,7 +58,7 @@ public enum WeekOutlook {
         var first = parts.joined(separator: ", ")
         first = first.prefix(1).uppercased() + first.dropFirst()
 
-        // The warmest day, unless today is already the warmest and it's nearly over.
+        // The warmest day.
         if let warm = week.max(by: { $0.high < $1.high }) {
             first += ", highs peaking at \(WeatherFormat.temperature(warm.high)) \(name(warm))"
         }

@@ -26,7 +26,7 @@ class WeekOutlookTest {
     @Test fun dryWeekWithHardFrost() {
         val week = days(listOf(Triple(2.0 to -3.0, WeatherCondition.clear, null), Triple(1.0 to -8.0, WeatherCondition.clear, null),
             Triple(3.0 to -2.0, WeatherCondition.partlyCloudy, null)))
-        assertEquals("Dry for the next 3 days, highs peaking at 3° Monday. Hard frost tomorrow night, down to -8°.",
+        assertEquals("Dry for the next 2 days, highs peaking at 3° Monday. Hard frost tomorrow night, down to -8°.",
             WeekOutlook.text(week, "America/Toronto", now))
     }
 }
